@@ -16,19 +16,49 @@ datasource db {
 // ============================================================
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  name         String?
-  avatarUrl    String?  @map("avatar_url")
-  isAdmin      Boolean  @default(false) @map("is_admin")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String   @map("password_hash")
+  name           String?
+  avatarUrl      String?  @map("avatar_url")
+  role           UserRole @default(USER)
+  isBlocked      Boolean  @default(false) @map("is_blocked")
+  emailVerified  Boolean  @default(false) @map("email_verified")
+  referredByCode String?  @map("referred_by_code") // affiliate code used at registration
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  workspaces WorkspaceUser[]
+  workspaces    WorkspaceUser[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  COLLABORATOR
+  USER
+}
+
+// ============================================================
+// REFRESH TOKENS — JWT refresh token tracking
+// ============================================================
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  family    String   @default(cuid()) // token family for rotation detection
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
 }
 
 // ============================================================

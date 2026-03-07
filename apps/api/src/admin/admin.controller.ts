@@ -1,5 +1,5 @@
-// ============================================================
-// Admin Controller — Panel de administración y gestión de revenue
+﻿// ============================================================
+// Admin Controller â€” Panel de administraciÃ³n y gestiÃ³n de revenue
 // ============================================================
 
 import {
@@ -26,10 +26,10 @@ export class AdminController {
     private readonly licenses: LicenseService,
   ) {}
 
-  // ── Dashboard ────────────────────────────────────────
+  // â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** GET /api/admin/dashboard — Admin overview stats */
-  @Roles('OWNER')
+  /** GET /api/admin/dashboard â€” Admin overview stats */
+  @Roles('ADMIN')
   @Get('dashboard')
   async dashboard() {
     const stats = await this.admin.getDashboardStats();
@@ -37,16 +37,16 @@ export class AdminController {
     return { data: { ...stats, licenses: licenseStats } };
   }
 
-  /** GET /api/admin/workspaces — List all workspaces (admin only) */
-  @Roles('OWNER')
+  /** GET /api/admin/workspaces â€” List all workspaces (admin only) */
+  @Roles('ADMIN')
   @Get('workspaces')
   async listWorkspaces() {
     const workspaces = await this.admin.listWorkspacesAdmin();
     return { data: workspaces };
   }
 
-  /** GET /api/admin/payments — List all payments */
-  @Roles('OWNER')
+  /** GET /api/admin/payments â€” List all payments */
+  @Roles('ADMIN')
   @Get('payments')
   async listPayments(@Query('take') take?: string) {
     const payments = await this.admin.listPayments(
@@ -55,10 +55,10 @@ export class AdminController {
     return { data: payments };
   }
 
-  // ── Subscription management ──────────────────────────
+  // â”€â”€ Subscription management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** POST /api/admin/subscriptions/activate — Activate a subscription manually */
-  @Roles('OWNER')
+  /** POST /api/admin/subscriptions/activate â€” Activate a subscription manually */
+  @Roles('ADMIN')
   @Post('subscriptions/activate')
   async activateSubscription(
     @Body()
@@ -78,8 +78,8 @@ export class AdminController {
     return { data: sub };
   }
 
-  /** POST /api/admin/subscriptions/extend — Extend a subscription */
-  @Roles('OWNER')
+  /** POST /api/admin/subscriptions/extend â€” Extend a subscription */
+  @Roles('ADMIN')
   @Post('subscriptions/extend')
   async extendSubscription(
     @Body() body: { workspaceId: string; extraDays: number },
@@ -91,8 +91,8 @@ export class AdminController {
     return { data: sub };
   }
 
-  /** POST /api/admin/subscriptions/cancel — Cancel a subscription */
-  @Roles('OWNER')
+  /** POST /api/admin/subscriptions/cancel â€” Cancel a subscription */
+  @Roles('ADMIN')
   @Post('subscriptions/cancel')
   async cancelSubscription(
     @Body() body: { workspaceId: string; immediate?: boolean },
@@ -104,10 +104,10 @@ export class AdminController {
     return { data: sub };
   }
 
-  // ── Payment logging ──────────────────────────────────
+  // â”€â”€ Payment logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** POST /api/admin/payments — Record a manual payment */
-  @Roles('OWNER')
+  /** POST /api/admin/payments â€” Record a manual payment */
+  @Roles('ADMIN')
   @Post('payments')
   async recordPayment(
     @CurrentUser() user: JwtPayload,
@@ -128,10 +128,10 @@ export class AdminController {
     return { data: payment };
   }
 
-  // ── License key management ───────────────────────────
+  // â”€â”€ License key management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** POST /api/admin/licenses/generate — Generate new license keys */
-  @Roles('OWNER')
+  /** POST /api/admin/licenses/generate â€” Generate new license keys */
+  @Roles('ADMIN')
   @Post('licenses/generate')
   async generateKeys(
     @Body()
@@ -150,8 +150,8 @@ export class AdminController {
     return { data: result };
   }
 
-  /** GET /api/admin/licenses — List all licenses */
-  @Roles('OWNER')
+  /** GET /api/admin/licenses â€” List all licenses */
+  @Roles('ADMIN')
   @Get('licenses')
   async listLicenses(
     @Query('status') status?: string,
@@ -166,25 +166,25 @@ export class AdminController {
     return { data: list };
   }
 
-  /** GET /api/admin/licenses/stats — License stats */
-  @Roles('OWNER')
+  /** GET /api/admin/licenses/stats â€” License stats */
+  @Roles('ADMIN')
   @Get('licenses/stats')
   async licenseStats() {
     const stats = await this.licenses.getStats();
     return { data: stats };
   }
 
-  /** PATCH /api/admin/licenses/:id/revoke — Revoke a license */
-  @Roles('OWNER')
+  /** PATCH /api/admin/licenses/:id/revoke â€” Revoke a license */
+  @Roles('ADMIN')
   @Patch('licenses/:id/revoke')
   async revokeKey(@Param('id') id: string) {
     const key = await this.licenses.revokeKey(id);
     return { data: key };
   }
 
-  // ── Public: Redeem license key ───────────────────────
+  // â”€â”€ Public: Redeem license key â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** POST /api/admin/licenses/redeem — Redeem a license key (authenticated users) */
+  /** POST /api/admin/licenses/redeem â€” Redeem a license key (authenticated users) */
   @Post('licenses/redeem')
   async redeemKey(
     @CurrentUser() user: JwtPayload,

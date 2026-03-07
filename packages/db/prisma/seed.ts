@@ -5,7 +5,90 @@ const prisma = new PrismaClient();
 async function main() {
   console.info('🌱 Seeding database...');
 
-  // ---- Workspace de prueba ----
+  // ================================================================
+  // PLANS — Starter, Creator, Pro
+  // ================================================================
+
+  const plans = [
+    {
+      id: 'plan_starter',
+      name: 'starter',
+      displayName: 'Starter',
+      description: 'Para empezar a automatizar tu contenido. 30 posts/mes, 1 red social.',
+      monthlyPrice: 1500,   // $15 USD
+      yearlyPrice: 14400,   // $144 USD ($12/mes)
+      maxPublications: 30,
+      maxVideos: 0,
+      maxSources: 5,
+      maxChannels: 1,
+      maxEditors: 1,
+      analyticsEnabled: false,
+      aiScoringEnabled: false,
+      prioritySupport: false,
+      customBranding: false,
+    },
+    {
+      id: 'plan_creator',
+      name: 'creator',
+      displayName: 'Creator',
+      description: 'Para creadores serios. 120 posts/mes, 3 redes, IA de imágenes, scheduler.',
+      monthlyPrice: 2900,   // $29 USD
+      yearlyPrice: 27800,   // $278 USD ($23.2/mes)
+      maxPublications: 120,
+      maxVideos: 10,
+      maxSources: 20,
+      maxChannels: 3,
+      maxEditors: 2,
+      analyticsEnabled: true,
+      aiScoringEnabled: false,
+      prioritySupport: false,
+      customBranding: false,
+    },
+    {
+      id: 'plan_pro',
+      name: 'pro',
+      displayName: 'Pro',
+      description: 'Para profesionales y agencias. Posts ilimitados, redes ilimitadas, analytics completo.',
+      monthlyPrice: 7900,   // $79 USD
+      yearlyPrice: 75800,   // $758 USD ($63.2/mes)
+      maxPublications: 9999, // Effectively unlimited
+      maxVideos: 100,
+      maxSources: 100,
+      maxChannels: 99,
+      maxEditors: 10,
+      analyticsEnabled: true,
+      aiScoringEnabled: true,
+      prioritySupport: true,
+      customBranding: true,
+    },
+  ];
+
+  for (const plan of plans) {
+    const created = await prisma.plan.upsert({
+      where: { id: plan.id },
+      update: {
+        displayName: plan.displayName,
+        description: plan.description,
+        monthlyPrice: plan.monthlyPrice,
+        yearlyPrice: plan.yearlyPrice,
+        maxPublications: plan.maxPublications,
+        maxVideos: plan.maxVideos,
+        maxSources: plan.maxSources,
+        maxChannels: plan.maxChannels,
+        maxEditors: plan.maxEditors,
+        analyticsEnabled: plan.analyticsEnabled,
+        aiScoringEnabled: plan.aiScoringEnabled,
+        prioritySupport: plan.prioritySupport,
+        customBranding: plan.customBranding,
+      },
+      create: plan,
+    });
+    console.info(`  ✓ Plan: ${created.displayName} ($${(created.monthlyPrice / 100).toFixed(0)}/mo)`);
+  }
+
+  // ================================================================
+  // WORKSPACE
+  // ================================================================
   const workspace = await prisma.workspace.upsert({
     where: { id: 'ws_default' },
     update: {},
@@ -187,6 +270,92 @@ async function main() {
     },
   });
   console.info(`  ✓ Campaign: ${campaign.name}`);
+
+  // ================================================================
+  // ADMIN USER — Migrate existing user or create new
+  // ================================================================
+
+  // Migrate the legacy user (usr_migrate_001) → admin role
+  const existingAdmin = await prisma.user.findFirst({
+    where: { email: 'admin@syndra.dev' },
+  });
+
+  if (existingAdmin) {
+    await prisma.user.update({
+      where: { id: existingAdmin.id },
+      data: { role: 'ADMIN' },
+    });
+    console.info(`  ✓ Admin user migrated: ${existingAdmin.email} → ADMIN`);
+
+    // Ensure they have a workspace link
+    const wsLink = await prisma.workspaceUser.findFirst({
+      where: { userId: existingAdmin.id, workspaceId: workspace.id },
+    });
+    if (!wsLink) {
+      await prisma.workspaceUser.create({
+        data: {
+          userId: existingAdmin.id,
+          workspaceId: workspace.id,
+          role: 'OWNER',
+          isDefault: true,
+        },
+      });
+      console.info(`  ✓ Admin linked to workspace: ${workspace.name}`);
+    }
+  } else {
+    // Create admin user with bcrypt hash of default password
+    // NOTE: Change this password immediately after first login!
+    const bcrypt = await import('bcryptjs');
+    const defaultPasswordHash = await bcrypt.hash('SyndraAdmin2026!', 12);
+
+    const admin = await prisma.user.upsert({
+      where: { email: 'admin@syndra.dev' },
+      update: {},
+      create: {
+        email: 'admin@syndra.dev',
+        passwordHash: defaultPasswordHash,
+        name: 'Admin',
+        role: 'ADMIN',
+        emailVerified: true,
+      },
+    });
+
+    await prisma.workspaceUser.upsert({
+      where: {
+        userId_workspaceId: { userId: admin.id, workspaceId: workspace.id },
+      },
+      update: {},
+      create: {
+        userId: admin.id,
+        workspaceId: workspace.id,
+        role: 'OWNER',
+        isDefault: true,
+      },
+    });
+
+    console.info(`  ✓ Admin user created: ${admin.email} (password: SyndraAdmin2026!)`);
+  }
+
+  // ================================================================
+  // DEFAULT SUBSCRIPTION — Give admin Pro plan
+  // ================================================================
+
+  const proPlan = await prisma.plan.findUnique({ where: { id: 'plan_pro' } });
+  if (proPlan) {
+    await prisma.subscription.upsert({
+      where: { workspaceId: workspace.id },
+      update: {},
+      create: {
+        workspaceId: workspace.id,
+        planId: proPlan.id,
+        status: 'ACTIVE',
+        billingCycle: 'YEARLY',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+    console.info(`  ✓ Admin workspace subscription: Pro (ACTIVE)`);
+  }
 
   console.info('\n✅ Seed completed successfully!');
 }

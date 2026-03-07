@@ -1,8 +1,10 @@
 // ============================================================
-// Auth Guard — Validates Supabase JWT on protected endpoints
+// Auth Guard — Validates JWT on protected endpoints
 // ============================================================
-// In production: verifies Supabase JWT from Authorization header.
-// In dev (no SUPABASE_JWT_SECRET): allows all requests with a mock user.
+// Extracts JWT from:
+//   1. Authorization: Bearer <token> header
+//   2. access-token cookie
+// In dev (no JWT_SECRET): allows all requests with a mock user.
 // ============================================================
 
 import {
@@ -13,15 +15,16 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { createHmac } from 'crypto';
+import { AuthService, type AccessTokenPayload } from './auth.service';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 
-/** Decoded JWT payload from Supabase */
+/** Decoded JWT payload — used throughout the app */
 export interface JwtPayload {
   sub: string;       // user id
   email?: string;
   role?: string;
+  workspaceId?: string;
   aud?: string;
   exp?: number;
   iat?: number;
@@ -30,10 +33,17 @@ export interface JwtPayload {
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
-  private readonly jwtSecret: string | null;
+  private readonly isDev: boolean;
 
-  constructor(private readonly reflector: Reflector) {
-    this.jwtSecret = process.env.SUPABASE_JWT_SECRET ?? null;
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly authService: AuthService,
+  ) {
+    const secret = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET;
+    this.isDev = !secret;
+    if (this.isDev) {
+      this.logger.warn('⚠️  No JWT_SECRET set — running in dev mode (mock auth)');
+    }
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,57 +57,59 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
 
     // Dev mode: no secret configured → allow with mock user
-    if (!this.jwtSecret) {
-      request.user = { sub: 'dev-user', email: 'dev@localhost' } satisfies JwtPayload;
+    if (this.isDev) {
+      // Try to extract a real token first (useful during dev with real auth)
+      const token = this.extractToken(request);
+      if (token) {
+        try {
+          const payload = this.authService.verifyAccessToken(token);
+          request.user = payload as JwtPayload;
+          return true;
+        } catch {
+          // Fall through to mock user
+        }
+      }
+
+      request.user = {
+        sub: 'dev-user',
+        email: 'dev@localhost',
+        role: 'ADMIN',
+      } satisfies JwtPayload;
       return true;
     }
 
-    // Extract token from Authorization header
-    const authHeader = request.headers['authorization'] as string | undefined;
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid Authorization header');
+    // Production: require valid JWT
+    const token = this.extractToken(request);
+    if (!token) {
+      throw new UnauthorizedException('No se proporcionó token de autenticación');
     }
 
-    const token = authHeader.slice(7);
     try {
-      const payload = this.verifyJwt(token);
-      if (!payload.sub) throw new Error('Missing sub claim');
-      request.user = payload;
+      const payload = this.authService.verifyAccessToken(token);
+      request.user = payload as JwtPayload;
       return true;
     } catch (err) {
       this.logger.warn(`JWT verification failed: ${err}`);
-      throw new UnauthorizedException('Invalid or expired token');
+      throw new UnauthorizedException('Token inválido o expirado');
     }
   }
 
   /**
-   * Minimal JWT verification (HS256) — no external dependency needed.
-   * For production with RS256, use jose or jsonwebtoken library.
+   * Extract JWT from Authorization header or cookie.
    */
-  private verifyJwt(token: string): JwtPayload {
-    const parts = token.split('.');
-    if (parts.length !== 3) throw new Error('Invalid JWT format');
-
-    const [headerB64, payloadB64, signatureB64] = parts;
-
-    // Verify signature (HS256)
-    const expected = createHmac('sha256', this.jwtSecret!)
-      .update(`${headerB64}.${payloadB64}`)
-      .digest('base64url');
-
-    if (expected !== signatureB64) {
-      throw new Error('Invalid JWT signature');
+  private extractToken(request: any): string | null {
+    // 1. Authorization: Bearer <token>
+    const authHeader = request.headers?.['authorization'] as string | undefined;
+    if (authHeader?.startsWith('Bearer ')) {
+      return authHeader.slice(7);
     }
 
-    const payload = JSON.parse(
-      Buffer.from(payloadB64!, 'base64url').toString('utf-8'),
-    ) as JwtPayload;
-
-    // Check expiration
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
-      throw new Error('JWT expired');
+    // 2. access-token cookie
+    const cookieToken = request.cookies?.['access-token'];
+    if (cookieToken) {
+      return cookieToken;
     }
 
-    return payload;
+    return null;
   }
 }

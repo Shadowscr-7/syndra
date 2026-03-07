@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { RolesGuard } from './roles.guard';
 import { TenantMiddleware } from './tenant.middleware';
@@ -27,13 +29,15 @@ import { TenantMiddleware } from './tenant.middleware';
       },
     ]),
   ],
+  controllers: [AuthController],
   providers: [
+    AuthService,
     TenantMiddleware,
     // Global guards — order matters: Auth → Throttle → Roles
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [TenantMiddleware],
+  exports: [AuthService, TenantMiddleware],
 })
 export class AuthModule {}

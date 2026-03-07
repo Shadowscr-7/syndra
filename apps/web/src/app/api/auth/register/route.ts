@@ -3,13 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 /**
- * Proxy login to NestJS API → sets httpOnly cookies for the browser.
+ * Proxy register to NestJS API → sets httpOnly cookies for the browser.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const apiRes = await fetch(`${API_URL}/api/auth/login`, {
+    const apiRes = await fetch(`${API_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     if (!apiRes.ok) {
       return NextResponse.json(
-        { error: data.message || data.error || 'Error al iniciar sesión' },
+        { error: data.message || data.error || 'Error al crear cuenta' },
         { status: apiRes.status },
       );
     }
@@ -37,15 +37,13 @@ export async function POST(req: NextRequest) {
       path: '/',
     };
 
-    // Store JWT tokens as httpOnly cookies
     if (data.accessToken) {
       response.cookies.set('access-token', data.accessToken, {
         ...cookieOptions,
-        maxAge: 15 * 60, // 15 min
+        maxAge: 15 * 60,
       });
     }
 
-    // Also store legacy cookies for backward compatibility during migration
     if (data.user?.id) {
       response.cookies.set('auth-user-id', data.user.id, {
         ...cookieOptions,
@@ -61,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error('[Login Proxy]', error);
+    console.error('[Register Proxy]', error);
     return NextResponse.json(
       { error: 'Error de conexión con el servidor' },
       { status: 502 },

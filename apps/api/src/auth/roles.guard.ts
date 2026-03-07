@@ -1,9 +1,10 @@
 // ============================================================
-// RBAC Guard — Role-based access control per workspace
+// RBAC Guard — Role-based access control
 // ============================================================
-// Used with @Roles('OWNER', 'EDITOR') decorator.
+// Supports two layers:
+//   @Roles('ADMIN', 'COLLABORATOR') → checks User.role (platform-level)
+//   @Roles('OWNER', 'EDITOR')       → checks WorkspaceUser.role (workspace-level)
 // Requires AuthGuard to run first (sets request.user).
-// Requires TenantMiddleware to run first (sets request.workspaceId).
 // ============================================================
 
 import {
@@ -15,6 +16,11 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './decorators';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Platform-level roles (from UserRole enum)
+const PLATFORM_ROLES = ['ADMIN', 'COLLABORATOR', 'USER'];
+// Workspace-level roles (from WorkspaceRole enum)
+const WORKSPACE_ROLES = ['OWNER', 'EDITOR', 'VIEWER'];
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -34,29 +40,58 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const userId: string | undefined = request.user?.sub;
-    const workspaceId: string | undefined = request.workspaceId;
+    const userRole: string | undefined = request.user?.role;
 
-    if (!userId || !workspaceId) {
-      throw new ForbiddenException('Missing user or workspace context');
+    if (!userId) {
+      throw new ForbiddenException('Missing user context');
     }
 
     // Dev mode bypass
     if (userId === 'dev-user') return true;
 
-    const membership = await this.prisma.workspaceUser.findUnique({
-      where: { userId_workspaceId: { workspaceId, userId } },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException('You are not a member of this workspace');
+    // ── Check platform-level roles ──
+    const requiredPlatformRoles = requiredRoles.filter((r) => PLATFORM_ROLES.includes(r));
+    if (requiredPlatformRoles.length > 0) {
+      if (userRole && requiredPlatformRoles.includes(userRole)) {
+        return true;
+      }
+      // ADMIN always passes any platform role check
+      if (userRole === 'ADMIN') return true;
     }
 
-    if (!requiredRoles.includes(membership.role)) {
+    // ── Check workspace-level roles ──
+    const requiredWorkspaceRoles = requiredRoles.filter((r) => WORKSPACE_ROLES.includes(r));
+    if (requiredWorkspaceRoles.length > 0) {
+      const workspaceId: string | undefined = request.workspaceId;
+      if (!workspaceId) {
+        throw new ForbiddenException('Missing workspace context');
+      }
+
+      // ADMIN user always passes workspace checks
+      if (userRole === 'ADMIN') return true;
+
+      const membership = await this.prisma.workspaceUser.findUnique({
+        where: { userId_workspaceId: { workspaceId, userId } },
+      });
+
+      if (!membership) {
+        throw new ForbiddenException('No eres miembro de este workspace');
+      }
+
+      if (requiredWorkspaceRoles.includes(membership.role)) {
+        return true;
+      }
+    }
+
+    // If only platform roles were required and we didn't match
+    if (requiredPlatformRoles.length > 0 && requiredWorkspaceRoles.length === 0) {
       throw new ForbiddenException(
-        `Role ${membership.role} is not authorized. Required: ${requiredRoles.join(', ')}`,
+        `Rol "${userRole}" no autorizado. Requerido: ${requiredPlatformRoles.join(', ')}`,
       );
     }
 
-    return true;
+    throw new ForbiddenException(
+      `Permisos insuficientes. Roles requeridos: ${requiredRoles.join(', ')}`,
+    );
   }
 }
