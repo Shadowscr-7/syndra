@@ -1,0 +1,110 @@
+# ============================================================
+# Docker Compose — Automatismos Platform
+# Un solo comando: docker compose up -d
+# ============================================================
+
+services:
+  # ---- PostgreSQL 16 ----
+  db:
+    image: postgres:16-alpine
+    container_name: automatismos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-automatismos}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---- API (NestJS) ----
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: automatismos-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-automatismos}
+
+      # LLM
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
+
+      # Image generation
+      IMAGE_GEN_API_KEY: ${IMAGE_GEN_API_KEY:-}
+      IMAGE_GEN_PROVIDER: ${IMAGE_GEN_PROVIDER:-mock}
+
+      # Cloudinary
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+
+      # Meta (Instagram / Facebook)
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_IG_USER_ID: ${META_IG_USER_ID:-}
+      META_FB_PAGE_ID: ${META_FB_PAGE_ID:-}
+
+      # Telegram
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+
+      # HeyGen (Video/Avatar)
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY:-}
+      HEYGEN_AVATAR_ID: ${HEYGEN_AVATAR_ID:-}
+      HEYGEN_VOICE_ID: ${HEYGEN_VOICE_ID:-}
+
+      # ElevenLabs (Voice)
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+
+    env_file:
+      - .env
+
+  # ---- Web (Next.js) ----
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: automatismos-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3002}:3002"
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      HOSTNAME: "0.0.0.0"
+      API_URL: http://api:3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-automatismos}
+
+      # Supabase (leave empty to use dev bypass)
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+
+    env_file:
+      - .env
+
+volumes:
+  pgdata:
+    driver: local

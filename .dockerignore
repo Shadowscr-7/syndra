@@ -1,0 +1,50 @@
+# ============================================================
+# .dockerignore — Excluir archivos innecesarios del build context
+# ============================================================
+
+# Dependencies (se instalan dentro del container)
+**/node_modules
+**/.turbo
+
+# Build outputs
+**/dist
+**/.next
+**/out
+
+# Version control
+.git
+.gitignore
+
+# Docker files (no necesarios dentro de la imagen)
+docker-compose.yml
+docker-compose.*.yml
+**/Dockerfile
+
+# Environment files (se pasan como env vars)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# IDE & OS
+.vscode
+.idea
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store
+
+# Docs & logs
+*.md
+!packages/*/README.md
+*.log
+logs/
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/test/
+**/tests/
+**/__tests__/
+coverage/
+.nyc_output/

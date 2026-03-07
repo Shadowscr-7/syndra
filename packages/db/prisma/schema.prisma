@@ -1,0 +1,727 @@
+// ============================================================
+// Prisma Schema — Automatismos Platform
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER — Entidad principal de autenticación
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  avatarUrl    String?  @map("avatar_url")
+  isAdmin      Boolean  @default(false) @map("is_admin")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspaces WorkspaceUser[]
+
+  @@map("users")
+}
+
+// ============================================================
+// WORKSPACE & BRAND
+// ============================================================
+
+model Workspace {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique @default(cuid())
+  timezone     String   @default("America/Mexico_City")
+  logoUrl      String?  @map("logo_url")
+  primaryColor String?  @map("primary_color")
+  objectives   String[] @default([])
+  activeChannels String[] @default(["instagram", "facebook"]) @map("active_channels")
+  onboardingCompleted Boolean @default(false) @map("onboarding_completed")
+  industry     String?  // tech, coaching, ecommerce, personal_brand, etc.
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  brandProfile    BrandProfile?
+  contentThemes   ContentTheme[]
+  campaigns       Campaign[]
+  apiCredentials  ApiCredential[]
+  editorialRuns   EditorialRun[]
+  researchSources ResearchSource[]
+  users           WorkspaceUser[]
+  subscription    Subscription?
+  invitations     Invitation[]
+  usageRecords    UsageRecord[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceUser {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  workspaceId String   @map("workspace_id")
+  role        WorkspaceRole @default(OWNER)
+  isDefault   Boolean  @default(false) @map("is_default") // workspace por defecto del usuario
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("workspace_users")
+}
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model BrandProfile {
+  id              String   @id @default(cuid())
+  workspaceId     String   @unique @map("workspace_id")
+  voice           String   @default("") // Descripción de la voz de marca
+  tone            String   @default("didáctico") // Tono por defecto
+  allowedClaims   String[] @default([]) @map("allowed_claims")
+  baseCta         String   @default("") @map("base_cta")
+  prohibitedTopics String[] @default([]) @map("prohibited_topics")
+  hashtags        String[] @default([])
+  visualStyle     Json?    @map("visual_style") // Tipografías, colores, etc.
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("brand_profiles")
+}
+
+// ============================================================
+// CONTENT THEMES & CAMPAIGNS
+// ============================================================
+
+model ContentTheme {
+  id              String   @id @default(cuid())
+  workspaceId     String   @map("workspace_id")
+  name            String
+  keywords        String[] @default([])
+  audience        String   @default("")
+  priority        Int      @default(5) // 1-10
+  preferredFormats String[] @default(["post", "carousel"]) @map("preferred_formats")
+  type            ThemeType @default(EVERGREEN)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentBriefs ContentBrief[]
+
+  @@map("content_themes")
+}
+
+enum ThemeType {
+  TRENDING
+  EVERGREEN
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  objective   CampaignObjective
+  offer       String?
+  landingUrl  String?  @map("landing_url")
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  kpiTarget   String?  @map("kpi_target")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editorialRuns EditorialRun[]
+
+  @@map("campaigns")
+}
+
+enum CampaignObjective {
+  AUTHORITY
+  TRAFFIC
+  LEAD_CAPTURE
+  SALE
+  COMMUNITY
+  ENGAGEMENT
+}
+
+// ============================================================
+// RESEARCH
+// ============================================================
+
+model ResearchSource {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  type        SourceType
+  url         String
+  isActive    Boolean  @default(true) @map("is_active")
+  lastFetched DateTime? @map("last_fetched")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("research_sources")
+}
+
+enum SourceType {
+  RSS
+  BLOG
+  NEWSLETTER
+  SOCIAL
+  CHANGELOG
+  CUSTOM
+}
+
+model ResearchSnapshot {
+  id            String   @id @default(cuid())
+  editorialRunId String  @map("editorial_run_id")
+  title         String
+  source        String
+  sourceUrl     String   @map("source_url")
+  publishedAt   DateTime? @map("published_at")
+  keyPoints     String[] @default([]) @map("key_points")
+  suggestedAngle String? @map("suggested_angle")
+  relevanceScore Float   @default(0) @map("relevance_score")
+  rawDataUrl    String?  @map("raw_data_url") // URL en Storage del snapshot
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+
+  @@map("research_snapshots")
+}
+
+// ============================================================
+// EDITORIAL PIPELINE
+// ============================================================
+
+model EditorialRun {
+  id           String   @id @default(cuid())
+  workspaceId  String   @map("workspace_id")
+  campaignId   String?  @map("campaign_id")
+  date         DateTime @default(now())
+  status       EditorialRunStatus @default(PENDING)
+  origin       String   @default("scheduler") // scheduler | manual | campaign
+  priority     Int      @default(5)
+  errorMessage String?  @map("error_message")
+  researchSummary String? @map("research_summary")
+  publishWindow DateTime? @map("publish_window")
+  targetChannels String[] @default(["instagram"]) @map("target_channels")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign          Campaign?          @relation(fields: [campaignId], references: [id])
+  researchSnapshots ResearchSnapshot[]
+  contentBrief      ContentBrief?
+  approvalEvents    ApprovalEvent[]
+  publications      Publication[]
+  jobQueueLogs      JobQueueLog[]
+
+  @@map("editorial_runs")
+}
+
+enum EditorialRunStatus {
+  PENDING
+  RESEARCH
+  STRATEGY
+  CONTENT
+  MEDIA
+  COMPLIANCE
+  REVIEW
+  APPROVED
+  PUBLISHING
+  PUBLISHED
+  REJECTED
+  FAILED
+  POSTPONED
+}
+
+model ContentBrief {
+  id            String   @id @default(cuid())
+  editorialRunId String  @unique @map("editorial_run_id")
+  themeId       String?  @map("theme_id")
+  angle         String   @default("")
+  format        ContentFormat @default(POST)
+  cta           String   @default("")
+  references    String[] @default([])
+  seedPrompt    String   @default("") @map("seed_prompt")
+  objective     String   @default("")
+  tone          String   @default("didáctico")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  editorialRun    EditorialRun     @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+  theme           ContentTheme?    @relation(fields: [themeId], references: [id])
+  contentVersions ContentVersion[]
+
+  @@map("content_briefs")
+}
+
+enum ContentFormat {
+  POST
+  CAROUSEL
+  REEL
+  STORY
+  AVATAR_VIDEO
+  HYBRID_MOTION
+}
+
+model ContentVersion {
+  id            String   @id @default(cuid())
+  briefId       String   @map("brief_id")
+  version       Int      @default(1)
+  isMain        Boolean  @default(false) @map("is_main") // Propuesta principal vs variante
+  hook          String   @default("")
+  copy          String   @default("")
+  caption       String   @default("")
+  title         String   @default("")
+  hashtags      String[] @default([])
+  score         Float?   // Score de calidad estimado
+  humanFeedback String?  @map("human_feedback")
+  llmPromptUsed String?  @map("llm_prompt_used")
+  isApproved    Boolean  @default(false) @map("is_approved")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  brief       ContentBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  mediaAssets MediaAsset[]
+
+  @@map("content_versions")
+}
+
+// ============================================================
+// MEDIA ASSETS
+// ============================================================
+
+model MediaAsset {
+  id               String   @id @default(cuid())
+  contentVersionId String   @map("content_version_id")
+  type             MediaType
+  prompt           String?  // Prompt usado para generación IA
+  provider         String?  // "dall-e", "midjourney", "cloudinary", "heygen", "template"
+  originalUrl      String?  @map("original_url")
+  optimizedUrl     String?  @map("optimized_url")
+  thumbnailUrl     String?  @map("thumbnail_url")
+  storagePath      String?  @map("storage_path")
+  status           MediaStatus @default(PENDING)
+  metadata         Json?    // Dimensiones, duración, formato, etc.
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  contentVersion ContentVersion @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+
+  @@map("media_assets")
+}
+
+enum MediaType {
+  IMAGE
+  CAROUSEL_SLIDE
+  VIDEO
+  AVATAR_VIDEO
+  THUMBNAIL
+  MOTION_GRAPHIC
+}
+
+enum MediaStatus {
+  PENDING
+  GENERATING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// ============================================================
+// APPROVAL (TELEGRAM)
+// ============================================================
+
+model ApprovalEvent {
+  id             String   @id @default(cuid())
+  editorialRunId String   @map("editorial_run_id")
+  action         ApprovalAction
+  comment        String?
+  telegramChatId String?  @map("telegram_chat_id")
+  telegramMsgId  String?  @map("telegram_msg_id")
+  approvedBy     String?  @map("approved_by")
+  versionNumber  Int?     @map("version_number")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+
+  @@map("approval_events")
+}
+
+enum ApprovalAction {
+  APPROVED
+  CORRECT_TEXT
+  CHANGE_TONE
+  REGENERATE_IMAGE
+  CONVERT_TO_VIDEO
+  POSTPONE
+  REJECTED
+}
+
+// ============================================================
+// PUBLICATION
+// ============================================================
+
+model Publication {
+  id             String   @id @default(cuid())
+  editorialRunId String   @map("editorial_run_id")
+  platform       Platform
+  externalPostId String?  @map("external_post_id")
+  permalink      String?
+  status         PublicationStatus @default(QUEUED)
+  payloadSent    Json?    @map("payload_sent")
+  apiResponse    Json?    @map("api_response")
+  errorMessage   String?  @map("error_message")
+  retryCount     Int      @default(0) @map("retry_count")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Metrics (updated by analytics)
+  likes       Int @default(0)
+  comments    Int @default(0)
+  shares      Int @default(0)
+  saves       Int @default(0)
+  reach       Int @default(0)
+  impressions Int @default(0)
+  engagementRate Float? @map("engagement_rate")
+  metricsUpdatedAt DateTime? @map("metrics_updated_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+  metricSnapshots MetricSnapshot[]
+
+  @@map("publications")
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum PublicationStatus {
+  QUEUED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  RETRYING
+  NEEDS_MANUAL_ATTENTION
+}
+
+// ============================================================
+// ANALYTICS & METRICS
+// ============================================================
+
+/// Snapshots temporales de métricas (2h, 6h, 24h, 48h, 7d)
+model MetricSnapshot {
+  id             String   @id @default(cuid())
+  publicationId  String   @map("publication_id")
+  bucket         MetricBucket
+  likes          Int      @default(0)
+  comments       Int      @default(0)
+  shares         Int      @default(0)
+  saves          Int      @default(0)
+  reach          Int      @default(0)
+  impressions    Int      @default(0)
+  engagementRate Float?   @map("engagement_rate")
+  collectedAt    DateTime @default(now()) @map("collected_at")
+
+  publication Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@unique([publicationId, bucket])
+  @@map("metric_snapshots")
+}
+
+enum MetricBucket {
+  H2
+  H6
+  H24
+  H48
+  D7
+}
+
+/// Insights generados por el motor de optimización
+model PerformanceInsight {
+  id          String      @id @default(cuid())
+  workspaceId String      @map("workspace_id")
+  type        InsightType
+  title       String
+  description String
+  data        Json?       // datos de soporte (ej: top themes, best hours, etc)
+  score       Float?      // relevancia/confianza del insight
+  isActive    Boolean     @default(true) @map("is_active")
+  generatedAt DateTime    @default(now()) @map("generated_at")
+  expiresAt   DateTime?   @map("expires_at")
+
+  @@map("performance_insights")
+}
+
+enum InsightType {
+  BEST_FORMAT
+  BEST_THEME
+  BEST_TONE
+  BEST_HOUR
+  BEST_CTA
+  TREND_UP
+  TREND_DOWN
+  WEEKLY_SUMMARY
+  SUGGESTION
+}
+
+// ============================================================
+// JOBS & LOGGING
+// ============================================================
+
+model JobQueueLog {
+  id             String   @id @default(cuid())
+  editorialRunId String?  @map("editorial_run_id")
+  jobType        String   @map("job_type")
+  queue          String   @default("editorial_jobs")
+  status         JobStatus @default(QUEUED)
+  attempt        Int      @default(1)
+  error          String?
+  latencyMs      Int?     @map("latency_ms")
+  payload        Json?
+  result         Json?
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun? @relation(fields: [editorialRunId], references: [id])
+
+  @@map("job_queue_logs")
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+// ============================================================
+// API CREDENTIALS (encrypted at app level)
+// ============================================================
+
+model ApiCredential {
+  id           String   @id @default(cuid())
+  workspaceId  String   @map("workspace_id")
+  provider     CredentialProvider
+  encryptedKey String   @map("encrypted_key") // Cifrado a nivel de aplicación
+  expiresAt    DateTime? @map("expires_at")
+  scopes       String[] @default([])
+  isActive     Boolean  @default(true) @map("is_active")
+  lastUsedAt   DateTime? @map("last_used_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+  @@map("api_credentials")
+}
+
+enum CredentialProvider {
+  META
+  TELEGRAM
+  DISCORD
+  LLM
+  IMAGE_GEN
+  CLOUDINARY
+  HEYGEN
+}
+
+// ============================================================
+// PLANS & SUBSCRIPTIONS (Multi-tenant)
+// ============================================================
+
+model Plan {
+  id             String   @id @default(cuid())
+  name           String   @unique // free, pro, enterprise
+  displayName    String   @map("display_name")
+  description    String   @default("")
+  monthlyPrice   Int      @default(0) @map("monthly_price") // cents
+  yearlyPrice    Int      @default(0) @map("yearly_price")  // cents
+  // Limits
+  maxPublications  Int    @default(30)  @map("max_publications")   // per month
+  maxVideos        Int    @default(5)   @map("max_videos")         // per month
+  maxSources       Int    @default(10)  @map("max_sources")
+  maxChannels      Int    @default(2)   @map("max_channels")
+  maxEditors       Int    @default(1)   @map("max_editors")
+  // Features
+  analyticsEnabled Boolean @default(false) @map("analytics_enabled")
+  aiScoringEnabled Boolean @default(false) @map("ai_scoring_enabled")
+  prioritySupport  Boolean @default(false) @map("priority_support")
+  customBranding   Boolean @default(false) @map("custom_branding")
+  isActive         Boolean @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  subscriptions Subscription[]
+  licenseKeys   LicenseKey[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id               String   @id @default(cuid())
+  workspaceId      String   @unique @map("workspace_id")
+  planId           String   @map("plan_id")
+  status           SubscriptionStatus @default(ACTIVE)
+  billingCycle     BillingCycle @default(MONTHLY) @map("billing_cycle")
+  stripeCustomerId String?  @map("stripe_customer_id")
+  stripeSubId      String?  @map("stripe_sub_id")
+  currentPeriodStart DateTime @default(now()) @map("current_period_start")
+  currentPeriodEnd   DateTime @default(now()) @map("current_period_end")
+  cancelAtPeriodEnd  Boolean @default(false) @map("cancel_at_period_end")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan      @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+// ============================================================
+// INVITATIONS
+// ============================================================
+
+model Invitation {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  email       String
+  role        WorkspaceRole @default(EDITOR)
+  token       String   @unique @default(cuid())
+  status      InvitationStatus @default(PENDING)
+  invitedBy   String   @map("invited_by") // userId
+  expiresAt   DateTime @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+// ============================================================
+// USAGE TRACKING
+// ============================================================
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  metric      UsageMetric
+  count       Int      @default(0)
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, metric, periodStart])
+  @@map("usage_records")
+}
+
+enum UsageMetric {
+  PUBLICATIONS
+  VIDEOS
+  AI_GENERATIONS
+  API_CALLS
+}
+
+// ============================================================
+// LICENSE KEYS — Monetización sin Stripe
+// ============================================================
+// Flujo: admin genera key → vende por cualquier medio → usuario canjea en /activate
+
+model LicenseKey {
+  id            String   @id @default(cuid())
+  key           String   @unique // ej: AUTO-PRO-XXXX-XXXX-XXXX
+  planId        String   @map("plan_id")
+  durationDays  Int      @default(30) @map("duration_days") // 30 = mensual, 365 = anual
+  status        LicenseStatus @default(AVAILABLE)
+  maxActivations Int     @default(1) @map("max_activations")
+  activationCount Int    @default(0) @map("activation_count")
+  // Metadata
+  batchName     String?  @map("batch_name") // "Gumroad Enero 2026", "Venta directa", etc.
+  buyerEmail    String?  @map("buyer_email")
+  buyerName     String?  @map("buyer_name")
+  notes         String?  @default("")
+  // Activation tracking
+  activatedBy   String?  @map("activated_by") // userId que la canjeó
+  activatedAt   DateTime? @map("activated_at")
+  workspaceId   String?  @map("workspace_id") // workspace donde se aplicó
+  // Timestamps
+  expiresAt     DateTime? @map("expires_at") // se calcula al activar
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([status])
+  @@index([buyerEmail])
+  @@map("license_keys")
+}
+
+enum LicenseStatus {
+  AVAILABLE  // lista para canjear
+  ACTIVATED  // canjeada y activa
+  EXPIRED    // período terminó
+  REVOKED    // anulada por admin
+}
+
+// ============================================================
+// PAYMENT LOG — Registro manual de pagos
+// ============================================================
+
+model PaymentLog {
+  id            String   @id @default(cuid())
+  workspaceId   String?  @map("workspace_id")
+  amount        Int      @default(0) // centavos
+  currency      String   @default("USD")
+  method        String   @default("manual") // paypal, transfer, mercadopago, gumroad, etc.
+  reference     String?  // ID de transacción externa
+  description   String?
+  licenseKeyId  String?  @map("license_key_id")
+  recordedBy    String   @map("recorded_by") // admin userId
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([workspaceId])
+  @@map("payment_logs")
+}

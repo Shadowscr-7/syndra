@@ -1,0 +1,45 @@
+{
+  "name": "@automatismos/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch --builder webpack",
+    "dev:swc": "nest start --watch --builder swc",
+    "build": "nest build",
+    "start": "node dist/main",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@automatismos/ai": "*",
+    "@automatismos/db": "*",
+    "@automatismos/media": "*",
+    "@automatismos/publishers": "*",
+    "@automatismos/shared": "*",
+    "@automatismos/telegram": "*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/schedule": "^5.0.0",
+    "@nestjs/throttler": "^6.5.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.18",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "rimraf": "^6.0.0",
+    "source-map-support": "^0.5.21",
+    "ts-loader": "^9.5.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}
