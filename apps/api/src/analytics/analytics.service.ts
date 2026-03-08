@@ -414,6 +414,103 @@ export class AnalyticsService {
   }
 
   /**
+   * Executive summary — aggregated high-level KPIs for the dashboard
+   */
+  async getExecutiveSummary(workspaceId = 'default') {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    const baseWhere = (from: Date, to?: Date) => ({
+      status: 'PUBLISHED' as const,
+      editorialRun: { workspaceId },
+      publishedAt: to ? { gte: from, lte: to } : { gte: from },
+    });
+
+    const [
+      totalPubs,
+      thisMonthPubs,
+      prevMonthPubs,
+      avgEngagement,
+      platformStats,
+      totalRuns,
+      successRuns,
+    ] = await Promise.all([
+      this.prisma.publication.count({
+        where: { status: 'PUBLISHED', editorialRun: { workspaceId } },
+      }),
+      this.prisma.publication.count({ where: baseWhere(startOfMonth) }),
+      this.prisma.publication.count({ where: baseWhere(prevMonthStart, prevMonthEnd) }),
+      this.prisma.publication.aggregate({
+        where: baseWhere(startOfMonth),
+        _avg: { engagementRate: true },
+      }),
+      this.prisma.publication.groupBy({
+        by: ['platform'],
+        where: { status: 'PUBLISHED', editorialRun: { workspaceId } },
+        _count: true,
+      }),
+      this.prisma.editorialRun.count({
+        where: { workspaceId, createdAt: { gte: startOfMonth } },
+      }),
+      this.prisma.editorialRun.count({
+        where: { workspaceId, createdAt: { gte: startOfMonth }, status: 'PUBLISHED' },
+      }),
+    ]);
+
+    const growth = prevMonthPubs > 0
+      ? Math.round(((thisMonthPubs - prevMonthPubs) / prevMonthPubs) * 100)
+      : thisMonthPubs > 0 ? 100 : 0;
+
+    // Find best performing platform
+    const platformMetrics = await Promise.all(
+      platformStats.map(async (p) => {
+        const agg = await this.prisma.publication.aggregate({
+          where: { status: 'PUBLISHED', platform: p.platform, editorialRun: { workspaceId } },
+          _avg: { engagementRate: true },
+        });
+        return { platform: p.platform, count: p._count, avgRate: agg._avg.engagementRate ?? 0 };
+      }),
+    );
+
+    const bestPlatform = platformMetrics.sort((a, b) => b.avgRate - a.avgRate)[0] ?? null;
+
+    const PLATFORM_ICONS: Record<string, string> = {
+      INSTAGRAM: '📸', FACEBOOK: '📘', TELEGRAM: '✈️', LINKEDIN: '💼', TWITTER: '🐦', TIKTOK: '🎵',
+    };
+
+    const monthName = now.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+
+    return {
+      data: {
+        period: monthName.charAt(0).toUpperCase() + monthName.slice(1),
+        publications: {
+          total: totalPubs,
+          thisMonth: thisMonthPubs,
+          growth,
+        },
+        engagement: {
+          avg: avgEngagement._avg.engagementRate ?? 0,
+          best: bestPlatform
+            ? { platform: bestPlatform.platform, rate: bestPlatform.avgRate }
+            : null,
+        },
+        pipeline: {
+          totalRuns,
+          successRate: totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 0,
+          avgCycleDays: 0,
+        },
+        channels: platformMetrics.map((p) => ({
+          name: p.platform,
+          count: p.count,
+          icon: PLATFORM_ICONS[p.platform] ?? '📱',
+        })),
+      },
+    };
+  }
+
+  /**
    * Weekly summary data for Telegram report
    */
   async getWeeklySummary(workspaceId = 'default') {

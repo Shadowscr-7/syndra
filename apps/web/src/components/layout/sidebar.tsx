@@ -4,8 +4,15 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
+import { useMemo } from 'react';
 
-const sections = [
+interface SidebarSection {
+  label: string;
+  roles?: string[]; // restrict section visibility (omit = everyone)
+  items: { name: string; href: string; icon: string }[];
+}
+
+const allSections: SidebarSection[] = [
   {
     label: 'Principal',
     items: [
@@ -39,7 +46,15 @@ const sections = [
     ],
   },
   {
+    label: 'Afiliados',
+    roles: ['COLLABORATOR'],
+    items: [
+      { name: 'Mi Panel', href: '/dashboard/partner', icon: '🤝' },
+    ],
+  },
+  {
     label: 'Admin',
+    roles: ['ADMIN'],
     items: [
       { name: 'Equipo', href: '/dashboard/team', icon: '👥' },
       { name: 'Usuarios', href: '/dashboard/admin/users', icon: '🧑‍💼' },
@@ -51,9 +66,14 @@ const sections = [
   },
 ];
 
-export function Sidebar({ userEmail }: { userEmail: string }) {
+export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; userRole?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+
+  const sections = useMemo(
+    () => allSections.filter((s) => !s.roles || s.roles.includes(userRole)),
+    [userRole],
+  );
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });

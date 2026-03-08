@@ -334,6 +334,18 @@ export class EditorialOrchestratorService {
         }
 
         case 'review': {
+          // Check workspace operation mode for auto-approval
+          const wsForMode = await this.prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { operationMode: true },
+          });
+
+          if (wsForMode?.operationMode === 'FULLY_AUTOMATIC') {
+            this.logger.log(`Run ${editorialRunId} auto-approved (FULLY_AUTOMATIC mode)`);
+            await this.onApproved(editorialRunId);
+            return { nextStage: null };
+          }
+
           // Enviar preview a Telegram para aprobación humana
           this.logger.log(`Run ${editorialRunId} ready for review — sending to Telegram`);
           try {

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { updateWorkspaceSettings, saveApiCredential, disconnectCredential, testCloudinaryConnection } from '@/lib/actions';
 import { MetaConnect } from './meta-connect';
 import { CloudinaryConnect } from './cloudinary-connect';
+import { OperationModeSelector } from './operation-mode';
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -112,6 +113,11 @@ export default async function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* ── Operation Mode ── */}
+      <div className="max-w-3xl animate-fade-in-delay-1">
+        <OperationModeSelector currentMode={workspace?.operationMode ?? 'APPROVAL_REQUIRED'} />
+      </div>
 
       {/* ── Meta (Instagram / Facebook) ── */}
       <div className="max-w-3xl animate-fade-in-delay-2">

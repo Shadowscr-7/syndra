@@ -21,6 +21,7 @@ import { PlansModule } from './plans/plans.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { AdminModule } from './admin/admin.module';
+import { PartnerModule } from './partner/partner.module';
 import { CredentialsModule } from './credentials/credentials.module';
 import { PersonasModule } from './personas/personas.module';
 import { ProfilesModule } from './profiles/profiles.module';
@@ -57,6 +58,7 @@ import { PaypalModule } from './paypal/paypal.module';
     InvitationsModule,
     OnboardingModule,
     AdminModule,
+    PartnerModule,
     CredentialsModule,
     PersonasModule,
     ProfilesModule,

@@ -10,16 +10,20 @@ export async function getSession() {
   // Need at least userId or email
   if (!userId && !email) return null;
 
+  let role: string = 'USER';
+
   // If workspace cookie is missing, resolve from DB
   if (!workspaceId) {
     try {
       if (userId) {
-        const wu = await prisma.workspaceUser.findFirst({
-          where: { userId },
-          orderBy: { isDefault: 'desc' },
-          select: { workspaceId: true },
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true, workspaces: { orderBy: { isDefault: 'desc' }, take: 1, select: { workspaceId: true } } },
         });
-        if (wu) workspaceId = wu.workspaceId;
+        if (user) {
+          role = user.role;
+          if (user.workspaces[0]) workspaceId = user.workspaces[0].workspaceId;
+        }
       } else if (email) {
         const user = await prisma.user.findUnique({
           where: { email },
@@ -31,7 +35,23 @@ export async function getSession() {
             },
           },
         });
-        if (user?.workspaces[0]) workspaceId = user.workspaces[0].workspaceId;
+        if (user) {
+          role = user.role;
+          if (user.workspaces[0]) workspaceId = user.workspaces[0].workspaceId;
+        }
+      }
+    } catch {
+      // DB not available
+    }
+  } else {
+    // Resolve role even when workspace is available
+    try {
+      if (userId) {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+        if (user) role = user.role;
+      } else if (email) {
+        const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
+        if (user) role = user.role;
       }
     } catch {
       // DB not available
@@ -40,5 +60,5 @@ export async function getSession() {
 
   if (!workspaceId) return null;
 
-  return { userId: userId ?? '', email: email ?? '', workspaceId };
+  return { userId: userId ?? '', email: email ?? '', workspaceId, role };
 }

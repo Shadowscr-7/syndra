@@ -23,4 +23,14 @@ export class WorkspacesService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async updateOperationMode(workspaceId: string, mode: 'FULLY_AUTOMATIC' | 'APPROVAL_REQUIRED' | 'MANUAL') {
+    const ws = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { operationMode: mode },
+      select: { id: true, name: true, operationMode: true },
+    });
+    this.logger.log(`Operation mode updated: workspace=${workspaceId} mode=${mode}`);
+    return ws;
+  }
 }

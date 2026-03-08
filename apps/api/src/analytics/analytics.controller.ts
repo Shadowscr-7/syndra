@@ -94,6 +94,13 @@ export class AnalyticsController {
     return { message: `Generated ${count} insights` };
   }
 
+  // ── Executive Summary ──────────────────────────────────
+
+  @Get('summary')
+  async executiveSummary(@Query('workspaceId') workspaceId = 'default') {
+    return this.analytics.getExecutiveSummary(workspaceId);
+  }
+
   // ── Weekly Summary ────────────────────────────────────
 
   @Get('weekly-summary')

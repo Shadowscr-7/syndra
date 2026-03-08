@@ -94,6 +94,7 @@ model Workspace {
   activeChannels String[] @default(["instagram", "facebook"]) @map("active_channels")
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   industry     String?  // tech, coaching, ecommerce, personal_brand, etc.
+  operationMode OperationMode @default(APPROVAL_REQUIRED) @map("operation_mode")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -1210,4 +1211,36 @@ model PasswordResetToken {
   @@index([userId])
   @@index([token])
   @@map("password_reset_tokens")
+}
+
+// ============================================================
+// OPERATION MODE — Modo de operación del pipeline
+// ============================================================
+
+enum OperationMode {
+  FULLY_AUTOMATIC    // Pipeline completo sin intervención humana
+  APPROVAL_REQUIRED  // Genera contenido, pausa para aprobación (default)
+  MANUAL             // Solo genera bajo demanda manual
+}
+
+// ============================================================
+// INDUSTRY PLAYBOOK — Plantillas de nicho formalizadas
+// ============================================================
+
+model IndustryPlaybook {
+  id           String   @id @default(cuid())
+  slug         String   @unique         // e.g. "ecommerce", "fitness"
+  name         String                   // e.g. "E-Commerce"
+  icon         String   @default("🏪")
+  description  String   @default("")
+  themes       String[] @default([])    // Seed theme names
+  tones        String[] @default([])    // Suggested tones
+  hashtags     String[] @default([])    // Default hashtags
+  formats      String[] @default([])    // Recommended content formats
+  audiences    String[] @default([])    // Suggested target audiences
+  scheduleHint String?  @map("schedule_hint") // e.g. "3-5 posts/week"
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("industry_playbooks")
 }

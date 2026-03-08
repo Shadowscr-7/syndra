@@ -76,31 +76,69 @@ export class OnboardingService {
         apiCredentials: true,
         contentThemes: true,
         subscription: { include: { plan: true } },
+        researchSources: { where: { isActive: true }, take: 1 },
+        users: {
+          take: 1,
+          include: {
+            user: {
+              select: {
+                telegramLinks: { take: 1 },
+                userPersonas: { where: { isActive: true }, take: 1 },
+                contentProfiles: { where: { isDefault: true }, take: 1 },
+              },
+            },
+          },
+        },
       },
     });
 
     if (!workspace) {
       return {
         completed: false,
+        percent: 0,
         steps: {
           workspace: false,
           brand: false,
           channels: false,
           themes: false,
           plan: false,
+          metaConnected: false,
+          telegramLinked: false,
+          llmConfigured: false,
+          sourcesAdded: false,
+          personaCreated: false,
+          profileCreated: false,
         },
       };
     }
 
+    const user = workspace.users[0]?.user;
+    const metaCred = workspace.apiCredentials.find((c) => c.provider === 'META' && c.isActive);
+    const llmCred = workspace.apiCredentials.find((c) => c.provider === 'LLM' && c.isActive);
+    const telegramLinked = (user?.telegramLinks?.length ?? 0) > 0;
+
+    const steps = {
+      workspace: !!workspace.name && !!workspace.slug,
+      brand: !!workspace.brandProfile,
+      channels: workspace.apiCredentials.length > 0,
+      themes: workspace.contentThemes.length > 0,
+      plan: !!workspace.subscription,
+      metaConnected: !!metaCred,
+      telegramLinked,
+      llmConfigured: !!llmCred,
+      sourcesAdded: workspace.researchSources.length > 0,
+      personaCreated: (user?.userPersonas?.length ?? 0) > 0,
+      profileCreated: (user?.contentProfiles?.length ?? 0) > 0,
+    };
+
+    const totalSteps = Object.keys(steps).length;
+    const completedSteps = Object.values(steps).filter(Boolean).length;
+    const percent = Math.round((completedSteps / totalSteps) * 100);
+
     return {
       completed: workspace.onboardingCompleted,
-      steps: {
-        workspace: !!workspace.name && !!workspace.slug,
-        brand: !!workspace.brandProfile,
-        channels: workspace.apiCredentials.length > 0,
-        themes: workspace.contentThemes.length > 0,
-        plan: !!workspace.subscription,
-      },
+      percent,
+      steps,
       workspace: {
         name: workspace.name,
         slug: workspace.slug,
@@ -109,17 +147,166 @@ export class OnboardingService {
     };
   }
 
-  // ── Get industry presets ─────────────────────────────
-  getPresets(industry: string) {
+  // ── Get industry presets (DB-backed with fallback) ──
+  async getPresets(industry: string) {
+    const playbook = await this.prisma.industryPlaybook.findUnique({
+      where: { slug: industry },
+    });
+    if (playbook) {
+      return {
+        themes: playbook.themes,
+        tones: playbook.tones,
+        hashtags: playbook.hashtags,
+        formats: playbook.formats,
+        audiences: playbook.audiences,
+        scheduleHint: playbook.scheduleHint,
+      };
+    }
+    // Fallback to hardcoded presets
     return INDUSTRY_PRESETS[industry] || INDUSTRY_PRESETS['generic'];
   }
 
-  listIndustries() {
+  async listIndustries() {
+    const playbooks = await this.prisma.industryPlaybook.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    if (playbooks.length > 0) {
+      return playbooks.map((p) => ({
+        id: p.slug,
+        name: p.name,
+        icon: p.icon,
+        description: p.description,
+        themes: p.themes.length,
+        formats: p.formats,
+        scheduleHint: p.scheduleHint,
+      }));
+    }
+    // Fallback
     return Object.keys(INDUSTRY_PRESETS).map((key) => ({
       id: key,
       name: key.charAt(0).toUpperCase() + key.slice(1),
+      icon: '🏪',
+      description: '',
       themes: INDUSTRY_PRESETS[key]!.themes.length,
+      formats: [],
+      scheduleHint: null,
     }));
+  }
+
+  // ── Seed industry playbooks to DB ────────────────────
+  async seedPlaybooks() {
+    const playbooks = [
+      {
+        slug: 'ecommerce',
+        name: 'E-Commerce',
+        icon: '🛒',
+        description: 'Tiendas online, productos, ofertas y catálogos digitales',
+        themes: ['Producto del día', 'Oferta flash', 'Testimonio cliente', 'Detrás de escena', 'Tutorial producto'],
+        tones: ['Promocional', 'Educativo', 'Inspiracional'],
+        hashtags: ['#ecommerce', '#tiendaonline', '#compraonline', '#ofertas'],
+        formats: ['carousel', 'post', 'reel', 'story'],
+        audiences: ['Compradores online', 'Millennials digitales', 'Cazadores de ofertas'],
+        scheduleHint: '4-5 posts/semana',
+      },
+      {
+        slug: 'restaurant',
+        name: 'Restaurante / Gastronomía',
+        icon: '🍽️',
+        description: 'Restaurantes, cafeterías, dark kitchens y servicios de catering',
+        themes: ['Plato estrella', 'Receta del chef', 'Ambiente del local', 'Equipo', 'Evento especial'],
+        tones: ['Casual', 'Gourmet', 'Divertido'],
+        hashtags: ['#restaurante', '#gastronomia', '#foodie', '#comida'],
+        formats: ['post', 'reel', 'story', 'carousel'],
+        audiences: ['Foodies locales', 'Familias', 'Parejas'],
+        scheduleHint: '3-4 posts/semana',
+      },
+      {
+        slug: 'fitness',
+        name: 'Fitness & Salud',
+        icon: '💪',
+        description: 'Gimnasios, entrenadores, nutrición y bienestar',
+        themes: ['Rutina del día', 'Transformación', 'Nutrición', 'Motivación', 'Clase grupal'],
+        tones: ['Motivacional', 'Educativo', 'Energético'],
+        hashtags: ['#fitness', '#gym', '#entrena', '#saludable'],
+        formats: ['reel', 'carousel', 'post', 'story'],
+        audiences: ['Jóvenes activos', 'Principiantes', 'Atletas'],
+        scheduleHint: '5-6 posts/semana',
+      },
+      {
+        slug: 'realestate',
+        name: 'Inmobiliaria',
+        icon: '🏠',
+        description: 'Bienes raíces, propiedades, inversiones inmobiliarias',
+        themes: ['Propiedad destacada', 'Tour virtual', 'Consejo compra', 'Zona residencial', 'Caso éxito'],
+        tones: ['Profesional', 'Aspiracional', 'Informativo'],
+        hashtags: ['#inmobiliaria', '#bienes', '#hogar', '#inversión'],
+        formats: ['carousel', 'post', 'reel'],
+        audiences: ['Compradores primerizos', 'Inversionistas', 'Familias jóvenes'],
+        scheduleHint: '3-4 posts/semana',
+      },
+      {
+        slug: 'tech',
+        name: 'Tech / SaaS',
+        icon: '💻',
+        description: 'Startups, software, servicios digitales y tecnología',
+        themes: ['Nuevo feature', 'Behind the code', 'Team spotlight', 'Tutorial', 'Caso de uso'],
+        tones: ['Profesional', 'Innovador', 'Educativo'],
+        hashtags: ['#tech', '#startup', '#innovation', '#software'],
+        formats: ['carousel', 'post', 'reel'],
+        audiences: ['Developers', 'CTOs', 'Early adopters'],
+        scheduleHint: '3-5 posts/semana',
+      },
+      {
+        slug: 'beauty',
+        name: 'Belleza & Moda',
+        icon: '💄',
+        description: 'Maquillaje, skincare, moda y tendencias',
+        themes: ['Look del día', 'Tutorial maquillaje', 'Antes y después', 'Producto favorito', 'Tendencia'],
+        tones: ['Glamuroso', 'Natural', 'Educativo'],
+        hashtags: ['#belleza', '#makeup', '#skincare', '#beauty'],
+        formats: ['reel', 'carousel', 'story', 'post'],
+        audiences: ['Mujeres 18-35', 'Beauty enthusiasts', 'Influencers'],
+        scheduleHint: '4-5 posts/semana',
+      },
+      {
+        slug: 'coaching',
+        name: 'Coaching / Marca Personal',
+        icon: '🎯',
+        description: 'Coaches, mentores, speakers y marcas personales',
+        themes: ['Tip del día', 'Historia personal', 'Testimonio cliente', 'Framework/Método', 'Live Q&A'],
+        tones: ['Mentor', 'Inspiracional', 'Cercano'],
+        hashtags: ['#coaching', '#desarrollo', '#mentalidad', '#liderazgo'],
+        formats: ['carousel', 'reel', 'post'],
+        audiences: ['Emprendedores', 'Profesionales en transición', 'Líderes'],
+        scheduleHint: '4-6 posts/semana',
+      },
+      {
+        slug: 'generic',
+        name: 'General',
+        icon: '🏪',
+        description: 'Plantilla genérica para cualquier tipo de negocio',
+        themes: ['Producto/Servicio', 'Testimonio', 'Educativo', 'Detrás de escena', 'Entretenimiento'],
+        tones: ['Profesional', 'Casual', 'Inspiracional'],
+        hashtags: ['#marca', '#contenido', '#socialmedia'],
+        formats: ['post', 'carousel', 'reel'],
+        audiences: ['Audiencia general', 'Seguidores de nicho'],
+        scheduleHint: '3-4 posts/semana',
+      },
+    ];
+
+    let created = 0;
+    for (const pb of playbooks) {
+      await this.prisma.industryPlaybook.upsert({
+        where: { slug: pb.slug },
+        update: { ...pb },
+        create: { ...pb },
+      });
+      created++;
+    }
+
+    this.logger.log(`✅ Seeded ${created} industry playbooks`);
+    return { seeded: created };
   }
 
   // ── Complete onboarding ──────────────────────────────

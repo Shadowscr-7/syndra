@@ -4,7 +4,7 @@
 
 import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
 import { OnboardingService, OnboardingData } from './onboarding.service';
-import { Public, CurrentWorkspace } from '../auth/decorators';
+import { Public, CurrentWorkspace, Roles } from '../auth/decorators';
 
 @Controller('onboarding')
 export class OnboardingController {
@@ -26,8 +26,8 @@ export class OnboardingController {
    */
   @Public()
   @Get('industries')
-  listIndustries() {
-    return { data: this.onboarding.listIndustries() };
+  async listIndustries() {
+    return { data: await this.onboarding.listIndustries() };
   }
 
   /**
@@ -35,8 +35,8 @@ export class OnboardingController {
    */
   @Public()
   @Get('presets/:industry')
-  getPresets(@Param('industry') industry: string) {
-    return { data: this.onboarding.getPresets(industry) };
+  async getPresets(@Param('industry') industry: string) {
+    return { data: await this.onboarding.getPresets(industry) };
   }
 
   /**
@@ -53,5 +53,15 @@ export class OnboardingController {
     );
     this.logger.log(`Onboarding completed for workspace ${workspaceId}`);
     return { data: workspace };
+  }
+
+  /**
+   * POST /api/onboarding/seed-playbooks — Seed industry playbooks (admin only)
+   */
+  @Roles('ADMIN')
+  @Post('seed-playbooks')
+  async seedPlaybooks() {
+    const result = await this.onboarding.seedPlaybooks();
+    return { data: result };
   }
 }

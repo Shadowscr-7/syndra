@@ -1,5 +1,7 @@
 import { StatCard } from '@/components/ui/stat-card';
 import { RunLink } from '@/components/ui/run-link';
+import { ExecutiveSummary } from '@/components/dashboard/executive-summary';
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 import { prisma } from '@automatismos/db';
 import Link from 'next/link';
 
@@ -63,6 +65,12 @@ export default async function DashboardPage() {
           ⚠️ Base de datos no disponible — mostrando datos vacíos.
         </div>
       )}
+
+      {/* Onboarding Checklist */}
+      <OnboardingChecklist />
+
+      {/* Executive Summary */}
+      <ExecutiveSummary />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

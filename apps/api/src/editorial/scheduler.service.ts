@@ -38,6 +38,9 @@ export class SchedulerService {
     try {
       // Obtener todos los workspaces con al menos una fuente activa
       const workspaces = await this.prisma.workspace.findMany({
+        where: {
+          operationMode: { not: 'MANUAL' }, // Skip MANUAL workspaces
+        },
         include: {
           campaigns: {
             where: {
