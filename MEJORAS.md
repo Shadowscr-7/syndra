@@ -297,16 +297,16 @@ Ejemplo de plan generado:
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `StrategyPlan` en Prisma
-- [ ] Definir modelo `StrategyRecommendation` en Prisma
-- [ ] Crear servicio `StrategyPlanService` (generación LLM del plan)
-- [ ] Crear cron semanal de generación automática
-- [ ] Crear endpoint API de planes estratégicos (CRUD + generar)
-- [ ] Crear acción "crear campaña desde plan"
-- [ ] Crear acción "generar runs desde plan"
-- [ ] Crear página UI `/dashboard/strategist`
-- [ ] Mostrar plan activo con recomendaciones
-- [ ] Mostrar historial de planes anteriores
+- [x] Definir modelo `StrategyPlan` en Prisma
+- [x] Definir modelo `StrategyRecommendation` en Prisma
+- [x] Crear servicio `StrategyPlanService` (generación LLM del plan)
+- [x] Crear cron semanal de generación automática
+- [x] Crear endpoint API de planes estratégicos (CRUD + generar)
+- [x] Crear acción "crear campaña desde plan"
+- [x] Crear acción "generar runs desde plan"
+- [x] Crear página UI `/dashboard/strategist`
+- [x] Mostrar plan activo con recomendaciones
+- [x] Mostrar historial de planes anteriores
 
 ---
 
@@ -380,16 +380,16 @@ Cada tendencia muestra:
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `TrendSignal` en Prisma
-- [ ] Crear servicio `TrendDetectionService`
-- [ ] Implementar clusterización semántica (LLM)
-- [ ] Implementar scoring multi-dimensión
-- [ ] Crear cron de detección de tendencias (cada 4-6h)
-- [ ] Integrar alertas Telegram para tendencias relevantes
-- [ ] Crear endpoint API de tendencias (listar, usar, descartar)
-- [ ] Crear página UI `/dashboard/trends`
-- [ ] Acción "crear run desde tendencia"
-- [ ] Acción "agregar tendencia a plan estratégico"
+- [x] Definir modelo `TrendSignal` en Prisma
+- [x] Crear servicio `TrendDetectionService`
+- [x] Implementar clusterización semántica (LLM)
+- [x] Implementar scoring multi-dimensión
+- [x] Crear cron de detección de tendencias (cada 4-6h)
+- [x] Integrar alertas Telegram para tendencias relevantes
+- [x] Crear endpoint API de tendencias (listar, usar, descartar)
+- [x] Crear página UI `/dashboard/trends`
+- [x] Acción "crear run desde tendencia"
+- [x] Acción "agregar tendencia a plan estratégico"
 
 ---
 

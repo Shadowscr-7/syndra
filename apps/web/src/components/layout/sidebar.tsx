@@ -18,6 +18,8 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: '⚡' },
       { name: 'Cola Editorial', href: '/dashboard/editorial', icon: '📋' },
+      { name: 'Estratega IA', href: '/dashboard/strategist', icon: '🧠' },
+      { name: 'Tendencias', href: '/dashboard/trends', icon: '📈' },
       { name: 'Alertas', href: '/dashboard/alerts', icon: '🔔' },
     ],
   },

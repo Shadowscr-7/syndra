@@ -114,6 +114,8 @@ model Workspace {
   churnRisk       ChurnRiskSignal?
   learningProfiles ContentLearningProfile[]
   learningDecisions LearningDecisionLog[]
+  strategyPlans   StrategyPlan[]
+  trendSignals    TrendSignal[]
 
   @@map("workspaces")
 }
@@ -1441,4 +1443,117 @@ enum DecisionType {
   CHOOSE_HOOK
   AVOID_FATIGUE
   BOOST_ENGAGEMENT
+}
+
+// ============================================================
+// AI CONTENT STRATEGIST — Planes estratégicos generados por IA
+// ============================================================
+
+model StrategyPlan {
+  id                        String             @id @default(cuid())
+  workspaceId               String             @map("workspace_id")
+  periodType                PlanPeriod
+  startDate                 DateTime           @map("start_date")
+  endDate                   DateTime           @map("end_date")
+  objective                 String?
+  summary                   String?            @db.Text
+  recommendedThemeMix       Json?              @map("recommended_theme_mix")
+  recommendedFormatMix      Json?              @map("recommended_format_mix")
+  recommendedToneMix        Json?              @map("recommended_tone_mix")
+  recommendedPostingWindows Json?              @map("recommended_posting_windows")
+  recommendedCTAs           Json?              @map("recommended_ctas")
+  trendReferences           Json?              @map("trend_references")
+  weeklyPostTarget          Int                @default(5) @map("weekly_post_target")
+  status                    StrategyPlanStatus @default(DRAFT)
+  createdBy                 String             @default("SYSTEM") @map("created_by")
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  updatedAt                 DateTime           @updatedAt @map("updated_at")
+
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recommendations StrategyRecommendation[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, startDate(sort: Desc)])
+  @@map("strategy_plans")
+}
+
+enum PlanPeriod {
+  WEEKLY
+  MONTHLY
+}
+
+enum StrategyPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model StrategyRecommendation {
+  id               String             @id @default(cuid())
+  strategyPlanId   String             @map("strategy_plan_id")
+  type             RecommendationType
+  title            String
+  description      String             @db.Text
+  priorityScore    Float              @default(0) @map("priority_score")
+  confidenceScore  Float              @default(0) @map("confidence_score")
+  recommendedAction String?           @map("recommended_action")
+  sourceData       Json?              @map("source_data")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  strategyPlan StrategyPlan @relation(fields: [strategyPlanId], references: [id], onDelete: Cascade)
+
+  @@index([strategyPlanId, priorityScore(sort: Desc)])
+  @@map("strategy_recommendations")
+}
+
+enum RecommendationType {
+  POST_COUNT
+  FORMAT
+  TONE
+  HOUR
+  THEME
+  CTA
+  TREND
+  CAMPAIGN
+}
+
+// ============================================================
+// TREND DETECTION — Señales de tendencias detectadas
+// ============================================================
+
+model TrendSignal {
+  id                       String      @id @default(cuid())
+  workspaceId              String      @map("workspace_id")
+  themeLabel               String      @map("theme_label")
+  normalizedTopic          String      @map("normalized_topic")
+  sourceType               String      @map("source_type")
+  sourceUrl                String?     @map("source_url")
+  headline                 String?
+  excerpt                  String?     @db.Text
+  publishedAt              DateTime?   @map("published_at")
+  noveltyScore             Float       @default(0) @map("novelty_score")
+  momentumScore            Float       @default(0) @map("momentum_score")
+  brandFitScore            Float       @default(0) @map("brand_fit_score")
+  engagementPotentialScore Float       @default(0) @map("engagement_potential_score")
+  urgencyScore             Float       @default(0) @map("urgency_score")
+  finalScore               Float       @default(0) @map("final_score")
+  recommendedWindowHours   Int         @default(12) @map("recommended_window_hours")
+  suggestedAngle           String?     @map("suggested_angle") @db.Text
+  status                   TrendStatus @default(NEW)
+  createdAt                DateTime    @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, finalScore(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("trend_signals")
+}
+
+enum TrendStatus {
+  NEW
+  DISMISSED
+  USED
+  EXPIRED
 }

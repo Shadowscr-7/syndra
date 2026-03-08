@@ -5,3 +5,5 @@
 export * from './research.prompts';
 export * from './strategy.prompts';
 export * from './content.prompts';
+export * from './strategist.prompts';
+export * from './trend.prompts';
