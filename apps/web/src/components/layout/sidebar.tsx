@@ -18,6 +18,7 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: '⚡' },
       { name: 'Cola Editorial', href: '/dashboard/editorial', icon: '📋' },
+      { name: 'Alertas', href: '/dashboard/alerts', icon: '🔔' },
     ],
   },
   {
@@ -61,6 +62,8 @@ const allSections: SidebarSection[] = [
       { name: 'Comisiones', href: '/dashboard/admin/commissions', icon: '💰' },
       { name: 'Auditoría', href: '/dashboard/admin/audit', icon: '📋' },
       { name: 'Playbooks', href: '/dashboard/admin/playbooks', icon: '📚' },
+      { name: 'Operaciones', href: '/dashboard/admin/operations', icon: '📊' },
+      { name: 'Riesgo Churn', href: '/dashboard/admin/churn', icon: '⚠️' },
       { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
       { name: 'Admin', href: '/dashboard/admin', icon: '🛡️' },
     ],

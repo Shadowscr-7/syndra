@@ -37,4 +37,15 @@ export class CampaignsService {
       },
     });
   }
+
+  async updateOperationMode(id: string, operationMode: string | null) {
+    const validModes = ['MANUAL', 'SEMI_AUTOMATIC', 'FULLY_AUTOMATIC', null];
+    if (!validModes.includes(operationMode as any)) {
+      throw new Error('Invalid operation mode');
+    }
+    return this.prisma.campaign.update({
+      where: { id },
+      data: { operationMode: operationMode as any },
+    });
+  }
 }

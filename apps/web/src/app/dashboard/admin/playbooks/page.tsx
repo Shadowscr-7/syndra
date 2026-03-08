@@ -4,17 +4,17 @@ import { useEffect, useState, useCallback } from 'react';
 
 interface Playbook {
   id: string;
-  slug: string;
+  slug?: string;
   name: string;
   icon: string;
-  description: string | null;
-  themes: string[];
-  tones: string[];
-  hashtags: string[];
-  formats: string[];
-  audiences: string[];
-  scheduleHint: string | null;
-  isActive: boolean;
+  description?: string | null;
+  themes?: string[];
+  tones?: string[];
+  hashtags?: string[];
+  formats?: string[];
+  audiences?: string[];
+  scheduleHint?: string | null;
+  isActive?: boolean;
 }
 
 export default function PlaybooksPage() {
@@ -126,7 +126,7 @@ export default function PlaybooksPage() {
                 key={pb.id}
                 className="glass-card transition-all cursor-pointer"
                 style={{
-                  opacity: pb.isActive ? 1 : 0.5,
+                  opacity: pb.isActive !== false ? 1 : 0.5,
                   borderColor: isOpen ? 'rgba(124,58,237,0.3)' : undefined,
                 }}
                 onClick={() => setExpanded(isOpen ? null : pb.id)}
@@ -142,28 +142,28 @@ export default function PlaybooksPage() {
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
                         style={{
-                          background: pb.isActive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                          color: pb.isActive ? '#10b981' : '#ef4444',
+                          background: pb.isActive !== false ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                          color: pb.isActive !== false ? '#10b981' : '#ef4444',
                         }}
                       >
-                        {pb.isActive ? 'Activo' : 'Inactivo'}
+                        {pb.isActive !== false ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
-                      {pb.description || `Slug: ${pb.slug}`}
+                      {pb.description || (pb.slug ? `Slug: ${pb.slug}` : pb.name)}
                     </p>
                     <div className="flex gap-2 mt-2 flex-wrap">
                       <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(124,58,237,0.08)', color: 'var(--color-primary-light)' }}>
-                        {pb.themes.length} temas
+                        {toArray(pb.themes).length} temas
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(6,182,212,0.08)', color: '#06b6d4' }}>
-                        {pb.tones.length} tonos
+                        {toArray(pb.tones).length} tonos
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>
-                        {pb.formats.length} formatos
+                        {toArray(pb.formats).length} formatos
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.08)', color: '#10b981' }}>
-                        {pb.hashtags.length} hashtags
+                        {toArray(pb.hashtags).length} hashtags
                       </span>
                     </div>
                   </div>
@@ -199,13 +199,22 @@ export default function PlaybooksPage() {
   );
 }
 
-function DetailSection({ label, items, color }: { label: string; items: string[]; color: string }) {
-  if (items.length === 0) return null;
+function toArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try { const parsed = JSON.parse(val); if (Array.isArray(parsed)) return parsed; } catch { /* ignore */ }
+  }
+  return [];
+}
+
+function DetailSection({ label, items, color }: { label: string; items: unknown; color: string }) {
+  const arr = toArray(items);
+  if (arr.length === 0) return null;
   return (
     <div className="mt-2">
       <span className="text-[10px] font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
       <div className="flex flex-wrap gap-1 mt-1">
-        {items.map((item) => (
+        {arr.map((item) => (
           <span
             key={item}
             className="text-[11px] px-2 py-0.5 rounded-full"

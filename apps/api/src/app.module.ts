@@ -31,6 +31,9 @@ import { MediaFoldersModule } from './media-folders/media-folders.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { EmailModule } from './email/email.module';
 import { PaypalModule } from './paypal/paypal.module';
+import { AlertsModule } from './alerts/alerts.module';
+import { ChurnModule } from './churn/churn.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
   imports: [
@@ -68,6 +71,9 @@ import { PaypalModule } from './paypal/paypal.module';
     SchedulesModule,
     EmailModule,
     PaypalModule,
+    AlertsModule,
+    ChurnModule,
+    ObservabilityModule,
   ],
 })
 export class AppModule implements NestModule {

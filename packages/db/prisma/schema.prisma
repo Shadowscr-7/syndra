@@ -109,6 +109,8 @@ model Workspace {
   subscription    Subscription?
   invitations     Invitation[]
   usageRecords    UsageRecord[]
+  alerts          WorkspaceAlert[]
+  churnRisk       ChurnRiskSignal?
 
   @@map("workspaces")
 }
@@ -195,6 +197,7 @@ model Campaign {
   userPersonaId    String?  @map("user_persona_id")
   targetChannels   String[] @default(["instagram"]) @map("target_channels")
   channelFormats   Json?    @map("channel_formats")
+  operationMode    OperationMode? @map("operation_mode") // Override del workspace, null = hereda
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -1211,6 +1214,96 @@ model PasswordResetToken {
   @@index([userId])
   @@index([token])
   @@map("password_reset_tokens")
+}
+
+// ============================================================
+// WORKSPACE ALERTS — Alertas proactivas inteligentes
+// ============================================================
+
+model WorkspaceAlert {
+  id              String        @id @default(cuid())
+  workspaceId     String        @map("workspace_id")
+  type            AlertType
+  severity        AlertSeverity
+  title           String
+  message         String        @db.Text
+  suggestedAction String?       @map("suggested_action")
+  status          AlertStatus   @default(ACTIVE)
+  dismissedAt     DateTime?     @map("dismissed_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@map("workspace_alerts")
+}
+
+enum AlertType {
+  TOKEN_EXPIRING
+  LOW_ACTIVITY
+  ENGAGEMENT_DROP
+  TREND_DETECTED
+  PUBLISH_ERROR
+  CREDENTIALS_BROKEN
+  CAMPAIGN_NO_SOURCES
+  ONBOARDING_STALLED
+  HIGH_FATIGUE
+  PLAN_LIMIT_NEAR
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  DISMISSED
+  RESOLVED
+}
+
+// ============================================================
+// CHURN RISK — Detección de riesgo de abandono
+// ============================================================
+
+model ChurnRiskSignal {
+  id               String   @id @default(cuid())
+  workspaceId      String   @unique @map("workspace_id")
+  riskScore        Float    @default(0) // 0-100
+  reasons          Json     @default("[]") // [{reason, weight, detail}]
+  lastCalculatedAt DateTime? @map("last_calculated_at")
+  status           ChurnStatus @default(MONITORING)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("churn_risk_signals")
+}
+
+enum ChurnStatus {
+  MONITORING
+  AT_RISK
+  CHURNED
+  HEALTHY
+}
+
+// ============================================================
+// OPERATIONAL METRICS — Métricas operativas diarias
+// ============================================================
+
+model OperationalMetric {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  metric    String   // runs_created, runs_failed, publish_errors, etc.
+  value     Float    @default(0)
+  metadata  Json?    // extra context
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([date, metric])
+  @@index([metric, date])
+  @@map("operational_metrics")
 }
 
 // ============================================================

@@ -82,8 +82,8 @@ export class OnboardingService {
           include: {
             user: {
               select: {
-                telegramLinks: { take: 1 },
-                userPersonas: { where: { isActive: true }, take: 1 },
+                telegramLink: true,
+                personas: { where: { isActive: true }, take: 1 },
                 contentProfiles: { where: { isDefault: true }, take: 1 },
               },
             },
@@ -115,7 +115,7 @@ export class OnboardingService {
     const user = workspace.users[0]?.user;
     const metaCred = workspace.apiCredentials.find((c) => c.provider === 'META' && c.isActive);
     const llmCred = workspace.apiCredentials.find((c) => c.provider === 'LLM' && c.isActive);
-    const telegramLinked = (user?.telegramLinks?.length ?? 0) > 0;
+    const telegramLinked = !!user?.telegramLink;
 
     const steps = {
       workspace: !!workspace.name && !!workspace.slug,
@@ -127,7 +127,7 @@ export class OnboardingService {
       telegramLinked,
       llmConfigured: !!llmCred,
       sourcesAdded: workspace.researchSources.length > 0,
-      personaCreated: (user?.userPersonas?.length ?? 0) > 0,
+      personaCreated: (user?.personas?.length ?? 0) > 0,
       profileCreated: (user?.contentProfiles?.length ?? 0) > 0,
     };
 
@@ -352,7 +352,7 @@ export class OnboardingService {
 
       // 3️⃣ Seed themes from industry preset
       if (data.industry) {
-        const preset = this.getPresets(data.industry)!;
+        const preset = (await this.getPresets(data.industry))!;
         for (const themeName of preset.themes) {
           await tx.contentTheme.create({
             data: {

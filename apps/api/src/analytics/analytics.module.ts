@@ -16,6 +16,6 @@ import { AnalyticsController } from './analytics.controller';
   imports: [PrismaModule, TelegramModule, PlansModule],
   providers: [AnalyticsService, AnalyticsCronService, ScoringService],
   controllers: [AnalyticsController],
-  exports: [AnalyticsService, ScoringService],
+  exports: [AnalyticsService, ScoringService, AnalyticsCronService],
 })
 export class AnalyticsModule {}

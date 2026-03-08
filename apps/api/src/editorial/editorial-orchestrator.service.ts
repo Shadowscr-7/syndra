@@ -334,14 +334,21 @@ export class EditorialOrchestratorService {
         }
 
         case 'review': {
-          // Check workspace operation mode for auto-approval
-          const wsForMode = await this.prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { operationMode: true },
+          // Check campaign-level operationMode first, then workspace fallback
+          const runForMode = await this.prisma.editorialRun.findUnique({
+            where: { id: editorialRunId },
+            select: {
+              campaign: { select: { operationMode: true } },
+              workspace: { select: { operationMode: true } },
+            },
           });
 
-          if (wsForMode?.operationMode === 'FULLY_AUTOMATIC') {
-            this.logger.log(`Run ${editorialRunId} auto-approved (FULLY_AUTOMATIC mode)`);
+          const effectiveMode =
+            runForMode?.campaign?.operationMode ??
+            runForMode?.workspace?.operationMode;
+
+          if (effectiveMode === 'FULLY_AUTOMATIC') {
+            this.logger.log(`Run ${editorialRunId} auto-approved (FULLY_AUTOMATIC mode — ${runForMode?.campaign?.operationMode ? 'campaign' : 'workspace'} level)`);
             await this.onApproved(editorialRunId);
             return { nextStage: null };
           }

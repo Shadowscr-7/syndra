@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Body, Query } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 
 @Controller('campaigns')
@@ -18,5 +18,14 @@ export class CampaignsController {
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.campaignsService.findById(id);
+  }
+
+  /** PATCH /api/campaigns/:id/operation-mode */
+  @Patch(':id/operation-mode')
+  async updateOperationMode(
+    @Param('id') id: string,
+    @Body('operationMode') operationMode: string | null,
+  ) {
+    return this.campaignsService.updateOperationMode(id, operationMode);
   }
 }

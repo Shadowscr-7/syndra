@@ -444,16 +444,16 @@ Selector claro en configuración de workspace/campaña:
 
 #### Checklist de implementación
 
-- [ ] Agregar enum `OperationMode` en Prisma
-- [ ] Agregar campo `operationMode` a `Workspace`
+- [x] Agregar enum `OperationMode` en Prisma ✅ (FULLY_AUTOMATIC, APPROVAL_REQUIRED, MANUAL)
+- [x] Agregar campo `operationMode` a `Workspace` ✅ (default APPROVAL_REQUIRED)
 - [ ] Agregar campo `operationMode` a `Campaign` (override opcional)
 - [ ] Agregar campo `operationMode` a `Schedule` (override opcional)
-- [ ] Modificar `SchedulerService` para respetar modo del workspace
-- [ ] Modificar `EditorialOrchestratorService` para respetar modo
+- [x] Modificar `SchedulerService` para respetar modo del workspace ✅ (filtra MANUAL)
+- [x] Modificar `EditorialOrchestratorService` para respetar modo ✅ (auto-approve en FULLY_AUTOMATIC)
 - [ ] Modificar `PublisherService` — auto-publish solo en FULL_AUTOPILOT
 - [ ] Implementar protecciones de autopilot (compliance, credenciales, fuente)
 - [ ] Agregar whitelist/blacklist de temas por workspace
-- [ ] Crear UI selector de modo en `/dashboard/settings`
+- [x] Crear UI selector de modo en `/dashboard/settings` ✅ (radio-style 3 modos)
 - [ ] Crear UI selector de modo en formulario de campaña
 - [ ] Documentar comportamiento de cada modo
 
@@ -541,10 +541,10 @@ CTA por cada paso incompleto: "Completar ahora →"
 - [ ] Crear servicio `OnboardingTrackingService`
 - [ ] Instrumentar eventos en registro, verificación, OAuth, etc.
 - [ ] Actualizar `OnboardingProgress` en cada evento
-- [ ] Calcular `activationScore` dinámicamente
-- [ ] Crear endpoint API de progreso de onboarding
-- [ ] Crear componente UI de checklist con barra de progreso
-- [ ] Mostrar checklist en dashboard home (si no completado)
+- [x] Calcular `activationScore` dinámicamente ✅ (getStatus() devuelve 11 pasos + percent)
+- [x] Crear endpoint API de progreso de onboarding ✅ (GET /api/onboarding/status)
+- [x] Crear componente UI de checklist con barra de progreso ✅ (OnboardingChecklist)
+- [x] Mostrar checklist en dashboard home (si no completado) ✅ (integrado en dashboard/page.tsx)
 - [ ] Implementar nudges por email (Resend)
 - [ ] Implementar banners in-app contextuales
 
@@ -758,13 +758,14 @@ model IndustryPlaybook {
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `IndustryPlaybook` en Prisma
-- [ ] Crear seed con 7 playbooks de verticales
-- [ ] Crear servicio `PlaybookService` (aplicar, listar)
-- [ ] Integrar en flujo de onboarding (botón "Aplicar plantilla")
+- [x] Definir modelo `IndustryPlaybook` en Prisma ✅ (slug, name, icon, themes[], tones[], etc.)
+- [x] Crear seed con 7 playbooks de verticales ✅ (8 verticales via POST /api/onboarding/seed-playbooks)
+- [x] Crear servicio `PlaybookService` (aplicar, listar) ✅ (listIndustries, listPlaybooksFull, getPresets, seedPlaybooks)
+- [x] Integrar en flujo de onboarding (botón "Aplicar plantilla") ✅ (onboarding page fetch de API)
 - [ ] Crear acción "reset desde playbook" en settings
-- [ ] Crear endpoint API de playbooks
-- [ ] UI de selección de playbook en onboarding (cards visuales)
+- [x] Crear endpoint API de playbooks ✅ (GET industries, GET playbooks, GET presets/:industry, POST seed)
+- [x] UI de selección de playbook en onboarding (cards visuales) ✅ (dinámico desde API)
+- [x] UI admin de gestión de playbooks ✅ (/dashboard/admin/playbooks con seed + detalle expandible)
 
 ---
 
@@ -887,9 +888,9 @@ model ComplianceRule {
 
 #### Checklist de implementación
 
-- [ ] Crear endpoint API de stats de afiliado (clics, leads, conversiones, MRR)
+- [x] Crear endpoint API de stats de afiliado (clics, leads, conversiones, MRR) ✅ (GET /api/partner/dashboard con @Roles('COLLABORATOR'))
 - [ ] Implementar tracking de clics en links referidos
-- [ ] Crear página `/dashboard/partner` con KPIs
+- [x] Crear página `/dashboard/partner` con KPIs ✅ (4 KPI cards + referrals table + payouts table)
 - [ ] Crear página `/dashboard/partner/payouts` con historial
 - [ ] Crear página `/dashboard/partner/assets` con kit promocional
 - [ ] Generación automática de URLs con UTM
@@ -1103,9 +1104,9 @@ model ChurnRiskSignal {
 
 #### Checklist de implementación
 
-- [ ] Crear servicio `ExecutiveSummaryService` (cálculo mensual)
-- [ ] Crear endpoint API de resumen ejecutivo
-- [ ] Crear componente UI de resumen en dashboard home
+- [x] Crear servicio `ExecutiveSummaryService` (cálculo mensual) ✅ (getExecutiveSummary() en AnalyticsService)
+- [x] Crear endpoint API de resumen ejecutivo ✅ (GET /api/analytics/summary)
+- [x] Crear componente UI de resumen en dashboard home ✅ (ExecutiveSummary component)
 - [ ] Enviar resumen mensual por email
 - [ ] Enviar resumen mensual por Telegram
 
