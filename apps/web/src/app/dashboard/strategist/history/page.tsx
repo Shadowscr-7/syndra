@@ -28,11 +28,11 @@ async function fetchHistory(wsId: string): Promise<PlanVersion[]> {
   } catch { return []; }
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-green-100 text-green-700',
-  DRAFT: 'bg-yellow-100 text-yellow-700',
-  COMPLETED: 'bg-blue-100 text-blue-700',
-  ARCHIVED: 'bg-gray-100 text-gray-600',
+const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+  ACTIVE:    { bg: 'rgba(16,185,129,0.1)', color: '#10b981', border: 'rgba(16,185,129,0.2)' },
+  DRAFT:     { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
+  COMPLETED: { bg: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: 'rgba(59,130,246,0.2)' },
+  ARCHIVED:  { bg: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)', border: 'var(--color-border)' },
 };
 
 export default async function StrategyHistoryPage() {
@@ -43,76 +43,81 @@ export default async function StrategyHistoryPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">📚 Historial de Estrategias</h1>
-          <p className="text-gray-500 mt-1">Versiones de planes estratégicos y su impacto</p>
+        <div className="page-header" style={{ marginBottom: 0 }}>
+          <h1 className="page-title">Historial de Estrategias</h1>
+          <p className="page-subtitle">Versiones de planes estratégicos y su impacto</p>
         </div>
-        <Link href="/dashboard/strategist" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+        <Link href="/dashboard/strategist" className="btn-primary text-sm">
           ← Plan Activo
         </Link>
       </div>
 
       {plans.length === 0 ? (
-        <div className="bg-white rounded-lg border p-12 text-center">
-          <div className="text-4xl mb-4">📋</div>
-          <h3 className="text-lg font-semibold text-gray-700">Sin planes estratégicos</h3>
-          <p className="text-gray-500 mt-2">Genera tu primer plan desde el panel del Estratega IA.</p>
+        <div className="glass-card p-12 text-center">
+          <div className="text-4xl mb-4 animate-float">📋</div>
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>Sin planes estratégicos</h3>
+          <p className="mt-2" style={{ color: 'var(--color-text-muted)' }}>Genera tu primer plan desde el panel del Estratega IA.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {plans.map((plan) => (
-            <div key={plan.id} className="bg-white rounded-lg border hover:shadow-md transition-shadow">
-              <div className="p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-900">v{plan.version}</span>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[plan.status] ?? 'bg-gray-100'}`}>
-                      {plan.status}
-                    </span>
-                    <span className="text-xs text-gray-400">{plan.periodType}</span>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(plan.startDate).toLocaleDateString('es-ES')} → {new Date(plan.endDate).toLocaleDateString('es-ES')}
-                  </div>
-                </div>
-
-                {plan.summary && (
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{plan.summary}</p>
-                )}
-
-                <div className="grid grid-cols-4 gap-4 text-center">
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-lg font-bold text-gray-900">{plan.weeklyPostTarget}</div>
-                    <div className="text-xs text-gray-500">Posts/sem</div>
-                  </div>
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-lg font-bold text-gray-900">{plan.recommendations?.length ?? 0}</div>
-                    <div className="text-xs text-gray-500">Recs</div>
-                  </div>
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-lg font-bold text-gray-900">
-                      {plan.impactMetrics?.totalPublications ?? '—'}
+          {plans.map((plan, idx) => {
+            const ss = STATUS_STYLES[plan.status] ?? STATUS_STYLES.ARCHIVED;
+            return (
+              <div key={plan.id} className={`glass-card p-0 overflow-hidden animate-fade-in${idx > 0 ? `-delay-${Math.min(idx, 3)}` : ''}`}>
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>v{plan.version}</span>
+                      <span className="chip" style={{ background: ss.bg, color: ss.color, borderColor: ss.border }}>
+                        {plan.status}
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{plan.periodType}</span>
                     </div>
-                    <div className="text-xs text-gray-500">Pubs</div>
-                  </div>
-                  <div className="bg-gray-50 rounded p-2">
-                    <div className="text-lg font-bold text-gray-900">
-                      {plan.impactMetrics ? `${plan.impactMetrics.avgEngagement.toFixed(1)}%` : '—'}
+                    <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {new Date(plan.startDate).toLocaleDateString('es-ES')} → {new Date(plan.endDate).toLocaleDateString('es-ES')}
                     </div>
-                    <div className="text-xs text-gray-500">Engagement</div>
                   </div>
-                </div>
 
-                {plan.recommendations && plan.recommendations.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {plan.recommendations.slice(0, 3).map((r, i) => (
-                      <span key={i} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">{r.title}</span>
-                    ))}
+                  {plan.summary && (
+                    <p className="text-sm mb-3 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{plan.summary}</p>
+                  )}
+
+                  <div className="grid grid-cols-4 gap-3 text-center">
+                    <div className="glass-card p-2" style={{ background: 'rgba(124,58,237,0.05)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--color-primary-light)' }}>{plan.weeklyPostTarget}</div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Posts/sem</div>
+                    </div>
+                    <div className="glass-card p-2" style={{ background: 'rgba(6,182,212,0.05)' }}>
+                      <div className="text-lg font-bold" style={{ color: 'var(--color-secondary)' }}>{plan.recommendations?.length ?? 0}</div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Recs</div>
+                    </div>
+                    <div className="glass-card p-2" style={{ background: 'rgba(16,185,129,0.05)' }}>
+                      <div className="text-lg font-bold" style={{ color: '#10b981' }}>
+                        {plan.impactMetrics?.totalPublications ?? '—'}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Pubs</div>
+                    </div>
+                    <div className="glass-card p-2" style={{ background: 'rgba(236,72,153,0.05)' }}>
+                      <div className="text-lg font-bold" style={{ color: '#ec4899' }}>
+                        {plan.impactMetrics ? `${plan.impactMetrics.avgEngagement.toFixed(1)}%` : '—'}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Engagement</div>
+                    </div>
                   </div>
-                )}
+
+                  {plan.recommendations && plan.recommendations.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {plan.recommendations.slice(0, 3).map((r, i) => (
+                        <span key={i} className="chip" style={{ background: 'rgba(124,58,237,0.08)', color: 'var(--color-primary-light)', borderColor: 'rgba(124,58,237,0.2)' }}>
+                          {r.title}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

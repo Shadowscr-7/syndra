@@ -19,6 +19,7 @@ const allSections: SidebarSection[] = [
       { name: 'Dashboard', href: '/dashboard', icon: '⚡' },
       { name: 'Cola Editorial', href: '/dashboard/editorial', icon: '📋' },
       { name: 'Estratega IA', href: '/dashboard/strategist', icon: '🧠' },
+      { name: 'Historial Plan', href: '/dashboard/strategist/history', icon: '📜' },
       { name: 'Tendencias', href: '/dashboard/trends', icon: '📈' },
       { name: 'Alertas', href: '/dashboard/alerts', icon: '🔔' },
     ],
@@ -28,8 +29,10 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Campañas', href: '/dashboard/campaigns', icon: '🎯' },
       { name: 'Temas', href: '/dashboard/themes', icon: '💡' },
+      { name: 'Playbooks', href: '/dashboard/playbooks', icon: '📚' },
       { name: 'Perfiles IA', href: '/dashboard/profiles', icon: '🧠' },
       { name: 'Media', href: '/dashboard/media', icon: '📂' },
+      { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬' },
       { name: 'Scheduler', href: '/dashboard/scheduler', icon: '📅' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },
     ],
@@ -38,6 +41,8 @@ const allSections: SidebarSection[] = [
     label: 'Datos',
     items: [
       { name: 'Analytics', href: '/dashboard/analytics', icon: '📈' },
+      { name: 'Benchmarking', href: '/dashboard/benchmark', icon: '📊' },
+      { name: 'Scoring Avanzado', href: '/dashboard/advanced-scoring', icon: '🎯' },
       { name: 'Aprendizaje', href: '/dashboard/learning', icon: '🧠' },
       { name: 'Experimentos', href: '/dashboard/experiments', icon: '🧪' },
       { name: 'Memoria Marca', href: '/dashboard/brand-memory', icon: '🔁' },

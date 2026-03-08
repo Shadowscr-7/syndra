@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getApiUrl, getSession } from '@/lib/session';
+import { getClientSession, getClientApiUrl } from '@/lib/client-session';
 
 interface Playbook {
   id: string;
@@ -27,16 +27,20 @@ export default function PlaybooksPage() {
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
 
+  const getHeaders = () => {
+    const s = getClientSession();
+    return {
+      'Content-Type': 'application/json',
+      'x-workspace-id': s.workspaceId,
+      'x-user-id': s.userId,
+    };
+  };
+
   const load = async () => {
     setLoading(true);
     try {
-      const s = await getSession();
-      const apiUrl = getApiUrl();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-workspace-id': s.workspaceId,
-        'x-user-id': s.userId,
-      };
+      const apiUrl = getClientApiUrl();
+      const headers = getHeaders();
 
       const [mineRes, pubRes] = await Promise.all([
         fetch(`${apiUrl}/api/playbooks`, { headers }),
@@ -55,15 +59,10 @@ export default function PlaybooksPage() {
   useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
-    const s = await getSession();
-    const apiUrl = getApiUrl();
+    const apiUrl = getClientApiUrl();
     await fetch(`${apiUrl}/api/playbooks`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-workspace-id': s.workspaceId,
-        'x-user-id': s.userId,
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ name, description, isPublic }),
     });
     setName('');
@@ -73,28 +72,19 @@ export default function PlaybooksPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const s = await getSession();
-    const apiUrl = getApiUrl();
+    const apiUrl = getClientApiUrl();
     await fetch(`${apiUrl}/api/playbooks/${id}`, {
       method: 'DELETE',
-      headers: {
-        'x-workspace-id': s.workspaceId,
-        'x-user-id': s.userId,
-      },
+      headers: getHeaders(),
     });
     load();
   };
 
   const togglePublic = async (pb: Playbook) => {
-    const s = await getSession();
-    const apiUrl = getApiUrl();
+    const apiUrl = getClientApiUrl();
     await fetch(`${apiUrl}/api/playbooks/${pb.id}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-workspace-id': s.workspaceId,
-        'x-user-id': s.userId,
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ isPublic: !pb.isPublic }),
     });
     load();
@@ -103,98 +93,88 @@ export default function PlaybooksPage() {
   const displayed = tab === 'mine' ? playbooks : publicPlaybooks;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Content Playbooks</h1>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-        >
-          + New Playbook
+        <div className="page-header" style={{ marginBottom: 0 }}>
+          <h1 className="page-title">Content Playbooks</h1>
+          <p className="page-subtitle">Plantillas reutilizables de estrategia de contenido</p>
+        </div>
+        <button onClick={() => setShowCreate(!showCreate)} className="btn-primary text-sm">
+          + Nuevo Playbook
         </button>
       </div>
 
       {showCreate && (
-        <div className="bg-white border rounded-lg p-4 space-y-3">
+        <div className="glass-card p-5 space-y-3 animate-fade-in">
           <input
-            placeholder="Playbook name"
+            placeholder="Nombre del playbook"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full border rounded px-3 py-2 text-sm"
+            className="input-field"
           />
           <textarea
-            placeholder="Description (optional)"
+            placeholder="Descripción (opcional)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border rounded px-3 py-2 text-sm"
+            className="input-field"
             rows={2}
           />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-            />
-            Make public (share in marketplace)
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+            Hacer público (compartir en marketplace)
           </label>
           <div className="flex gap-2">
-            <button
-              onClick={handleCreate}
-              disabled={!name.trim()}
-              className="px-4 py-2 bg-green-600 text-white rounded text-sm disabled:opacity-50"
-            >
-              Save
+            <button onClick={handleCreate} disabled={!name.trim()} className="btn-success text-sm" style={{ opacity: name.trim() ? 1 : 0.5 }}>
+              Guardar
             </button>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="px-4 py-2 bg-gray-200 rounded text-sm"
-            >
-              Cancel
+            <button onClick={() => setShowCreate(false)} className="btn-ghost text-sm">
+              Cancelar
             </button>
           </div>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-1" style={{ borderBottom: '1px solid var(--color-border)' }}>
         {(['mine', 'public'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
-              tab === t
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+            className="px-4 py-2 text-sm font-medium transition-all"
+            style={{
+              color: tab === t ? 'var(--color-primary-light)' : 'var(--color-text-muted)',
+              borderBottom: tab === t ? '2px solid var(--color-primary)' : '2px solid transparent',
+            }}
           >
-            {t === 'mine' ? 'My Playbooks' : 'Public Marketplace'}
+            {t === 'mine' ? 'Mis Playbooks' : 'Marketplace Público'}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <p className="text-gray-400 text-sm">Loading...</p>
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Cargando...</p>
       ) : displayed.length === 0 ? (
-        <p className="text-gray-400 text-sm">No playbooks found.</p>
+        <div className="glass-card p-12 text-center">
+          <div className="text-4xl mb-4 animate-float">📚</div>
+          <p style={{ color: 'var(--color-text-muted)' }}>No hay playbooks aún.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayed.map((pb) => (
-            <div key={pb.id} className="border rounded-lg p-4 bg-white space-y-3">
+            <div key={pb.id} className="glass-card p-5 space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold">{pb.name}</h3>
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>{pb.name}</h3>
                   {pb.description && (
-                    <p className="text-sm text-gray-500 mt-1">{pb.description}</p>
+                    <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{pb.description}</p>
                   )}
                 </div>
                 <div className="flex gap-1">
                   {pb.isPublic && (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                      Public
-                    </span>
+                    <span className="chip" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', borderColor: 'rgba(16,185,129,0.2)' }}>Public</span>
                   )}
-                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                    Used {pb.usageCount}×
+                  <span className="chip" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)', borderColor: 'rgba(124,58,237,0.2)' }}>
+                    {pb.usageCount}× usado
                   </span>
                 </div>
               </div>
@@ -202,10 +182,10 @@ export default function PlaybooksPage() {
               {/* Format mix */}
               {pb.formatMix && pb.formatMix.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Format Mix</p>
+                  <p className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>Format Mix</p>
                   <div className="flex gap-1 flex-wrap">
                     {pb.formatMix.map((f, i) => (
-                      <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                      <span key={i} className="chip" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa', borderColor: 'rgba(59,130,246,0.2)' }}>
                         {f.format} {f.percentage}%
                       </span>
                     ))}
@@ -216,10 +196,10 @@ export default function PlaybooksPage() {
               {/* Rules */}
               {pb.rules && Object.keys(pb.rules).length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Rules</p>
+                  <p className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>Rules</p>
                   <div className="flex gap-1 flex-wrap">
                     {Object.entries(pb.rules).slice(0, 5).map(([k, v]) => (
-                      <span key={k} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                      <span key={k} className="chip" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)', borderColor: 'rgba(124,58,237,0.2)' }}>
                         {k}: {Array.isArray(v) ? v.join(', ') : String(v)}
                       </span>
                     ))}
@@ -230,10 +210,10 @@ export default function PlaybooksPage() {
               {/* CTAs */}
               {pb.preferredCTAs && pb.preferredCTAs.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">CTAs</p>
+                  <p className="text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>CTAs</p>
                   <div className="flex gap-1 flex-wrap">
                     {pb.preferredCTAs.map((c, i) => (
-                      <span key={i} className="text-xs bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">
+                      <span key={i} className="chip" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', borderColor: 'rgba(245,158,11,0.2)' }}>
                         {c}
                       </span>
                     ))}
@@ -242,24 +222,16 @@ export default function PlaybooksPage() {
               )}
 
               {/* Actions */}
-              <div className="flex gap-2 pt-2 border-t">
-                {tab === 'mine' && (
-                  <>
-                    <button
-                      onClick={() => togglePublic(pb)}
-                      className="text-xs px-3 py-1 border rounded hover:bg-gray-50"
-                    >
-                      {pb.isPublic ? 'Make Private' : 'Share'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(pb.id)}
-                      className="text-xs px-3 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
+              {tab === 'mine' && (
+                <div className="flex gap-2 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                  <button onClick={() => togglePublic(pb)} className="btn-ghost text-xs">
+                    {pb.isPublic ? '🔒 Hacer Privado' : '🌐 Compartir'}
+                  </button>
+                  <button onClick={() => handleDelete(pb.id)} className="btn-danger text-xs">
+                    Eliminar
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
