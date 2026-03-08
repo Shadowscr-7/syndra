@@ -66,6 +66,12 @@ export default function StrategistPage() {
   const [generating, setGenerating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  const toast = (type: 'ok' | 'err', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => setToastMsg(null), 4000);
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -109,7 +115,7 @@ export default function StrategistPage() {
       await fetch(`${API}/api/strategist/plan/${planId}/create-campaign`, {
         method: 'POST', credentials: 'include',
       });
-      alert('Campaña creada exitosamente');
+      toast('ok', '🎪 Campaña creada exitosamente');
     } catch (err) {
       console.error(err);
     } finally { setActionLoading(null); }
@@ -123,7 +129,7 @@ export default function StrategistPage() {
       });
       const json = await res.json();
       const count = json?.data?.runs?.length ?? 0;
-      alert(`${count} runs editoriales creados`);
+      toast('ok', `🚀 ${count} runs editoriales creados`);
     } catch (err) {
       console.error(err);
     } finally { setActionLoading(null); }
@@ -148,6 +154,17 @@ export default function StrategistPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white p-6 md:p-8 space-y-8">
+      {/* Toast */}
+      {toastMsg && (
+        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg border backdrop-blur-sm transition-all ${
+          toastMsg.type === 'ok' ? 'bg-green-500/20 text-green-400 border-green-500/30'
+          : 'bg-red-500/20 text-red-400 border-red-500/30'
+        }`}>
+          {toastMsg.text}
+          <button onClick={() => setToastMsg(null)} className="ml-3 opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

@@ -37,6 +37,12 @@ export default function TrendsPage() {
   const [detecting, setDetecting] = useState(false);
   const [activeTab, setActiveTab] = useState<TabStatus>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'ok' | 'err' | 'warn'; text: string } | null>(null);
+
+  const toast = (type: 'ok' | 'err' | 'warn', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => setToastMsg(null), 4000);
+  };
 
   const fetchTrends = useCallback(async () => {
     try {
@@ -66,7 +72,7 @@ export default function TrendsPage() {
       if (count > 0) {
         await fetchTrends();
       }
-      alert(count > 0 ? `🔍 ${count} nuevas tendencias detectadas` : '🔍 No se encontraron nuevas tendencias');
+      toast(count > 0 ? 'ok' : 'warn', count > 0 ? `🔍 ${count} nuevas tendencias detectadas` : '🔍 No se encontraron nuevas tendencias');
     } catch (err) {
       console.error(err);
     } finally {
@@ -91,7 +97,7 @@ export default function TrendsPage() {
       await fetch(`${API}/api/trends/${id}/create-run`, {
         method: 'POST', credentials: 'include',
       });
-      alert('✅ Run editorial creado desde la tendencia');
+      toast('ok', '✅ Run editorial creado desde la tendencia');
       await fetchTrends();
     } catch (err) { console.error(err); }
     finally { setActionLoading(null); }
@@ -105,9 +111,9 @@ export default function TrendsPage() {
       });
       const json = await res.json();
       if (json?.data) {
-        alert('✅ Tendencia agregada al plan estratégico activo');
+        toast('ok', '✅ Tendencia agregada al plan estratégico activo');
       } else {
-        alert('⚠️ No hay plan estratégico activo. Genera uno primero.');
+        toast('warn', '⚠️ No hay plan estratégico activo. Genera uno primero.');
       }
       await fetchTrends();
     } catch (err) { console.error(err); }
@@ -135,6 +141,18 @@ export default function TrendsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white p-6 md:p-8 space-y-8">
+      {/* Toast */}
+      {toastMsg && (
+        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg border backdrop-blur-sm animate-in slide-in-from-top-2 transition-all ${
+          toastMsg.type === 'ok' ? 'bg-green-500/20 text-green-400 border-green-500/30'
+          : toastMsg.type === 'warn' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+          : 'bg-red-500/20 text-red-400 border-red-500/30'
+        }`}>
+          {toastMsg.text}
+          <button onClick={() => setToastMsg(null)} className="ml-3 opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
