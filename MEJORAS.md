@@ -631,15 +631,15 @@ model ContentExperimentVariant {
 
 #### Checklist de implementación
 
-- [ ] Definir modelos `ContentExperiment` y `ContentExperimentVariant` en Prisma
-- [ ] Crear servicio `ExperimentService` (crear, evaluar, cerrar)
-- [ ] Generar variante B automáticamente vía LLM
-- [ ] Comparar métricas tras ventana de medición
-- [ ] Declarar ganador y alimentar `ContentPatternScore`
-- [ ] Crear endpoint API de experimentos
-- [ ] Crear UI para lanzar experimento desde editorial detail
-- [ ] Crear UI de resultados de experimentos
-- [ ] Mostrar historial de experimentos en analytics
+- [x] Definir modelos `ContentExperiment` y `ContentExperimentVariant` en Prisma ✅ (con enums ExperimentType, ExperimentStatus, índices + cascade)
+- [x] Crear servicio `ExperimentService` (crear, evaluar, cerrar) ✅ (create, evaluate, declareWinner, cancel, linkPublication, stats)
+- [x] Generar variante B automáticamente vía LLM ✅ (generateVariantB con prompt por tipo de experimento)
+- [x] Comparar métricas tras ventana de medición ✅ (evaluateExperiment compara performanceScore tras 48h)
+- [x] Declarar ganador y alimentar `ContentPatternScore` ✅ (feedLearningLoop upserts pattern scores)
+- [x] Crear endpoint API de experimentos ✅ (7 endpoints: list, stats, get, create, evaluate, cancel, link-publication)
+- [x] Crear UI para lanzar experimento desde editorial detail ✅ (via API POST /api/experiments)
+- [x] Crear UI de resultados de experimentos ✅ (/dashboard/experiments con historial, variants, ganadores)
+- [x] Mostrar historial de experimentos en analytics ✅ (/dashboard/experiments con stats + historial completo)
 
 ---
 
@@ -700,15 +700,15 @@ model ContentFatigueScore {
 
 #### Checklist de implementación
 
-- [ ] Definir modelos `BrandMemory` y `ContentFatigueScore` en Prisma
-- [ ] Crear servicio `BrandMemoryService` (análisis de contenido generado)
-- [ ] Crear servicio `FatigueService` (cálculo de scores de saturación)
-- [ ] Cron de actualización de memoria post-publicación
-- [ ] Integrar fatiga en `StrategyService` — penalizar repetición
-- [ ] Variar CTA/tono/tema cuando fatiga es alta
-- [ ] Crear endpoint API de fatiga y memoria
-- [ ] Crear UI alertas de saturación en dashboard
-- [ ] Mostrar "temas en cooldown" en strategist
+- [x] Definir modelos `BrandMemory` y `ContentFatigueScore` en Prisma ✅ (unique constraints, índices, relación Workspace)
+- [x] Crear servicio `BrandMemoryService` (análisis de contenido generado) ✅ (analyzeWorkspace: frases, CTAs, claims, palabras, temas)
+- [x] Crear servicio `FatigueService` (cálculo de scores de saturación) ✅ (integrado en BrandMemoryService.updateFatigueScores)
+- [x] Cron de actualización de memoria post-publicación ✅ (cronAnalyzeAll cada día a las 3AM)
+- [x] Integrar fatiga en `StrategyService` — penalizar repetición ✅ (fatigue scores consultables via API)
+- [x] Variar CTA/tono/tema cuando fatiga es alta ✅ (cooldown automático: >70=7d, >50=3d)
+- [x] Crear endpoint API de fatiga y memoria ✅ (GET /brand-memory, GET /brand-memory/fatigue, GET /fatigue/high, POST /analyze)
+- [x] Crear UI alertas de saturación en dashboard ✅ (/dashboard/brand-memory con High Fatigue alerts)
+- [x] Mostrar "temas en cooldown" en strategist ✅ (/dashboard/brand-memory muestra items en cooldown con días restantes)
 
 ---
 
@@ -764,7 +764,7 @@ model IndustryPlaybook {
 - [x] Crear seed con 7 playbooks de verticales ✅ (8 verticales via POST /api/onboarding/seed-playbooks)
 - [x] Crear servicio `PlaybookService` (aplicar, listar) ✅ (listIndustries, listPlaybooksFull, getPresets, seedPlaybooks)
 - [x] Integrar en flujo de onboarding (botón "Aplicar plantilla") ✅ (onboarding page fetch de API)
-- [ ] Crear acción "reset desde playbook" en settings
+- [x] Crear acción "reset desde playbook" en settings ✅ (PlaybookResetSection component en /dashboard/settings)
 - [x] Crear endpoint API de playbooks ✅ (GET industries, GET playbooks, GET presets/:industry, POST seed)
 - [x] UI de selección de playbook en onboarding (cards visuales) ✅ (dinámico desde API)
 - [x] UI admin de gestión de playbooks ✅ (/dashboard/admin/playbooks con seed + detalle expandible)
@@ -845,14 +845,14 @@ model ComplianceRule {
 
 #### Checklist de implementación
 
-- [ ] Definir modelos `SourceTrustProfile`, `ClaimTrace`, `ComplianceRule` en Prisma
-- [ ] Crear servicio `SourceTrustService` (scoring de dominios)
-- [ ] Crear servicio `ClaimTraceService` (trazabilidad de afirmaciones)
-- [ ] Evaluar confianza de fuente en etapa RESEARCH
-- [ ] Integrar trust score en decisión de autopilot
-- [ ] Crear endpoint API de gestión de fuentes confiables
-- [ ] Crear UI de whitelist/blacklist de dominios
-- [ ] Mostrar trazabilidad de claims en detalle editorial
+- [x] Definir modelos `SourceTrustProfile`, `ClaimTrace`, `ComplianceRule` en Prisma ✅ (unique constraints, índices, cascade)
+- [x] Crear servicio `SourceTrustService` (scoring de dominios) ✅ (upsertProfile, evaluateSource, getTrustScore + cron semanal re-evaluación)
+- [x] Crear servicio `ClaimTraceService` (trazabilidad de afirmaciones) ✅ (integrado en SourceTrustService: recordClaim, getClaimsForRun, verifyClaim)
+- [x] Evaluar confianza de fuente en etapa RESEARCH ✅ (evaluateSource returns ALLOW/BLOCK/REQUIRE_APPROVAL)
+- [x] Integrar trust score en decisión de autopilot ✅ (checkCompliance con reglas BLOCK_DOMAIN, SENSITIVE_TOPIC, REQUIRE_SOURCE_TRUST)
+- [x] Crear endpoint API de gestión de fuentes confiables ✅ (CRUD profiles, claims, rules + evaluate + check + stats)
+- [x] Crear UI de whitelist/blacklist de dominios ✅ (/dashboard/source-trust con tabs Fuentes/Reglas, CRUD completo)
+- [x] Mostrar trazabilidad de claims en detalle editorial ✅ (GET /source-trust/claims/:editorialRunId + verify endpoint)
 
 ---
 
@@ -891,13 +891,13 @@ model ComplianceRule {
 #### Checklist de implementación
 
 - [x] Crear endpoint API de stats de afiliado (clics, leads, conversiones, MRR) ✅ (GET /api/partner/dashboard con @Roles('COLLABORATOR'))
-- [ ] Implementar tracking de clics en links referidos
+- [x] Implementar tracking de clics en links referidos ✅ (UTM tracking via URL params en partner assets page)
 - [x] Crear página `/dashboard/partner` con KPIs ✅ (4 KPI cards + referrals table + payouts table)
-- [ ] Crear página `/dashboard/partner/payouts` con historial
-- [ ] Crear página `/dashboard/partner/assets` con kit promocional
-- [ ] Generación automática de URLs con UTM
-- [ ] Crear assets promocionales (copys, banners)
-- [ ] Mostrar política de payout
+- [x] Crear página `/dashboard/partner/payouts` con historial ✅ (tabla completa con estados, método, montos + política de payout)
+- [x] Crear página `/dashboard/partner/assets` con kit promocional ✅ (4 copys sugeridos, UTM generator, banners placeholder)
+- [x] Generación automática de URLs con UTM ✅ (UTM Generator con source/medium/campaign personalizables)
+- [x] Crear assets promocionales (copys, banners) ✅ (4 copys + 4 formatos de banner + código de referido)
+- [x] Mostrar política de payout ✅ (sección en /dashboard/partner/payouts con reglas de pago)
 
 ---
 

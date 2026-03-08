@@ -5,6 +5,7 @@ import { MetaConnect } from './meta-connect';
 import { CloudinaryConnect } from './cloudinary-connect';
 import { OperationModeSelector } from './operation-mode';
 import { LearningConfigSection } from './learning-config';
+import { PlaybookResetSection } from './playbook-reset';
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -220,6 +221,11 @@ export default async function SettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Playbook Reset ── */}
+      <div className="max-w-3xl animate-fade-in-delay-3">
+        <PlaybookResetSection currentIndustry={workspace?.industry ?? null} />
       </div>
 
       {/* ── Schedule ── */}

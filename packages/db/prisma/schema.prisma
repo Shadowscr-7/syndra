@@ -116,6 +116,11 @@ model Workspace {
   learningDecisions LearningDecisionLog[]
   strategyPlans   StrategyPlan[]
   trendSignals    TrendSignal[]
+  experiments     ContentExperiment[]
+  brandMemory     BrandMemory?
+  fatigueScores   ContentFatigueScore[]
+  sourceTrust     SourceTrustProfile[]
+  complianceRules ComplianceRule[]
 
   @@map("workspaces")
 }
@@ -314,6 +319,7 @@ model EditorialRun {
   publications      Publication[]
   jobQueueLogs      JobQueueLog[]
   learningDecisions LearningDecisionLog[]
+  claimTraces       ClaimTrace[]
 
   @@map("editorial_runs")
 }
@@ -1556,4 +1562,153 @@ enum TrendStatus {
   DISMISSED
   USED
   EXPIRED
+}
+
+// ============================================================
+// A/B TESTING (Feature #6)
+// ============================================================
+
+model ContentExperiment {
+  id               String           @id @default(cuid())
+  workspaceId      String           @map("workspace_id")
+  editorialRunId   String?          @map("editorial_run_id")
+  experimentType   ExperimentType   @map("experiment_type")
+  hypothesis       String?          @db.Text
+  status           ExperimentStatus @default(RUNNING)
+  winnerVariantId  String?          @map("winner_variant_id")
+  conclusion       String?          @db.Text
+  startedAt        DateTime         @default(now()) @map("started_at")
+  endedAt          DateTime?        @map("ended_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  workspace Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variants  ContentExperimentVariant[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, startedAt(sort: Desc)])
+  @@map("content_experiments")
+}
+
+model ContentExperimentVariant {
+  id               String   @id @default(cuid())
+  experimentId     String   @map("experiment_id")
+  label            String
+  variantConfig    Json     @map("variant_config")
+  publicationId    String?  @map("publication_id")
+  performanceScore Float?   @map("performance_score")
+  metrics          Json?
+  isWinner         Boolean  @default(false) @map("is_winner")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  experiment ContentExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId])
+  @@map("content_experiment_variants")
+}
+
+enum ExperimentType {
+  TONE
+  FORMAT
+  CTA
+  HOOK
+  HOUR
+  IMAGE_STYLE
+}
+
+enum ExperimentStatus {
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================================
+// BRAND MEMORY & CONTENT FATIGUE (Feature #7)
+// ============================================================
+
+model BrandMemory {
+  id                 String    @id @default(cuid())
+  workspaceId        String    @unique @map("workspace_id")
+  frequentPhrases    Json      @default("[]") @map("frequent_phrases")
+  usedClaims         Json      @default("[]") @map("used_claims")
+  usedCTAs           Json      @default("[]") @map("used_ctas")
+  overusedWords      Json      @default("[]") @map("overused_words")
+  exploitedThemes    Json      @default("[]") @map("exploited_themes")
+  lastAnalyzedAt     DateTime? @map("last_analyzed_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("brand_memories")
+}
+
+model ContentFatigueScore {
+  id                   String           @id @default(cuid())
+  workspaceId          String           @map("workspace_id")
+  dimensionType        PatternDimension @map("dimension_type")
+  dimensionValue       String           @map("dimension_value")
+  recentUsageCount     Int              @default(0) @map("recent_usage_count")
+  fatigueScore         Float            @default(0) @map("fatigue_score")
+  suggestedCooldownDays Int             @default(0) @map("suggested_cooldown_days")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, dimensionType, dimensionValue])
+  @@index([workspaceId, fatigueScore(sort: Desc)])
+  @@map("content_fatigue_scores")
+}
+
+// ============================================================
+// SOURCE TRUST & COMPLIANCE (Feature #9)
+// ============================================================
+
+model SourceTrustProfile {
+  id              String    @id @default(cuid())
+  workspaceId     String    @map("workspace_id")
+  domain          String
+  trustScore      Float     @default(50)  @map("trust_score")
+  isWhitelisted   Boolean   @default(false) @map("is_whitelisted")
+  isBlacklisted   Boolean   @default(false) @map("is_blacklisted")
+  totalArticles   Int       @default(0) @map("total_articles")
+  accuracyRate    Float?    @map("accuracy_rate")
+  lastEvaluatedAt DateTime? @map("last_evaluated_at")
+  notes           String?
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, domain])
+  @@index([workspaceId, trustScore(sort: Desc)])
+  @@map("source_trust_profiles")
+}
+
+model ClaimTrace {
+  id              String   @id @default(cuid())
+  editorialRunId  String   @map("editorial_run_id")
+  claim           String   @db.Text
+  sourceUrl       String?  @map("source_url")
+  sourceDomain    String?  @map("source_domain")
+  confidence      Float    @default(0)
+  isVerified      Boolean  @default(false) @map("is_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+
+  @@index([editorialRunId])
+  @@map("claim_traces")
+}
+
+model ComplianceRule {
+  id              String   @id @default(cuid())
+  workspaceId     String   @map("workspace_id")
+  ruleType        String   @map("rule_type")
+  condition       Json
+  action          String
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, isActive])
+  @@map("compliance_rules")
 }

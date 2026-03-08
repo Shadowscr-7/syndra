@@ -39,6 +39,9 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Analytics', href: '/dashboard/analytics', icon: '📈' },
       { name: 'Aprendizaje', href: '/dashboard/learning', icon: '🧠' },
+      { name: 'Experimentos', href: '/dashboard/experiments', icon: '🧪' },
+      { name: 'Memoria Marca', href: '/dashboard/brand-memory', icon: '🔁' },
+      { name: 'Trust Fuentes', href: '/dashboard/source-trust', icon: '🛡️' },
       { name: 'Fuentes RSS', href: '/dashboard/sources', icon: '📡' },
     ],
   },
@@ -54,6 +57,8 @@ const allSections: SidebarSection[] = [
     roles: ['COLLABORATOR'],
     items: [
       { name: 'Mi Panel', href: '/dashboard/partner', icon: '🤝' },
+      { name: 'Pagos', href: '/dashboard/partner/payouts', icon: '💳' },
+      { name: 'Assets', href: '/dashboard/partner/assets', icon: '🎨' },
     ],
   },
   {
