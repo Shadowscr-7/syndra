@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Param, Body, HttpCode, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, HttpCode, Query, UseGuards, Delete } from '@nestjs/common';
 import { EditorialOrchestratorService } from './editorial-orchestrator.service';
+import { EditorialCollaborationService } from './editorial-collaboration.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
@@ -7,6 +8,7 @@ import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 export class EditorialController {
   constructor(
     private readonly orchestrator: EditorialOrchestratorService,
+    private readonly collaboration: EditorialCollaborationService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -146,5 +148,71 @@ export class EditorialController {
     // Re-create and start
     const result = await this.orchestrator.restartRun(id, run.workspaceId);
     return { data: result };
+  }
+
+  // ── Collaboration: Comments ──────────────────────────
+
+  @Get('run/:id/comments')
+  async getComments(@Param('id') id: string) {
+    return this.collaboration.getComments(id);
+  }
+
+  @Post('run/:id/comments')
+  @HttpCode(201)
+  async addComment(@Param('id') id: string, @Body() body: { userId: string; content: string; parentId?: string }) {
+    return this.collaboration.addComment(id, body.userId, body.content, body.parentId);
+  }
+
+  @Delete('comments/:commentId')
+  async deleteComment(@Param('commentId') commentId: string, @Body() body: { userId: string }) {
+    return this.collaboration.deleteComment(commentId, body.userId);
+  }
+
+  // ── Collaboration: Assignments ────────────────────────
+
+  @Get('run/:id/assignments')
+  async getAssignments(@Param('id') id: string) {
+    return this.collaboration.getAssignments(id);
+  }
+
+  @Post('run/:id/assignments')
+  @HttpCode(201)
+  async assignUser(@Param('id') id: string, @Body() body: { userId: string; role: string }) {
+    return this.collaboration.assignUser(id, body.userId, body.role);
+  }
+
+  @Post('run/:id/assignments/:userId/status')
+  @HttpCode(200)
+  async updateAssignmentStatus(@Param('id') id: string, @Param('userId') userId: string, @Body() body: { status: string }) {
+    return this.collaboration.updateAssignmentStatus(id, userId, body.status);
+  }
+
+  @Delete('run/:id/assignments/:userId')
+  async removeAssignment(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.collaboration.removeAssignment(id, userId);
+  }
+
+  // ── Collaboration: Multi-step Approval ────────────────
+
+  @Get('run/:id/approval-chain')
+  async getApprovalChain(@Param('id') id: string) {
+    return this.collaboration.getApprovalChain(id);
+  }
+
+  @Post('run/:id/approval-chain')
+  @HttpCode(201)
+  async setupApprovalChain(@Param('id') id: string, @Body() body: { approverUserIds: string[] }) {
+    return this.collaboration.setupApprovalChain(id, body.approverUserIds);
+  }
+
+  @Post('run/:id/approval-chain/decide')
+  @HttpCode(200)
+  async decideApproval(@Param('id') id: string, @Body() body: { userId: string; decision: 'APPROVED' | 'REJECTED'; comment?: string }) {
+    return this.collaboration.decideApprovalStep(id, body.userId, body.decision, body.comment);
+  }
+
+  @Get('run/:id/collaboration')
+  async getCollaborationSummary(@Param('id') id: string) {
+    return this.collaboration.getCollaborationSummary(id);
   }
 }

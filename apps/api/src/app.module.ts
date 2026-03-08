@@ -40,6 +40,7 @@ import { TrendsModule } from './trends/trends.module';
 import { ExperimentsModule } from './experiments/experiments.module';
 import { BrandMemoryModule } from './brand-memory/brand-memory.module';
 import { SourceTrustModule } from './source-trust/source-trust.module';
+import { PlaybookModule } from './playbooks/playbook.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { SourceTrustModule } from './source-trust/source-trust.module';
     ExperimentsModule,
     BrandMemoryModule,
     SourceTrustModule,
+    PlaybookModule,
   ],
 })
 export class AppModule implements NestModule {

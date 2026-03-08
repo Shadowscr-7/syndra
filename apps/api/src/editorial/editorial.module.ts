@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { EditorialOrchestratorService } from './editorial-orchestrator.service';
 import { EditorialWorkerService } from './editorial-worker.service';
+import { EditorialCollaborationService } from './editorial-collaboration.service';
 import { SchedulerService } from './scheduler.service';
 import { EditorialController } from './editorial.controller';
 import { ResearchModule } from '../research/research.module';
@@ -16,8 +17,9 @@ import { PlansModule } from '../plans/plans.module';
   providers: [
     EditorialOrchestratorService,
     EditorialWorkerService,
+    EditorialCollaborationService,
     SchedulerService,
   ],
-  exports: [EditorialOrchestratorService],
+  exports: [EditorialOrchestratorService, EditorialCollaborationService],
 })
 export class EditorialModule {}

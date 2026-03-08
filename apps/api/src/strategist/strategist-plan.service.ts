@@ -316,6 +316,14 @@ export class StrategyPlanService {
       data: { status: 'ARCHIVED' },
     });
 
+    // Auto-increment version for same period
+    const lastPlan = await this.prisma.strategyPlan.findFirst({
+      where: { workspaceId, periodType },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    const nextVersion = (lastPlan?.version ?? 0) + 1;
+
     // Persist the plan
     const plan = await this.prisma.strategyPlan.create({
       data: {
@@ -323,6 +331,7 @@ export class StrategyPlanService {
         periodType,
         startDate,
         endDate,
+        version: nextVersion,
         objective: workspace.objectives[0] ?? 'engagement',
         summary: generated.summary,
         recommendedThemeMix: generated.themeMix as any,
@@ -677,5 +686,77 @@ export class StrategyPlanService {
 
     this.logger.log(`Generated ${runs.length} editorial runs from plan ${planId}`);
     return { runs, briefs };
+  }
+
+  // ── Strategy Versioning ───────────────────────────────
+
+  async getPlanHistory(workspaceId: string) {
+    return this.prisma.strategyPlan.findMany({
+      where: { workspaceId },
+      include: { recommendations: { orderBy: { priorityScore: 'desc' }, take: 3 } },
+      orderBy: [{ startDate: 'desc' }, { version: 'desc' }],
+    });
+  }
+
+  async comparePlanVersions(planIdA: string, planIdB: string) {
+    const [planA, planB] = await Promise.all([
+      this.prisma.strategyPlan.findUniqueOrThrow({
+        where: { id: planIdA },
+        include: { recommendations: true },
+      }),
+      this.prisma.strategyPlan.findUniqueOrThrow({
+        where: { id: planIdB },
+        include: { recommendations: true },
+      }),
+    ]);
+
+    const themeA = (planA.recommendedThemeMix as any[]) ?? [];
+    const themeB = (planB.recommendedThemeMix as any[]) ?? [];
+    const formatA = (planA.recommendedFormatMix as any[]) ?? [];
+    const formatB = (planB.recommendedFormatMix as any[]) ?? [];
+
+    return {
+      planA: { id: planA.id, version: planA.version, period: `${planA.startDate.toISOString().split('T')[0]} → ${planA.endDate.toISOString().split('T')[0]}`, status: planA.status, weeklyPostTarget: planA.weeklyPostTarget },
+      planB: { id: planB.id, version: planB.version, period: `${planB.startDate.toISOString().split('T')[0]} → ${planB.endDate.toISOString().split('T')[0]}`, status: planB.status, weeklyPostTarget: planB.weeklyPostTarget },
+      differences: {
+        postTarget: { a: planA.weeklyPostTarget, b: planB.weeklyPostTarget },
+        themesAdded: themeB.filter((t: any) => !themeA.some((a: any) => a.theme === t.theme)).map((t: any) => t.theme),
+        themesRemoved: themeA.filter((t: any) => !themeB.some((b: any) => b.theme === t.theme)).map((t: any) => t.theme),
+        formatsAdded: formatB.filter((f: any) => !formatA.some((a: any) => a.format === f.format)).map((f: any) => f.format),
+        formatsRemoved: formatA.filter((f: any) => !formatB.some((b: any) => b.format === f.format)).map((f: any) => f.format),
+        recsCountA: planA.recommendations.length,
+        recsCountB: planB.recommendations.length,
+      },
+      impactA: planA.impactMetrics,
+      impactB: planB.impactMetrics,
+    };
+  }
+
+  async measurePlanImpact(planId: string) {
+    const plan = await this.prisma.strategyPlan.findUniqueOrThrow({ where: { id: planId } });
+
+    const pubs = await this.prisma.publication.findMany({
+      where: {
+        status: 'PUBLISHED',
+        publishedAt: { gte: plan.startDate, lte: plan.endDate },
+        editorialRun: { workspaceId: plan.workspaceId },
+      },
+    });
+
+    const metrics = {
+      totalPublications: pubs.length,
+      avgEngagement: pubs.length > 0 ? pubs.reduce((s, p) => s + (p.engagementRate ?? 0), 0) / pubs.length : 0,
+      avgReach: pubs.length > 0 ? pubs.reduce((s, p) => s + (p.reach ?? 0), 0) / pubs.length : 0,
+      totalLikes: pubs.reduce((s, p) => s + (p.likes ?? 0), 0),
+      totalComments: pubs.reduce((s, p) => s + (p.comments ?? 0), 0),
+      calculatedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.strategyPlan.update({
+      where: { id: planId },
+      data: { impactMetrics: metrics as any },
+    });
+
+    return metrics;
   }
 }

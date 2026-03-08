@@ -9,6 +9,8 @@ import { QueueModule } from '../queue/queue.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { VideoService } from './video.service';
 import { VideoWorkerService } from './video-worker.service';
+import { VideoTierRouterService } from './video-tier-router.service';
+import { VideoCreditService } from './video-credit.service';
 import { VideoController } from './video.controller';
 
 @Module({
@@ -18,8 +20,8 @@ import { VideoController } from './video.controller';
     QueueModule,
     forwardRef(() => TelegramModule),
   ],
-  providers: [VideoService, VideoWorkerService],
+  providers: [VideoService, VideoWorkerService, VideoTierRouterService, VideoCreditService],
   controllers: [VideoController],
-  exports: [VideoService],
+  exports: [VideoService, VideoTierRouterService, VideoCreditService],
 })
 export class VideoModule {}

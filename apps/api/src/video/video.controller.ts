@@ -4,12 +4,18 @@
 
 import { Controller, Get, Post, Param, Query, Body, Logger } from '@nestjs/common';
 import { VideoService } from './video.service';
+import { VideoTierRouterService } from './video-tier-router.service';
+import { VideoCreditService } from './video-credit.service';
 
 @Controller('api/videos')
 export class VideoController {
   private readonly logger = new Logger(VideoController.name);
 
-  constructor(private readonly videoService: VideoService) {}
+  constructor(
+    private readonly videoService: VideoService,
+    private readonly tierRouter: VideoTierRouterService,
+    private readonly credits: VideoCreditService,
+  ) {}
 
   /**
    * GET /api/videos — Lista video assets de un workspace
@@ -110,5 +116,70 @@ export class VideoController {
     @Query('mode') mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion',
   ) {
     return this.videoService.exportScriptAsPost(editorialRunId, mode);
+  }
+
+  // ── Tier Router endpoints (#21) ────────────────────────
+
+  @Get('providers')
+  async getProviders() {
+    return this.tierRouter.getAvailableProviders();
+  }
+
+  @Post('render')
+  async createRenderJob(
+    @Body() body: {
+      workspaceId: string;
+      editorialRunId?: string;
+      tier?: string;
+      provider?: string;
+      inputType?: string;
+      script?: string;
+      duration?: number;
+      aspectRatio?: string;
+    },
+  ) {
+    // Consume credits first
+    const tier = (body.tier ?? 'MVP') as any;
+    await this.credits.consumeCredits(body.workspaceId, tier);
+
+    return this.tierRouter.createRenderJob({
+      workspaceId: body.workspaceId,
+      editorialRunId: body.editorialRunId,
+      tier,
+      provider: body.provider as any,
+      inputType: body.inputType ?? 'SCRIPT',
+      inputPayload: { script: body.script, duration: body.duration },
+      options: { aspectRatio: body.aspectRatio ?? '9:16' },
+    });
+  }
+
+  @Get('render/:jobId')
+  async pollRender(@Param('jobId') jobId: string) {
+    return this.tierRouter.pollRenderJob(jobId);
+  }
+
+  @Get('render')
+  async listRenderJobs(
+    @Query('workspaceId') workspaceId = 'default',
+    @Query('limit') limit?: string,
+  ) {
+    return this.credits.getRenderJobs(workspaceId, limit ? Number(limit) : undefined);
+  }
+
+  // ── Credit endpoints ───────────────────────────────────
+
+  @Get('credits')
+  async getCredits(@Query('workspaceId') workspaceId = 'default') {
+    return this.credits.getCurrentCredits(workspaceId);
+  }
+
+  @Get('credits/history')
+  async getCreditHistory(@Query('workspaceId') workspaceId = 'default') {
+    return this.credits.getCreditHistory(workspaceId);
+  }
+
+  @Post('credits/add')
+  async addCredits(@Body() body: { workspaceId: string; amount: number }) {
+    return this.credits.addCredits(body.workspaceId, body.amount);
   }
 }

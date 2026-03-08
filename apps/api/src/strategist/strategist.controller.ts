@@ -98,4 +98,31 @@ export class StrategistController {
     const rec = await this.planService.computeFrequencyRecommendation(workspaceId);
     return { data: rec };
   }
+
+  /**
+   * GET /strategist/history — Full plan history with versions
+   */
+  @Get('history')
+  async getPlanHistory(@CurrentWorkspace() workspaceId: string) {
+    const history = await this.planService.getPlanHistory(workspaceId);
+    return { data: history };
+  }
+
+  /**
+   * GET /strategist/compare — Compare two plan versions
+   */
+  @Get('compare')
+  async comparePlans(@Query('planA') planA: string, @Query('planB') planB: string) {
+    const comparison = await this.planService.comparePlanVersions(planA, planB);
+    return { data: comparison };
+  }
+
+  /**
+   * POST /strategist/plan/:id/measure-impact — Measure plan impact metrics
+   */
+  @Post('plan/:id/measure-impact')
+  async measureImpact(@Param('id') id: string) {
+    const metrics = await this.planService.measurePlanImpact(id);
+    return { data: metrics };
+  }
 }

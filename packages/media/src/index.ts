@@ -91,6 +91,10 @@ export {
 // --- Adapters (Video) ---
 export { HeyGenVideoAdapter, type HeyGenConfig } from './adapters/heygen';
 export { MockVideoAdapter } from './adapters/mock-video';
+export { PikaVideoAdapter, type PikaConfig } from './adapters/pika-video';
+export { LumaVideoAdapter, type LumaConfig } from './adapters/luma-video';
+export { LocalGPUVideoAdapter, type LocalGPUConfig } from './adapters/local-gpu-video';
+export { CompositeVideoAdapter, type CompositeVideoConfig } from './adapters/composite-video';
 export {
   ElevenLabsVoiceAdapter,
   MockVoiceAdapter,

@@ -49,6 +49,9 @@ model User {
   publishSchedules      PublishSchedule[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
+  editorialComments       EditorialComment[]
+  editorialAssignments    EditorialAssignment[]
+  approvalSteps           ApprovalStep[]
 
   @@map("users")
 }
@@ -122,6 +125,9 @@ model Workspace {
   sourceTrust     SourceTrustProfile[]
   complianceRules ComplianceRule[]
   onboardingProgress OnboardingProgress?
+  contentPlaybooks ContentPlaybook[]
+  videoRenderJobs  VideoRenderJob[]
+  videoCredits     VideoCredit[]
 
   @@map("workspaces")
 }
@@ -323,6 +329,10 @@ model EditorialRun {
   jobQueueLogs      JobQueueLog[]
   learningDecisions LearningDecisionLog[]
   claimTraces       ClaimTrace[]
+  editorialComments EditorialComment[]
+  editorialAssignments EditorialAssignment[]
+  approvalSteps     ApprovalStep[]
+  videoRenderJobs   VideoRenderJob[]
 
   @@map("editorial_runs")
 }
@@ -1467,6 +1477,7 @@ model StrategyPlan {
   periodType                PlanPeriod
   startDate                 DateTime           @map("start_date")
   endDate                   DateTime           @map("end_date")
+  version                   Int                @default(1)
   objective                 String?
   summary                   String?            @db.Text
   recommendedThemeMix       Json?              @map("recommended_theme_mix")
@@ -1478,6 +1489,7 @@ model StrategyPlan {
   weeklyPostTarget          Int                @default(5) @map("weekly_post_target")
   status                    StrategyPlanStatus @default(DRAFT)
   createdBy                 String             @default("SYSTEM") @map("created_by")
+  impactMetrics             Json?              @map("impact_metrics") // post-plan performance
   createdAt                 DateTime           @default(now()) @map("created_at")
   updatedAt                 DateTime           @updatedAt @map("updated_at")
 
@@ -1758,4 +1770,169 @@ model OnboardingProgress {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("onboarding_progress")
+}
+
+// ============================================================
+// EDITORIAL COLLABORATION — Comentarios, asignaciones, aprobación multi-step
+// ============================================================
+
+model EditorialComment {
+  id              String   @id @default(cuid())
+  editorialRunId  String   @map("editorial_run_id")
+  userId          String   @map("user_id")
+  content         String   @db.Text
+  parentId        String?  @map("parent_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun      @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent       EditorialComment? @relation("CommentThread", fields: [parentId], references: [id])
+  replies      EditorialComment[] @relation("CommentThread")
+
+  @@index([editorialRunId])
+  @@map("editorial_comments")
+}
+
+model EditorialAssignment {
+  id              String   @id @default(cuid())
+  editorialRunId  String   @map("editorial_run_id")
+  assignedUserId  String   @map("assigned_user_id")
+  role            String   @default("REVIEWER") // REVIEWER, EDITOR, APPROVER
+  status          String   @default("PENDING")  // PENDING, ACCEPTED, COMPLETED
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+  assignedUser User         @relation(fields: [assignedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([editorialRunId, assignedUserId])
+  @@map("editorial_assignments")
+}
+
+model ApprovalStep {
+  id              String    @id @default(cuid())
+  editorialRunId  String    @map("editorial_run_id")
+  stepOrder       Int       @map("step_order")
+  approverUserId  String    @map("approver_user_id")
+  status          String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  comment         String?
+  decidedAt       DateTime? @map("decided_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  editorialRun EditorialRun @relation(fields: [editorialRunId], references: [id], onDelete: Cascade)
+  approver     User         @relation(fields: [approverUserId], references: [id], onDelete: Cascade)
+
+  @@unique([editorialRunId, stepOrder])
+  @@map("approval_steps")
+}
+
+// ============================================================
+// CONTENT PLAYBOOK — Fórmulas reutilizables de contenido
+// ============================================================
+
+model ContentPlaybook {
+  id              String   @id @default(cuid())
+  workspaceId     String   @map("workspace_id")
+  name            String
+  description     String?  @db.Text
+  rules           Json     @default("{}") // reglas de contenido
+  formatMix       Json     @default("[]") // proporción de formatos
+  basePrompts     Json?    @map("base_prompts")
+  scheduleConfig  Json?    @map("schedule_config")
+  preferredCTAs   Json?    @map("preferred_ctas")
+  visualStyles    Json?    @map("visual_styles")
+  sourceTypes     Json?    @map("source_types")
+  isPublic        Boolean  @default(false) @map("is_public")
+  usageCount      Int      @default(0) @map("usage_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("content_playbooks")
+}
+
+// ============================================================
+// VIDEO RENDER — Multi-tier video generation pipeline
+// ============================================================
+
+model VideoRenderJob {
+  id              String         @id @default(cuid())
+  workspaceId     String         @map("workspace_id")
+  editorialRunId  String?        @map("editorial_run_id")
+  provider        VideoProvider
+  tier            VideoTier
+  inputType       VideoInputType @map("input_type")
+  inputPayload    Json           @map("input_payload")
+  outputUrl       String?        @map("output_url")
+  thumbnailUrl    String?        @map("thumbnail_url")
+  durationSeconds Int?           @map("duration_seconds")
+  aspectRatio     String         @default("9:16") @map("aspect_ratio")
+  status          VideoJobStatus @default(QUEUED)
+  externalJobId   String?        @map("external_job_id")
+  errorMessage    String?        @map("error_message")
+  retryCount      Int            @default(0) @map("retry_count")
+  creditsUsed     Int            @default(1) @map("credits_used")
+  startedAt       DateTime?      @map("started_at")
+  completedAt     DateTime?      @map("completed_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editorialRun EditorialRun? @relation(fields: [editorialRunId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([status])
+  @@map("video_render_jobs")
+}
+
+model VideoCredit {
+  id              String   @id @default(cuid())
+  workspaceId     String   @map("workspace_id")
+  totalCredits    Int      @default(0) @map("total_credits")
+  usedCredits     Int      @default(0) @map("used_credits")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  source          String   @default("PLAN") // PLAN, ADDON, PROMO
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, periodEnd])
+  @@map("video_credits")
+}
+
+enum VideoProvider {
+  HEYGEN
+  PIKA
+  LUMA
+  SVD_LOCAL
+  WAN_LOCAL
+  HUNYUAN_LOCAL
+  EDGE_TTS_COMPOSE
+  MOCK
+}
+
+enum VideoTier {
+  MVP       // Pika/Luma API
+  SELFHOST  // GPU propia + open source
+  PREMIUM   // HeyGen + ElevenLabs
+}
+
+enum VideoInputType {
+  IMAGE_TO_VIDEO
+  TEXT_TO_VIDEO
+  SCRIPT_WITH_VOICE
+  AVATAR_TALKING
+  CAROUSEL_ANIMATION
+}
+
+enum VideoJobStatus {
+  QUEUED
+  RENDERING
+  COMPOSING
+  UPLOADING
+  COMPLETED
+  FAILED
+  CANCELLED
 }

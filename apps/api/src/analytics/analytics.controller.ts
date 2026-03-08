@@ -5,6 +5,7 @@
 import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { ScoringService } from './scoring.service';
+import { BenchmarkService } from './benchmark.service';
 import { PlanLimitsGuard, RequireFeature } from '../plans/plan-limits.guard';
 
 @Controller('api/analytics')
@@ -14,6 +15,7 @@ export class AnalyticsController {
   constructor(
     private readonly analytics: AnalyticsService,
     private readonly scoring: ScoringService,
+    private readonly benchmark: BenchmarkService,
   ) {}
 
   // ── Overview ──────────────────────────────────────────
@@ -106,5 +108,52 @@ export class AnalyticsController {
   @Get('weekly-summary')
   async weeklySummary(@Query('workspaceId') workspaceId = 'default') {
     return this.analytics.getWeeklySummary(workspaceId);
+  }
+
+  // ── Benchmarking ──────────────────────────────────────
+
+  @Get('benchmark/platforms')
+  async benchmarkPlatforms(@Query('workspaceId') workspaceId = 'default') {
+    return this.benchmark.compareByPlatform(workspaceId);
+  }
+
+  @Get('benchmark/formats')
+  async benchmarkFormats(@Query('workspaceId') workspaceId = 'default') {
+    return this.benchmark.compareByFormat(workspaceId);
+  }
+
+  @Get('benchmark/campaigns')
+  async benchmarkCampaigns(@Query('workspaceId') workspaceId = 'default') {
+    return this.benchmark.compareByCampaign(workspaceId);
+  }
+
+  @Get('benchmark/recommendations')
+  async benchmarkRecommendations(@Query('workspaceId') workspaceId = 'default') {
+    return this.benchmark.getRecommendations(workspaceId);
+  }
+
+  // ── Advanced Scoring (#20) ────────────────────────────
+
+  @Get('advanced-score')
+  async advancedScore(
+    @Query('workspaceId') workspaceId: string,
+    @Query('themeId') themeId?: string,
+    @Query('format') format?: string,
+    @Query('tone') tone?: string,
+    @Query('channel') channel?: string,
+    @Query('hour') hour?: string,
+    @Query('day') day?: string,
+    @Query('industry') industry?: string,
+  ) {
+    return this.scoring.advancedScore({
+      workspaceId: workspaceId || 'default',
+      themeId,
+      format,
+      tone,
+      channel,
+      publishHour: hour ? Number(hour) : undefined,
+      publishDayOfWeek: day ? Number(day) : undefined,
+      industry,
+    });
   }
 }
