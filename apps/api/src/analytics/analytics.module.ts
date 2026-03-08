@@ -6,13 +6,14 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { PlansModule } from '../plans/plans.module';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsCronService } from './analytics-cron.service';
 import { ScoringService } from './scoring.service';
 import { AnalyticsController } from './analytics.controller';
 
 @Module({
-  imports: [PrismaModule, TelegramModule],
+  imports: [PrismaModule, TelegramModule, PlansModule],
   providers: [AnalyticsService, AnalyticsCronService, ScoringService],
   controllers: [AnalyticsController],
   exports: [AnalyticsService, ScoringService],

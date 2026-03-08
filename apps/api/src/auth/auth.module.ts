@@ -1,11 +1,13 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { RolesGuard } from './roles.guard';
+import { PlanThrottleGuard } from './plan-throttle.guard';
 import { TenantMiddleware } from './tenant.middleware';
 
 @Module({
@@ -33,11 +35,19 @@ import { TenantMiddleware } from './tenant.middleware';
   providers: [
     AuthService,
     TenantMiddleware,
+    PlanThrottleGuard,
     // Global guards — order matters: Auth → Throttle → Roles
     { provide: APP_GUARD, useClass: AuthGuard },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: PlanThrottleGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [AuthService, TenantMiddleware],
 })
-export class AuthModule {}
+export class AuthModule implements OnModuleInit {
+  constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit() {
+    // Wire PrismaService to PlanThrottleGuard static ref
+    PlanThrottleGuard.prismaRef = this.prisma;
+  }
+}

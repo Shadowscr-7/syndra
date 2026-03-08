@@ -43,14 +43,71 @@ export class EditorialOrchestratorService {
     origin?: string;
     priority?: number;
     targetChannels?: string[];
+    contentProfileId?: string;
+    userPersonaId?: string;
   }): Promise<{ editorialRunId: string }> {
+    // If campaign provided, inherit settings from it
+    let resolvedChannels = params.targetChannels ?? ['instagram'];
+    let resolvedProfileId = params.contentProfileId ?? null;
+    let resolvedPersonaId = params.userPersonaId ?? null;
+
+    if (params.campaignId) {
+      const campaign = await this.prisma.campaign.findUnique({
+        where: { id: params.campaignId },
+        select: {
+          targetChannels: true,
+          contentProfileId: true,
+          userPersonaId: true,
+        },
+      });
+      if (campaign) {
+        if (campaign.targetChannels?.length) {
+          resolvedChannels = campaign.targetChannels;
+        }
+        if (campaign.contentProfileId && !resolvedProfileId) {
+          resolvedProfileId = campaign.contentProfileId;
+        }
+        if (campaign.userPersonaId && !resolvedPersonaId) {
+          resolvedPersonaId = campaign.userPersonaId;
+        }
+      }
+    }
+
+    // Fallback: default profile + active persona from workspace
+    if (!resolvedProfileId || !resolvedPersonaId) {
+      const wsUsers = await this.prisma.workspaceUser.findMany({
+        where: { workspaceId: params.workspaceId },
+        select: { userId: true },
+        take: 1,
+      });
+      const userId = wsUsers[0]?.userId;
+      if (userId) {
+        if (!resolvedProfileId) {
+          const defaultProfile = await this.prisma.contentProfile.findFirst({
+            where: { userId, isDefault: true },
+            select: { id: true },
+          });
+          resolvedProfileId = defaultProfile?.id ?? null;
+        }
+        if (!resolvedPersonaId) {
+          const activePersona = await this.prisma.userPersona.findFirst({
+            where: { userId, isActive: true },
+            select: { id: true },
+          });
+          resolvedPersonaId = activePersona?.id ?? null;
+        }
+      }
+    }
+
     const run = await this.prisma.editorialRun.create({
       data: {
         workspaceId: params.workspaceId,
         campaignId: params.campaignId ?? null,
         origin: params.origin ?? 'scheduler',
         priority: params.priority ?? 5,
-        targetChannels: params.targetChannels ?? ['instagram'],
+        targetChannels: resolvedChannels,
+        contentProfileId: resolvedProfileId,
+        userPersonaId: resolvedPersonaId,
         status: 'PENDING',
       },
     });
@@ -140,6 +197,11 @@ export class EditorialOrchestratorService {
   private async processInlineDev(editorialRunId: string, workspaceId: string) {
     const stages = ['research', 'strategy', 'content', 'media', 'review'];
     for (const stage of stages) {
+      // Drain devQueue before each stage to prevent the worker (pollEditorialQueue)
+      // from picking up jobs that processStage enqueues as a side-effect.
+      if (this.queueService.devQueue) {
+        this.queueService.devQueue = [];
+      }
       try {
         this.logger.log(`[DEV] inline stage: ${stage} for run ${editorialRunId}`);
         const result = await this.processStage(editorialRunId, stage, workspaceId);
@@ -314,9 +376,12 @@ export class EditorialOrchestratorService {
     });
 
     const channels = (run.targetChannels ?? ['instagram']) as string[];
+    // Filter to valid Publication platforms only (discord is cross-post, not a platform)
+    const validPlatforms = ['instagram', 'facebook', 'threads'];
+    const publishableChannels = channels.filter((ch) => validPlatforms.includes(ch.toLowerCase()));
 
-    for (const channel of channels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK';
+    for (const channel of publishableChannels) {
+      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
 
       // Idempotencia: verificar que no exista publicación exitosa
       const existing = await this.prisma.publication.findFirst({

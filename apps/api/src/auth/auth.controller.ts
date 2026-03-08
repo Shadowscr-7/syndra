@@ -1,5 +1,5 @@
 // ============================================================
-// Auth Controller — Register, Login, Refresh, Logout, Profile
+// Auth Controller — Register, Login, Refresh, Logout, Profile, Plans
 // ============================================================
 
 import {
@@ -9,6 +9,7 @@ import {
   Body,
   Req,
   Res,
+  Query,
   HttpCode,
   HttpStatus,
   Logger,
@@ -35,6 +36,14 @@ export class AuthController {
 
   constructor(private readonly authService: AuthService) {}
 
+  // ── Plans (public) ────────────────────────────────────
+
+  @Public()
+  @Get('plans')
+  async getPlans() {
+    return this.authService.getPlans();
+  }
+
   // ── Register ──────────────────────────────────────────
 
   @Public()
@@ -51,11 +60,16 @@ export class AuthController {
       return { error: 'La contraseña debe tener al menos 8 caracteres' };
     }
 
+    if (!body.planId) {
+      return { error: 'Debes seleccionar un plan' };
+    }
+
     const result = await this.authService.register(body);
     this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
 
     return {
       user: result.user,
+      subscription: result.subscription,
       accessToken: result.tokens.accessToken,
       expiresIn: result.tokens.expiresIn,
     };
@@ -143,6 +157,72 @@ export class AuthController {
       return { error: 'Not authenticated' };
     }
     return this.authService.getProfile(user.sub);
+  }
+
+  // ── Email Verification ────────────────────────────────
+
+  @Public()
+  @Get('verify-email')
+  async verifyEmail(
+    @Query('token') token: string,
+    @Res() res: Response,
+  ) {
+    if (!token) {
+      const appUrl = process.env.APP_URL || 'http://localhost:3002';
+      return res.redirect(`${appUrl}/login?error=token_missing`);
+    }
+
+    try {
+      await this.authService.verifyEmail(token);
+      const appUrl = process.env.APP_URL || 'http://localhost:3002';
+      return res.redirect(`${appUrl}/login?verified=true`);
+    } catch (error: any) {
+      this.logger.warn(`Email verification failed: ${error.message}`);
+      const appUrl = process.env.APP_URL || 'http://localhost:3002';
+      return res.redirect(`${appUrl}/login?error=verification_failed`);
+    }
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Req() req: Request) {
+    const user = (req as any).user;
+    if (!user?.sub) {
+      return { error: 'No autenticado' };
+    }
+    await this.authService.sendVerificationEmail(user.sub);
+    return { ok: true, message: 'Email de verificación enviado' };
+  }
+
+  // ── Password Reset ────────────────────────────────────
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() body: { email: string }) {
+    if (!body.email) {
+      return { error: 'Email requerido' };
+    }
+    // Always returns success to prevent email enumeration
+    await this.authService.requestPasswordReset(body.email);
+    return {
+      ok: true,
+      message: 'Si el email existe, recibirás un enlace para restablecer tu contraseña',
+    };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() body: { token: string; password: string }) {
+    if (!body.token || !body.password) {
+      return { error: 'Token y nueva contraseña son requeridos' };
+    }
+    if (body.password.length < 8) {
+      return { error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+    await this.authService.resetPassword(body.token, body.password);
+    return { ok: true, message: 'Contraseña actualizada correctamente' };
   }
 
   // ── Helpers ───────────────────────────────────────────

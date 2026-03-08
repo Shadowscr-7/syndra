@@ -6,39 +6,44 @@
 
 ## Resumen de Fases
 
-| Fase | Nombre | Dependencias | Estimación |
-|------|--------|-------------|------------|
-| 1 | Auth, Registro y Roles | — | Fundación |
-| 2 | Planes y Facturación | Fase 1 | Monetización |
-| 3 | Programa de Afiliados | Fase 1 + 2 | Crecimiento |
-| 4 | Panel de Administración | Fase 1 | Operaciones |
-| 5 | Configuración Personal (Keys, Redes, Storage) | Fase 1 | Core UX |
-| 6 | Perfiles de Contenido y AI Persona | Fase 1 + 5 | Personalización |
-| 7 | Repositorio de Imágenes y Scheduler | Fase 1 + 5 | Automatización |
-| 8 | Telegram Multi-usuario (QR Pairing) | Fase 1 + 5 | Notificaciones |
+| Fase | Nombre | Dependencias | Estado |
+|------|--------|-------------|--------|
+| 1 | Auth, Registro y Roles | — | ✅ Completado |
+| 2 | Planes y Facturación | Fase 1 | ✅ Completado (PayPal) |
+| 3 | Programa de Afiliados | Fase 1 + 2 | ✅ Completado |
+| 4 | Panel de Administración | Fase 1 | ✅ Completado |
+| 5 | Configuración Personal (Keys, Redes, Storage) | Fase 1 | ✅ Completado |
+| 6 | Perfiles de Contenido y AI Persona | Fase 1 + 5 | ✅ Completado |
+| 7 | Repositorio de Imágenes y Scheduler | Fase 1 + 5 | ✅ Completado |
+| 8 | Telegram Multi-usuario (QR Pairing) | Fase 1 + 5 | ✅ Completado |
 
 ---
 
 ## Fase 1 — Auth, Registro y Roles
 
 > **Prioridad**: CRÍTICA — Todo depende de esto.
+> **Estado**: ✅ COMPLETADO (7 marzo 2026)
 
-### 1.1 Registro de usuarios
+### 1.1 Registro de usuarios ✅
 
-- Formulario de registro: nombre, email, contraseña
-- Validación de email (envío de verificación)
-- Hash de contraseña con bcrypt/argon2
-- Al registrarse eligen uno de los 3 planes (Starter, Creator, Pro)
-- Campo opcional de **código de referido** en el formulario de registro
+- ✅ Formulario de registro: nombre, email, contraseña
+- ✅ Validación de email (envío de verificación con token + endpoint GET /auth/verify-email)
+- ✅ Reenvío de verificación (POST /auth/resend-verification)
+- ✅ Flujo de recuperación de contraseña (forgot-password + reset-password con token temporal)
+- ✅ Páginas frontend: /forgot-password, /reset-password, mensajes en /login
+- ✅ Hash de contraseña con bcrypt (12 rounds)
+- ✅ Al registrarse eligen uno de los 3 planes (Starter, Creator, Pro) — registro en 2 pasos
+- ✅ Campo opcional de **código de referido** en el formulario de registro (20% descuento)
 
-### 1.2 Login y sesión
+### 1.2 Login y sesión ✅
 
-- Login con email + contraseña
-- JWT con access token (15 min) + refresh token (7 días)
-- Middleware de autenticación en todas las rutas protegidas
-- Logout con invalidación de refresh token
+- ✅ Login con email + contraseña
+- ✅ JWT con access token (15 min) + refresh token (7 días)
+- ✅ Middleware de autenticación en todas las rutas protegidas
+- ✅ Logout con invalidación de refresh token
+- ✅ Refresh token rotation con detección de reuso
 
-### 1.3 Roles de usuario
+### 1.3 Roles de usuario ✅
 
 | Rol | Descripción | Quién lo asigna |
 |-----|-------------|-----------------|
@@ -46,7 +51,7 @@
 | `COLLABORATOR` | Afiliado/influencer que promueve Syndra. Tiene cupón auto-generado, ve su panel de comisiones | El ADMIN lo da de alta |
 | `USER` | Usuario final que crea contenido con Syndra | Auto-registro |
 
-### 1.4 Modelo de datos
+### 1.4 Modelo de datos ✅
 
 ```
 User {
@@ -61,22 +66,45 @@ User {
   isBlocked: boolean
   emailVerified: boolean
   referredByCode?: string  // código del afiliado que lo refirió
+  referralCode?: string    // código propio del usuario para compartir
   createdAt
   updatedAt
 }
 ```
 
-### 1.5 Migración desde estado actual
+### 1.5 Migración desde estado actual ✅
 
-- El usuario actual (`usr_migrate_001` / `admin@syndra.dev`) se convierte en ADMIN
-- Los workspaces existentes se asocian al usuario admin
-- Se mantiene compatibilidad con el flujo actual durante la migración
+- ✅ El usuario actual (`usr_migrate_001` / `admin@syndra.dev`) se convierte en ADMIN
+- ✅ Los workspaces existentes se asocian al usuario admin
+- ✅ Se mantiene compatibilidad con el flujo actual durante la migración
+
+### 1.6 Panel de Administración de Usuarios ✅
+
+- ✅ Lista de usuarios con búsqueda y filtros (card-based)
+- ✅ Página de detalle de usuario con toda su info
+- ✅ Bloquear / Desbloquear usuarios
+- ✅ Cambiar roles
+- ✅ Generar código de referido desde el detalle
+- ✅ Crear nuevos colaboradores con código auto-generado
+- ✅ Eliminar usuarios
+
+### 1.7 Panel de Comisiones de Colaboradores ✅
+
+- ✅ Modelo de datos: `AffiliateReferral` y `CommissionPayout`
+- ✅ Dashboard con estadísticas globales de comisiones
+- ✅ Lista detallada de colaboradores con métricas (referidos, comisiones pendientes/pagadas)
+- ✅ Detalle por colaborador: todos sus referidos con estado y montos
+- ✅ Flujo de comisiones: PENDING → APPROVED → PAID
+- ✅ Generación de facturas/payouts agrupados por colaborador
+- ✅ Historial de pagos con batch tracking
+- ✅ Cálculo automático de comisiones al registrar un usuario con código de referido
 
 ---
 
 ## Fase 2 — Planes y Facturación
 
 > **Prioridad**: ALTA — Sin esto no hay monetización.
+> **Estado**: ✅ COMPLETADO (9 marzo 2026) — Integración completa con PayPal.
 
 ### 2.1 Definición de planes
 
@@ -129,21 +157,30 @@ Subscription {
 }
 ```
 
-### 2.3 Enforcement de límites
+### 2.3 Enforcement de límites ✅
 
-- Middleware que valida en cada acción:
-  - `canCreatePost(userId)` → verifica posts del mes vs límite del plan
-  - `canConnectSocial(userId)` → verifica cuentas conectadas vs límite
-  - `canUseFeature(userId, feature)` → verifica si el plan incluye la feature
-- Respuestas 403 con mensaje claro: "Tu plan Starter permite 30 posts/mes. Upgrade a Creator para más."
-- En el frontend: features bloqueadas muestran overlay con CTA de upgrade
+- ✅ `PlanLimitsGuard` con decoradores `@PlanCheck(metric)` y `@RequireFeature(feature)`
+- ✅ Metrics: PUBLICATIONS, VIDEOS, RESEARCH_SOURCES, CHANNELS, EDITORS
+- ✅ Features: analytics, aiScoring, prioritySupport, customBranding, personas, scheduleSlots
+- ✅ Aplicado a: editorial (PUBLICATIONS), credenciales (CHANNELS), analytics (feature gate), schedules (feature gate)
+- ✅ Respuestas 403 con `{error: 'PLAN_LIMIT_REACHED'|'FEATURE_NOT_AVAILABLE', upgrade: true}`
+- ✅ Frontend: `usePlanLimits()` hook detecta 403 y muestra `UpgradeOverlay` con planes PRO/ENTERPRISE
+- ✅ `PlanThrottleGuard`: Rate limiting por plan (FREE 30/min, PRO 120/min, ENTERPRISE 300/min)
+- ✅ Rate limiting por hora: FREE 500/hr, PRO 3000/hr, ENTERPRISE 10000/hr
 
-### 2.4 Integración de pagos (Stripe)
+### 2.4 Integración de pagos (PayPal) ✅
 
-- Stripe Checkout para suscripciones
-- Webhooks de Stripe: `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`
-- Portal de cliente de Stripe para gestionar tarjeta y cancelar
-- Aplicación de cupones de descuento en checkout
+- ✅ `PaypalService`: Integración completa con PayPal REST API (OAuth2 token management)
+- ✅ `PaypalController`: GET /status, POST /subscribe, POST /cancel, GET /checkout-status, POST /webhook
+- ✅ Creación de suscripciones PayPal con redirect a checkout
+- ✅ Cancelación de suscripciones vía API
+- ✅ Webhooks PayPal: BILLING.SUBSCRIPTION.ACTIVATED, CANCELLED, SUSPENDED, EXPIRED, UPDATED + PAYMENT.SALE.COMPLETED
+- ✅ Auto-downgrade a FREE al expirar suscripción
+- ✅ Procesamiento de comisiones de afiliados en activación
+- ✅ Email de confirmación de suscripción (via Resend)
+- ✅ Config: PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PAYPAL_PLAN_PRO/ENTERPRISE_MONTHLY/YEARLY
+- ✅ Sandbox en dev, Live en producción
+- ✅ Frontend: proxy routes /api/paypal/status, /subscribe, /cancel
 
 ### 2.5 Descuentos
 
@@ -159,6 +196,7 @@ Ejemplo: Pro anual + cupón = $79 × 12 = $948 → -20% anual = $758.40 → -20%
 ## Fase 3 — Programa de Afiliados
 
 > **Prioridad**: ALTA — Motor de adquisición de usuarios.
+> **Estado**: ✅ COMPLETADO — Integrado en Fase 1.7 (comisiones, referral tracking, payouts).
 
 ### 3.1 Alta de colaboradores
 
@@ -232,6 +270,7 @@ AffiliateReferral {
 ## Fase 4 — Panel de Administración
 
 > **Prioridad**: ALTA — Necesario para operar la plataforma.
+> **Estado**: ✅ COMPLETADO — Dashboard métricas globales, gestión de usuarios, colaboradores, comisiones y auditoría.
 
 ### 4.1 Dashboard admin
 
@@ -242,18 +281,18 @@ AffiliateReferral {
   - Posts generados (total plataforma)
   - Tasa de conversión trial → pago
 
-### 4.2 Gestión de usuarios
+### 4.2 Gestión de usuarios ✅
 
-- Lista paginada con búsqueda y filtros:
+- ✅ Lista paginada con búsqueda y filtros:
   - Por rol (admin, collaborator, user)
   - Por plan
   - Por estado (activo, bloqueado, expirado)
   - Por fecha de registro
-- Acciones por usuario:
-  - **Bloquear / Desbloquear**: toggle `isBlocked`, usuario pierde acceso inmediato
-  - **Generar link de reset de contraseña**: genera un token temporal (24h) y URL que se puede enviar al usuario
-  - **Cambiar plan manualmente** (override)
-  - **Ver actividad**: últimos runs, publicaciones, login
+- ✅ Acciones por usuario:
+  - ✅ **Bloquear / Desbloquear**: toggle `isBlocked`, usuario pierde acceso inmediato
+  - ✅ **Generar link de reset de contraseña**: POST /admin/users/:id/reset-password-link (token 24h)
+  - ✅ **Cambiar plan manualmente**: POST /admin/users/:id/change-plan (override via PlansService)
+  - ✅ **Ver actividad**: GET /admin/users/:id/activity (recentRuns, recentPublications, recentLogins, contentVersions)
 
 ### 4.3 Gestión de colaboradores
 
@@ -269,7 +308,7 @@ AffiliateReferral {
 
 ---
 
-## Fase 5 — Configuración Personal (Keys, Redes, Storage)
+## Fase 5 — Configuración Personal (Keys, Redes, Storage) ✅ COMPLETADO
 
 > **Prioridad**: ALTA — Cada usuario tiene su propia configuración.
 
@@ -421,10 +460,23 @@ VisualStyleProfile {
 ## Fase 7 — Repositorio de Imágenes y Scheduler
 
 > **Prioridad**: MEDIA — Features de valor agregado.
+> **Estado**: ✅ COMPLETADO (8 marzo 2026)
 
 ### 7.1 Repositorio de imágenes
 
 Cada usuario puede subir y organizar imágenes propias:
+
+- ✅ Modelos Prisma: `UserMedia`, `MediaFolder` con relaciones completas
+- ✅ Enum `MediaCategory`: LOGO, PRODUCT, BACKGROUND, PERSONAL, OTHER
+- ✅ `UserMediaService`: CRUD completo, paginación, filtros por carpeta/categoría/tag
+- ✅ `UserMediaController`: 5 endpoints (list, storage, getById, upload, update, delete)
+- ✅ `MediaFoldersService`: CRUD con subcarpetas (parentId)
+- ✅ `MediaFoldersController`: 4 endpoints (list, create, update, delete)
+- ✅ Enforcement de límites de almacenamiento por plan (maxStorageMb)
+- ✅ Página frontend `/dashboard/media` con:
+  - Grid de archivos con thumbnails, navegación por carpetas (breadcrumb)
+  - Filtros por categoría, creación de carpetas, barra de almacenamiento
+- ✅ Proxy routes Next.js: user-media (3), media-folders (2)
 
 ```
 UserMedia {
@@ -463,6 +515,20 @@ MediaFolder {
 ### 7.2 Scheduler
 
 El usuario define sus horarios de publicación:
+
+- ✅ Modelos Prisma: `PublishSchedule`, `ScheduleSlot` con enum `DayOfWeek`
+- ✅ `SchedulesService`: CRUD completo, addSlot, updateSlot, removeSlot, toggleActive
+- ✅ `SchedulesController`: 8 endpoints (list, getById, create, update, delete, addSlot, updateSlot, removeSlot, toggle)
+- ✅ Enforcement de límites de slots por plan (maxScheduleSlots)
+- ✅ Plan fields: FREE(0 slots), PRO(7 slots), ENTERPRISE(ilimitado)
+- ✅ Página frontend `/dashboard/scheduler` con:
+  - Vista semanal con slots por día, crear/editar horarios
+  - Selector de timezone, activar/desactivar horarios
+- ✅ Proxy routes Next.js: schedules (5)
+- ✅ Sidebar actualizado: "Media" (📂) y "Scheduler" (📅) en sección Contenido
+- ✅ **Cron de publicación automática**: `@Cron('*/15 * * * *')` revisa ScheduleSlots activos, dispara editorial runs automáticos
+- ✅ **Upload real de archivos**: Multer diskStorage + FileUploadService (validación MIME, límite 50MB, enforcement de storage por plan)
+- ✅ **Servicio estático**: `/uploads` prefix para archivos subidos
 
 ```
 PublishSchedule {
@@ -505,23 +571,23 @@ ScheduleSlot {
 ## Fase 8 — Telegram Multi-usuario (QR Pairing)
 
 > **Prioridad**: MEDIA — Mejora operativa para aprobaciones.
+> **Estado**: ✅ COMPLETADO (8 marzo 2026)
 
 ### 8.1 Concepto
 
-- Syndra usa **un solo bot** (`@Syndra_bot`) para todos los usuarios
-- Cada usuario vincula su Telegram al bot escaneando un QR o usando un deep link
-- El bot sabe a quién enviar cada preview basándose en el `chatId` vinculado
+- ✅ Syndra usa **un solo bot** (`@Syndra_bot`) para todos los usuarios
+- ✅ Cada usuario vincula su Telegram al bot escaneando un QR o usando un deep link
+- ✅ El bot sabe a quién enviar cada preview basándose en el `chatId` vinculado
 
-### 8.2 Flujo de vinculación
+### 8.2 Flujo de vinculación ✅
 
-1. Usuario va a Configuración → Telegram
-2. Se genera un **token temporal** (6 caracteres, 5 min de vida)
-3. Se muestra:
-   - QR code con link: `https://t.me/Syndra_bot?start=LINK_abc123`
-   - O texto: "Envía `/start LINK_abc123` al bot @Syndra_bot"
-4. El bot recibe el `/start` con el token
-5. Backend asocia el `chatId` del mensaje de Telegram con el `userId`
-6. Confirmación en ambos lados (web + Telegram)
+1. ✅ Usuario va a Configuración → Telegram
+2. ✅ Se genera un **token temporal** (6 caracteres, 5 min de vida)
+3. ✅ Se muestra QR generado localmente con `qrcode` npm (sin API externa)
+4. ✅ QR link: `https://t.me/Syndra_bot?start=LINK_abc123`
+5. ✅ El bot recibe el `/start` con el token (polling + webhook mode)
+6. ✅ Backend asocia el `chatId` del mensaje de Telegram con el `userId`
+7. ✅ Confirmación en ambos lados (web + Telegram)
 
 ### 8.3 Modelo de datos
 
@@ -545,11 +611,14 @@ TelegramLinkToken {
 }
 ```
 
-### 8.4 Routing de mensajes
+### 8.4 Routing de mensajes ✅
 
-- Cada preview se envía al `chatId` del usuario dueño del editorial run
-- El polling/webhook del bot recibe callbacks y los routea al usuario correcto
-- Admin puede recibir notificaciones de todos los usuarios (configurable)
+- ✅ `TelegramBotService`: Todos los métodos públicos aceptan `chatId` opcional con fallback a env
+- ✅ `TelegramApprovalHandler`: `resolveOwnerChatId(editorialRunId)` que busca WorkspaceUser(OWNER) → TelegramLink
+- ✅ Cada preview se envía al `chatId` del usuario dueño del editorial run
+- ✅ `PublisherService`: `resolveOwnerChatId(workspaceId)` para notificaciones de publicación y errores
+- ✅ `TelegramController`: Manejo de pairing tanto en polling como webhook mode
+- ✅ ConversationState incluye `chatId` para mantener contexto por usuario
 
 ---
 
@@ -577,14 +646,14 @@ Fase 1: Auth, Registro y Roles ────────────────�
 ```
 
 ### Ruta crítica (MVP de venta):
-1. **Fase 1** → Auth y roles
-2. **Fase 2** → Planes con Stripe
-3. **Fase 5** → Config personal (keys y redes por usuario)
-4. **Fase 4** → Admin panel
-5. **Fase 3** → Afiliados
-6. **Fase 6** → Personalización
-7. **Fase 7** → Scheduler + imágenes
-8. **Fase 8** → Telegram multi-usuario
+1. **Fase 1** → Auth y roles ✅
+2. **Fase 2** → Planes con PayPal ✅
+3. **Fase 5** → Config personal (keys y redes por usuario) ✅
+4. **Fase 4** → Admin panel ✅
+5. **Fase 3** → Afiliados ✅
+6. **Fase 6** → Personalización ✅
+7. **Fase 7** → Scheduler + imágenes ✅
+8. **Fase 8** → Telegram multi-usuario ✅
 
 ---
 
@@ -593,7 +662,7 @@ Fase 1: Auth, Registro y Roles ────────────────�
 | Componente | Tecnología |
 |-----------|-----------|
 | Auth | JWT + bcrypt + refresh tokens (NestJS Guards) |
-| Payments | Stripe Checkout + Billing Portal + Webhooks |
+| Payments | PayPal REST API + Subscriptions + Webhooks |
 | Encriptación de keys | AES-256-GCM (node:crypto) |
 | QR codes | `qrcode` npm package |
 | File upload | Multer + Cloudinary/S3 |
@@ -604,5 +673,6 @@ Fase 1: Auth, Registro y Roles ────────────────�
 ---
 
 *Documento generado: 7 de marzo de 2026*
+*Última actualización: 9 de marzo de 2026 — Todas las fases completadas*
 *Branch: `dev`*
-*Siguiente paso: confirmar prioridades y arrancar Fase 1*
+*Estado: ✅ TODAS LAS FASES COMPLETADAS — PayPal integrado (reemplaza Stripe), email verification, password reset, plan enforcement, rate limiting, file upload, scheduler cron, admin improvements, frontend upgrade overlay*

@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Param, Body, HttpCode, Query } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, HttpCode, Query, UseGuards } from '@nestjs/common';
 import { EditorialOrchestratorService } from './editorial-orchestrator.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('editorial')
 export class EditorialController {
@@ -15,12 +16,15 @@ export class EditorialController {
    */
   @Post('run')
   @HttpCode(201)
+  @UseGuards(PlanLimitsGuard)
+  @PlanCheck('PUBLICATIONS')
   async createRun(
     @Body()
     body: {
       workspaceId: string;
       campaignId?: string;
       origin?: string;
+      priority?: number;
       targetChannels?: string[];
     },
   ) {
@@ -39,7 +43,12 @@ export class EditorialController {
       include: {
         campaign: { select: { name: true, objective: true } },
         contentBrief: {
-          select: { angle: true, format: true, tone: true },
+          select: {
+            angle: true,
+            format: true,
+            tone: true,
+            theme: { select: { name: true } },
+          },
         },
         _count: {
           select: {

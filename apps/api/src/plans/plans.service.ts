@@ -21,6 +21,10 @@ const DEFAULT_PLANS = [
     aiScoringEnabled: true,
     prioritySupport: false,
     customBranding: false,
+    maxPersonas: 0,
+    maxContentProfiles: 1,
+    maxStorageMb: 100,
+    maxScheduleSlots: 0,
   },
   {
     name: 'PRO',
@@ -36,13 +40,17 @@ const DEFAULT_PLANS = [
     aiScoringEnabled: true,
     prioritySupport: false,
     customBranding: true,
+    maxPersonas: 1,
+    maxContentProfiles: 3,
+    maxStorageMb: 1024,
+    maxScheduleSlots: 7,
   },
   {
     name: 'ENTERPRISE',
     displayName: 'Empresa',
     monthlyPrice: 99,
     yearlyPrice: 990,
-    maxPublications: -1, // unlimited
+    maxPublications: -1,
     maxVideos: -1,
     maxSources: -1,
     maxChannels: -1,
@@ -51,6 +59,10 @@ const DEFAULT_PLANS = [
     aiScoringEnabled: true,
     prioritySupport: true,
     customBranding: true,
+    maxPersonas: -1,
+    maxContentProfiles: -1,
+    maxStorageMb: 10240,
+    maxScheduleSlots: -1,
   },
 ];
 

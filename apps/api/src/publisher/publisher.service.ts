@@ -10,6 +10,7 @@ import { TelegramBotService } from '../telegram/telegram-bot.service';
 import {
   InstagramPublisher,
   FacebookPublisher,
+  ThreadsPublisher,
   DiscordPublisher,
   MockPublisher,
   buildCaption,
@@ -35,6 +36,26 @@ export class PublisherService {
     this.useMock = false; // Will check DB credentials at runtime
   }
 
+  /**
+   * Resolve the Telegram chatId for the workspace owner via TelegramLink.
+   * Returns undefined if no link exists (falls back to env TELEGRAM_CHAT_ID).
+   */
+  private async resolveOwnerChatId(workspaceId: string): Promise<string | undefined> {
+    try {
+      const ownerMembership = await this.prisma.workspaceUser.findFirst({
+        where: { workspaceId, role: 'OWNER' },
+        select: { userId: true },
+      });
+      if (!ownerMembership) return undefined;
+      const link = await this.prisma.telegramLink.findUnique({
+        where: { userId: ownerMembership.userId },
+      });
+      return link?.chatId ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   // ============================================================
   // Public API
   // ============================================================
@@ -46,13 +67,15 @@ export class PublisherService {
   private async getAdaptersForWorkspace(workspaceId: string): Promise<{
     ig: PublisherAdapter | null;
     fb: PublisherAdapter | null;
+    threads: PublisherAdapter | null;
     discord: PublisherAdapter | null;
   }> {
     let ig: PublisherAdapter | null = null;
     let fb: PublisherAdapter | null = null;
+    let threads: PublisherAdapter | null = null;
     let discord: PublisherAdapter | null = null;
 
-    // --- Meta (Instagram + Facebook) ---
+    // --- Meta (Instagram + Facebook + Threads) ---
     const metaCred = await this.prisma.apiCredential.findUnique({
       where: {
         workspaceId_provider: { workspaceId, provider: 'META' },
@@ -72,6 +95,17 @@ export class PublisherService {
         this.logger.log(`Using OAuth credentials for workspace ${workspaceId} (page: ${payload.fbPageName})`);
         ig = creds.instagramAccountId ? new InstagramPublisher(creds) : null;
         fb = creds.facebookPageId ? new FacebookPublisher(creds) : null;
+
+        // Threads uses user-level token (not page token) with the Threads user ID
+        const threadsUserId = payload.threadsUserId || payload.igUserId;
+        const threadsToken = payload.userToken || payload.accessToken; // Threads API needs user token
+        if (threadsUserId) {
+          threads = new ThreadsPublisher({
+            accessToken: threadsToken,
+            threadsUserId,
+          });
+          this.logger.log(`Threads adapter configured for workspace ${workspaceId} (user: ${threadsUserId})`);
+        }
       } catch (err) {
         this.logger.error('Failed to parse DB credentials:', err);
       }
@@ -119,7 +153,7 @@ export class PublisherService {
       }
     }
 
-    return { ig, fb, discord };
+    return { ig, fb, threads, discord };
   }
 
   /**
@@ -149,7 +183,7 @@ export class PublisherService {
     const publicationIds: string[] = [];
 
     for (const channel of channels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK';
+      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
 
       // Idempotencia: verificar que no exista ya una publicación exitosa
       const existing = await this.prisma.publication.findFirst({
@@ -256,7 +290,7 @@ export class PublisherService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const platform = publication.platform.toLowerCase() as 'instagram' | 'facebook';
+    const platform = publication.platform.toLowerCase() as 'instagram' | 'facebook' | 'threads';
 
     // Get workspace ID for credential lookup
     const workspaceId = publication.editorialRun?.workspaceId;
@@ -267,7 +301,11 @@ export class PublisherService {
     }
 
     const adapters = await this.getAdaptersForWorkspace(workspaceId);
-    const adapter = platform === 'instagram' ? adapters.ig : adapters.fb;
+    const adapter = platform === 'instagram'
+      ? adapters.ig
+      : platform === 'threads'
+        ? adapters.threads
+        : adapters.fb;
 
     if (!adapter) {
       const error = `No adapter available for ${platform}`;
@@ -338,16 +376,23 @@ export class PublisherService {
         data: { status: 'PUBLISHED' },
       });
 
-      // Notificar por Telegram
+      // Notificar por Telegram (resolver chatId del owner del workspace)
+      const ownerChatId = await this.resolveOwnerChatId(workspaceId);
+      const platformLabel = platform === 'instagram' ? '📷 Instagram'
+        : platform === 'threads' ? '🧵 Threads'
+        : '📘 Facebook';
       await this.telegram.sendPublishConfirmation(
-        platform === 'instagram' ? '📷 Instagram' : '📘 Facebook',
+        platformLabel,
         result.permalink ?? `Post ID: ${result.externalPostId}`,
+        ownerChatId,
       );
 
       // Cross-post to Discord (fire-and-forget)
       try {
         if (adapters.discord) {
-          const discordCaption = `${platform === 'instagram' ? '📷' : '📘'} Nuevo post en ${platform === 'instagram' ? 'Instagram' : 'Facebook'}!\n\n${caption}${result.permalink ? `\n\n🔗 ${result.permalink}` : ''}`;
+          const platformEmoji = platform === 'instagram' ? '📷' : platform === 'threads' ? '🧵' : '📘';
+          const platformName = platform === 'instagram' ? 'Instagram' : platform === 'threads' ? 'Threads' : 'Facebook';
+          const discordCaption = `${platformEmoji} Nuevo post en ${platformName}!\n\n${caption}${result.permalink ? `\n\n🔗 ${result.permalink}` : ''}`;
           if (imageUrls.length > 1) {
             await adapters.discord.publishCarousel({ imageUrls, caption: discordCaption, hashtags });
           } else if (imageUrls.length === 1) {
@@ -406,7 +451,7 @@ export class PublisherService {
     const results: PublishResult[] = [];
 
     for (const channel of channels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK';
+      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
 
       // Idempotencia: verificar que no exista ya una publicación exitosa
       const existing = await this.prisma.publication.findFirst({
@@ -505,6 +550,7 @@ export class PublisherService {
   ): Promise<void> {
     const publication = await this.prisma.publication.findUniqueOrThrow({
       where: { id: publicationId },
+      include: { editorialRun: { select: { workspaceId: true } } },
     });
 
     const newRetryCount = publication.retryCount + 1;
@@ -538,10 +584,13 @@ export class PublisherService {
       // Max retries reached
       await this.markFailed(publicationId, result.error ?? 'Max retries exceeded');
 
-      // Alert via Telegram
+      // Alert via Telegram (resolve owner chatId)
+      const wsId = publication.editorialRun?.workspaceId;
+      const chatId = wsId ? await this.resolveOwnerChatId(wsId) : undefined;
       await this.telegram.sendError(
         'publish',
         `Publicación fallida tras ${MAX_RETRIES} intentos.\n\nPlataforma: ${result.platform}\nError: ${result.error}\nID: ${publicationId}`,
+        chatId,
       );
     }
   }

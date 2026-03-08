@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { CredentialsService } from '../credentials/credentials.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -40,21 +41,52 @@ interface ResearchSummary {
 @Injectable()
 export class ResearchService {
   private readonly logger = new Logger(ResearchService.name);
-  private llm: LLMAdapter;
+  private fallbackLlm: LLMAdapter;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly credentialsService: CredentialsService,
   ) {
-    // Selecciona adapter según configuración
+    // Env-var fallback adapter (used when no DB credentials are configured)
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
 
     if (provider === 'anthropic') {
-      this.llm = new AnthropicAdapter({ apiKey });
+      this.fallbackLlm = new AnthropicAdapter({ apiKey });
     } else {
-      this.llm = new OpenAIAdapter({ apiKey });
+      this.fallbackLlm = new OpenAIAdapter({ apiKey });
     }
+  }
+
+  /**
+   * Resolve workspace owner userId for credential lookups
+   */
+  private async resolveUserId(workspaceId: string): Promise<string | null> {
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
+      select: { userId: true },
+    });
+    return wsUser?.userId ?? null;
+  }
+
+  /**
+   * Build LLM adapter: DB credentials first, env-var fallback
+   */
+  private async getLlm(workspaceId: string): Promise<LLMAdapter> {
+    const userId = await this.resolveUserId(workspaceId);
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      if (payload?.apiKey) {
+        const provider = payload.provider ?? 'openai';
+        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        return provider === 'anthropic'
+          ? new AnthropicAdapter({ apiKey: payload.apiKey })
+          : new OpenAIAdapter({ apiKey: payload.apiKey });
+      }
+    }
+    this.logger.debug('Using env-var fallback LLM adapter');
+    return this.fallbackLlm;
   }
 
   /**
@@ -71,6 +103,35 @@ export class ResearchService {
     topArticles: ExtractedArticle[];
   }> {
     this.logger.log(`Starting research for run ${editorialRunId}`);
+
+    // 0. Load campaign context (if any) for scoped research
+    const run = await this.prisma.editorialRun.findUniqueOrThrow({
+      where: { id: editorialRunId },
+      include: { campaign: true },
+    });
+
+    let campaignContext:
+      | { campaignName: string; objective: string; themeNames: string[]; themeKeywords: string[] }
+      | undefined;
+
+    if (run.campaignId) {
+      const campaignThemes = await this.prisma.campaignTheme.findMany({
+        where: { campaignId: run.campaignId },
+        include: { theme: true },
+      });
+      const activeThemes = campaignThemes.map((ct) => ct.theme).filter((t) => t.isActive);
+      if (activeThemes.length > 0) {
+        campaignContext = {
+          campaignName: run.campaign?.name ?? '',
+          objective: run.campaign?.objective ?? 'AUTHORITY',
+          themeNames: activeThemes.map((t) => t.name),
+          themeKeywords: activeThemes.flatMap((t) => t.keywords),
+        };
+        this.logger.log(
+          `Campaign "${campaignContext.campaignName}" → themes: [${campaignContext.themeNames.join(', ')}], keywords: [${campaignContext.themeKeywords.join(', ')}]`,
+        );
+      }
+    }
 
     // 1. Obtener fuentes activas del workspace
     const sources = await this.prisma.researchSource.findMany({
@@ -112,6 +173,9 @@ export class ResearchService {
       return { snapshotCount: 0, summary: 'No articles fetched', topArticles: [] };
     }
 
+    // Resolve LLM adapter for this workspace
+    const llm = await this.getLlm(workspaceId);
+
     // 3. Filtrar artículos recientes (últimas 48 horas)
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const recentItems = allItems.filter((item) => {
@@ -123,7 +187,7 @@ export class ResearchService {
     // Limitar a 20 artículos más recientes para no exceder contexto del LLM
     const itemsToAnalyze = recentItems.slice(0, 20);
 
-    // 4. Extraer puntos clave con LLM
+    // 4. Extraer puntos clave con LLM (campaign-aware cuando hay campaña activa)
     const extractionPrompt = buildResearchExtractionPrompt(
       itemsToAnalyze.map((i) => ({
         title: i.title,
@@ -131,11 +195,12 @@ export class ResearchService {
         source: i.source,
         url: i.link,
       })),
+      campaignContext,
     );
 
     let extracted: ExtractedArticle[] = [];
     try {
-      const response = await this.llm.complete(extractionPrompt, {
+      const response = await llm.complete(extractionPrompt, {
         temperature: 0.3,
         maxTokens: 4096,
       });
@@ -182,9 +247,16 @@ export class ResearchService {
       where: { workspaceId },
     });
 
-    const themes = await this.prisma.contentTheme.findMany({
-      where: { workspaceId, isActive: true },
-    });
+    // Use campaign-specific keywords when available, otherwise all workspace themes
+    let summaryKeywords: string[];
+    if (campaignContext) {
+      summaryKeywords = campaignContext.themeKeywords;
+    } else {
+      const themes = await this.prisma.contentTheme.findMany({
+        where: { workspaceId, isActive: true },
+      });
+      summaryKeywords = themes.flatMap((t) => t.keywords);
+    }
 
     const summaryPrompt = buildResearchSummaryPrompt(
       relevant.slice(0, 10).map((a) => ({
@@ -195,13 +267,15 @@ export class ResearchService {
       {
         voice: brandProfile?.voice ?? '',
         tone: brandProfile?.tone ?? 'didáctico',
-        keywords: themes.flatMap((t) => t.keywords),
+        keywords: summaryKeywords,
       },
+      undefined, // persona — not loaded here
+      campaignContext,
     );
 
     let summaryText = '';
     try {
-      const summaryResponse = await this.llm.complete(summaryPrompt, {
+      const summaryResponse = await llm.complete(summaryPrompt, {
         temperature: 0.5,
         maxTokens: 2048,
       });

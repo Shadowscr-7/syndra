@@ -21,6 +21,7 @@ interface ConversationState {
   contentVersionId: string;
   action: string;
   messageId: number;
+  chatId: string;
   expiresAt: number;
 }
 
@@ -44,6 +45,30 @@ export class TelegramApprovalHandler {
     @Inject(forwardRef(() => VideoService))
     private readonly videoService: VideoService,
   ) {}
+
+  /**
+   * Resuelve el chatId del owner del workspace asociado al editorial run.
+   * Busca en TelegramLink; si no hay, retorna undefined (usará el default env).
+   */
+  private async resolveOwnerChatId(editorialRunId: string): Promise<string | undefined> {
+    try {
+      const run = await this.prisma.editorialRun.findUniqueOrThrow({
+        where: { id: editorialRunId },
+        select: { workspaceId: true },
+      });
+      const ownerMembership = await this.prisma.workspaceUser.findFirst({
+        where: { workspaceId: run.workspaceId, role: 'OWNER' },
+        select: { userId: true },
+      });
+      if (!ownerMembership) return undefined;
+      const link = await this.prisma.telegramLink.findUnique({
+        where: { userId: ownerMembership.userId },
+      });
+      return link?.chatId ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   /**
    * Punto de entrada: envía la preview de un editorial run a Telegram
@@ -72,10 +97,14 @@ export class TelegramApprovalHandler {
       return;
     }
 
+    // Resolver el chatId del owner del workspace
+    const ownerChatId = await this.resolveOwnerChatId(editorialRunId);
+
     const telegramMsgId = await this.sendPreviewWithMedia(
       editorialRunId,
       version,
       run,
+      ownerChatId,
     );
 
     // Registrar el evento de envío
@@ -84,7 +113,7 @@ export class TelegramApprovalHandler {
         editorialRunId,
         action: 'APPROVED', // placeholder: será actualizado cuando el usuario responda
         telegramMsgId,
-        telegramChatId: String(telegramMsgId),
+        telegramChatId: ownerChatId ?? String(telegramMsgId),
         versionNumber: version.version,
       },
     });
@@ -97,7 +126,7 @@ export class TelegramApprovalHandler {
    */
   async handleCallbackQuery(query: TelegramCallbackQuery): Promise<void> {
     const callbackData = query.data ?? '';
-    const chatId = query.message?.chat.id ?? 0;
+    const chatId = String(query.message?.chat.id ?? 0);
     const messageId = query.message?.message_id ?? 0;
     const userId = query.from.id;
 
@@ -161,17 +190,17 @@ export class TelegramApprovalHandler {
       data: {
         editorialRunId,
         action: action.toUpperCase() as any,
-        telegramChatId: String(chatId),
+        telegramChatId: chatId,
         telegramMsgId: String(messageId),
         approvedBy: query.from.username ?? query.from.first_name,
         versionNumber: currentVersion.version,
       },
     });
 
-    // Procesar la acción
+    // Procesar la acción — pasar chatId para enrutar respuestas al chat correcto
     switch (action) {
       case 'approved':
-        await this.handleApproval(editorialRunId, messageId);
+        await this.handleApproval(editorialRunId, messageId, chatId);
         break;
 
       case 'correct_text':
@@ -180,6 +209,7 @@ export class TelegramApprovalHandler {
           currentVersion.id,
           messageId,
           userId,
+          chatId,
         );
         break;
 
@@ -189,6 +219,7 @@ export class TelegramApprovalHandler {
           currentVersion.id,
           messageId,
           userId,
+          chatId,
         );
         break;
 
@@ -197,19 +228,20 @@ export class TelegramApprovalHandler {
           editorialRunId,
           currentVersion.id,
           messageId,
+          chatId,
         );
         break;
 
       case 'convert_to_video':
-        await this.handleConvertToVideo(editorialRunId, messageId);
+        await this.handleConvertToVideo(editorialRunId, messageId, chatId);
         break;
 
       case 'postpone':
-        await this.handlePostpone(editorialRunId, messageId);
+        await this.handlePostpone(editorialRunId, messageId, chatId);
         break;
 
       case 'rejected':
-        await this.handleRejection(editorialRunId, messageId);
+        await this.handleRejection(editorialRunId, messageId, chatId);
         break;
     }
   }
@@ -227,11 +259,13 @@ export class TelegramApprovalHandler {
       return;
     }
 
+    const chatId = state.chatId;
+
     if (state.action === 'correct_text') {
       const feedback = message.text ?? '';
       if (!feedback) return;
 
-      await this.bot.sendNotification('⏳ Aplicando corrección...');
+      await this.bot.sendNotification('⏳ Aplicando corrección...', chatId);
 
       try {
         const run = await this.prisma.editorialRun.findUniqueOrThrow({
@@ -252,7 +286,7 @@ export class TelegramApprovalHandler {
         );
       } catch (error) {
         this.logger.error('Correction failed:', error);
-        await this.bot.sendError('correction', String(error));
+        await this.bot.sendError('correction', String(error), chatId);
       }
 
       this.conversationStates.delete(userId);
@@ -263,9 +297,9 @@ export class TelegramApprovalHandler {
   // Private handlers
   // ============================================================
 
-  private async handleApproval(editorialRunId: string, messageId: number): Promise<void> {
-    await this.bot.removeKeyboard(messageId);
-    await this.bot.sendApprovalConfirmation(editorialRunId);
+  private async handleApproval(editorialRunId: string, messageId: number, chatId: string): Promise<void> {
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendApprovalConfirmation(editorialRunId, chatId);
 
     // Marcar la versión como aprobada
     const run = await this.prisma.editorialRun.findUniqueOrThrow({
@@ -299,6 +333,7 @@ export class TelegramApprovalHandler {
     contentVersionId: string,
     messageId: number,
     userId: number,
+    chatId: string,
   ): Promise<void> {
     // Guardar estado de conversación (espera respuesta de texto)
     this.conversationStates.set(userId, {
@@ -306,10 +341,11 @@ export class TelegramApprovalHandler {
       contentVersionId,
       action: 'correct_text',
       messageId,
+      chatId,
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutos
     });
 
-    await this.bot.requestCorrectionText(messageId);
+    await this.bot.requestCorrectionText(messageId, chatId);
   }
 
   private async handleToneChangeRequest(
@@ -317,28 +353,30 @@ export class TelegramApprovalHandler {
     contentVersionId: string,
     messageId: number,
     userId: number,
+    chatId: string,
   ): Promise<void> {
     this.conversationStates.set(userId, {
       editorialRunId,
       contentVersionId,
       action: 'change_tone',
       messageId,
+      chatId,
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
 
-    await this.bot.sendToneSelector(messageId);
+    await this.bot.sendToneSelector(messageId, chatId);
   }
 
   private async handleToneSelection(
     callbackData: string,
     userId: number,
-    chatId: number,
+    chatId: string,
   ): Promise<void> {
     const tone = callbackData.replace('tone_', '');
 
     if (tone === 'cancel') {
       this.conversationStates.delete(userId);
-      await this.bot.sendNotification('↩️ Cambio de tono cancelado.');
+      await this.bot.sendNotification('↩️ Cambio de tono cancelado.', chatId);
       return;
     }
 
@@ -347,7 +385,7 @@ export class TelegramApprovalHandler {
       return;
     }
 
-    await this.bot.sendNotification(`⏳ Generando variante con tono *${tone}*...`);
+    await this.bot.sendNotification(`⏳ Generando variante con tono *${tone}*...`, chatId);
 
     try {
       const run = await this.prisma.editorialRun.findUniqueOrThrow({
@@ -364,15 +402,15 @@ export class TelegramApprovalHandler {
       await this.sendForReview(state.editorialRunId);
     } catch (error) {
       this.logger.error('Tone change failed:', error);
-      await this.bot.sendError('tone_change', String(error));
+      await this.bot.sendError('tone_change', String(error), chatId);
     }
 
     this.conversationStates.delete(userId);
   }
 
-  private async handleConvertToVideo(editorialRunId: string, messageId: number): Promise<void> {
-    await this.bot.removeKeyboard(messageId);
-    await this.bot.sendNotification('🎬 Generando video con avatar IA...\n\n⏳ Esto puede tardar 2-5 minutos.');
+  private async handleConvertToVideo(editorialRunId: string, messageId: number, chatId: string): Promise<void> {
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendNotification('🎬 Generando video con avatar IA...\n\n⏳ Esto puede tardar 2-5 minutos.', chatId);
 
     try {
       const { mediaAssetId, jobId } = await this.videoService.convertToVideo(editorialRunId);
@@ -390,24 +428,25 @@ export class TelegramApprovalHandler {
         `📝 *Script:*\n${scriptPreview}\n\n` +
         `🔄 Job: \`${jobId}\`\nAsset: \`${mediaAssetId}\`\n\n` +
         `Te notificaré cuando esté listo.`,
+        chatId,
       );
 
       this.logger.log(`Video conversion started for run ${editorialRunId}, asset ${mediaAssetId}`);
     } catch (error) {
       this.logger.error('Video conversion failed:', error);
-      await this.bot.sendError('convert_to_video', String(error));
+      await this.bot.sendError('convert_to_video', String(error), chatId);
     }
   }
 
-  private async handlePostpone(editorialRunId: string, messageId: number): Promise<void> {
-    await this.bot.removeKeyboard(messageId);
-    await this.bot.sendNotification('⏰ Contenido pospuesto.');
+  private async handlePostpone(editorialRunId: string, messageId: number, chatId: string): Promise<void> {
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendNotification('⏰ Contenido pospuesto.', chatId);
     await this.orchestrator.onPostponed(editorialRunId);
   }
 
-  private async handleRejection(editorialRunId: string, messageId: number): Promise<void> {
-    await this.bot.removeKeyboard(messageId);
-    await this.bot.sendNotification('❌ Contenido rechazado.');
+  private async handleRejection(editorialRunId: string, messageId: number, chatId: string): Promise<void> {
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendNotification('❌ Contenido rechazado.', chatId);
     await this.orchestrator.onRejected(editorialRunId, 'Rejected via Telegram');
   }
 
@@ -418,9 +457,10 @@ export class TelegramApprovalHandler {
     editorialRunId: string,
     contentVersionId: string,
     messageId: number,
+    chatId: string,
   ): Promise<void> {
-    await this.bot.removeKeyboard(messageId);
-    await this.bot.sendNotification('🖼️ Regenerando imagen...');
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendNotification('🖼️ Regenerando imagen...', chatId);
 
     try {
       await this.mediaEngine.regenerateImage(contentVersionId);
@@ -428,7 +468,7 @@ export class TelegramApprovalHandler {
       this.logger.log(`Image regenerated for run ${editorialRunId}`);
     } catch (error) {
       this.logger.error('Image regeneration failed:', error);
-      await this.bot.sendError('regenerate_image', String(error));
+      await this.bot.sendError('regenerate_image', String(error), chatId);
     }
   }
 
@@ -449,6 +489,7 @@ export class TelegramApprovalHandler {
         contentVersions: Array<{ id: string }>;
       } | null;
     },
+    chatId?: string,
   ): Promise<string> {
     // Buscar media assets para esta versión
     const mediaAssets = await this.prisma.mediaAsset.findMany({
@@ -481,9 +522,9 @@ export class TelegramApprovalHandler {
     };
 
     if (mediaUrls.length > 0) {
-      return this.bot.sendMediaPreview(preview, mediaUrls);
+      return this.bot.sendMediaPreview(preview, mediaUrls, chatId);
     }
 
-    return this.bot.sendPreview(preview);
+    return this.bot.sendPreview(preview, chatId);
   }
 }

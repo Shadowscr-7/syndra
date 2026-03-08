@@ -17,37 +17,63 @@ export async function GET(req: NextRequest) {
   const stateRaw = searchParams.get('state');
 
   const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3002';
-  const settingsUrl = `${baseUrl}/dashboard/settings`;
+
+  // Decode returnTo from state (default: /dashboard/settings)
+  let returnTo = '/dashboard/settings';
+  let statePayload: any = null;
+  let isPopup = false;
+  if (stateRaw) {
+    try {
+      statePayload = JSON.parse(Buffer.from(stateRaw, 'base64url').toString());
+      if (statePayload.returnTo) returnTo = statePayload.returnTo;
+      if (statePayload.popup) isPopup = true;
+    } catch { /* non-critical */ }
+  }
+  const redirectUrl = `${baseUrl}${returnTo}`;
+
+  // Helper: return popup close page or redirect based on mode
+  const finishFlow = (success: boolean, message: string) => {
+    if (isPopup) {
+      const html = `<!DOCTYPE html><html><head><title>Meta OAuth</title></head><body>
+<script>
+  try {
+    window.opener.postMessage({ type: 'meta-oauth-complete', success: ${success}, message: ${JSON.stringify(message)} }, '*');
+  } catch(e) {}
+  window.close();
+</script>
+<p style="font-family:system-ui;text-align:center;margin-top:40px;color:#888">
+  ${success ? '✅' : '❌'} ${message}<br/><br/>
+  <small>Esta ventana se cerrará automáticamente...</small>
+</p>
+</body></html>`;
+      return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+    }
+    const param = success ? 'meta_success' : 'meta_error';
+    return NextResponse.redirect(`${redirectUrl}?${param}=${encodeURIComponent(message)}`);
+  };
 
   // ── Handle deny / errors ──
   if (error || !code) {
     const msg = searchParams.get('error_description') || 'Autorización cancelada';
-    return NextResponse.redirect(`${settingsUrl}?meta_error=${encodeURIComponent(msg)}`);
+    return finishFlow(false, msg);
   }
 
-  // ── Validate state (CSRF) ──
+  // ── Validate state & resolve user ──
+  // After Facebook's redirect, cookies may not be available in popup contexts
+  // (cross-site navigation with SameSite=Lax). Use the state param as primary
+  // source for userId since we encoded it when initiating the flow.
   const cookieStore = await cookies();
-  const userId = cookieStore.get('auth-user-id')?.value;
+  const cookieUserId = cookieStore.get('auth-user-id')?.value;
+  const stateUserId = statePayload?.userId;
+  const userId = cookieUserId || stateUserId;
   if (!userId) {
     return NextResponse.redirect(`${baseUrl}/login`);
-  }
-
-  try {
-    // Decode state to verify it came from us
-    if (stateRaw) {
-      const statePayload = JSON.parse(Buffer.from(stateRaw, 'base64url').toString());
-      if (statePayload.userId !== userId) {
-        return NextResponse.redirect(`${settingsUrl}?meta_error=${encodeURIComponent('State mismatch')}`);
-      }
-    }
-  } catch {
-    // If state can't be decoded, continue anyway (non-critical for dev)
   }
 
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   if (!appId || !appSecret) {
-    return NextResponse.redirect(`${settingsUrl}?meta_error=${encodeURIComponent('META_APP_ID o META_APP_SECRET no configurados')}`);
+    return finishFlow(false, 'META_APP_ID o META_APP_SECRET no configurados');
   }
 
   const redirectUri = `${baseUrl}/api/auth/meta/callback`;
@@ -163,12 +189,47 @@ export async function GET(req: NextRequest) {
       fbPageToken = pages[0].access_token || longLivedToken;
     }
 
-    console.log('[Meta OAuth] Discovery result:', { fbPageId, fbPageName, igUserId, igUsername, pagesCount: pages.length });
+    // ── Step 3b: Discover Threads user ID ──
+    let threadsUserId = '';
+    let threadsUsername = '';
+    try {
+      const threadsRes = await fetch(
+        `https://graph.threads.net/v1.0/me?fields=id,username,threads_profile_picture_url&access_token=${longLivedToken}`,
+      );
+      const threadsData = await threadsRes.json();
+      if (threadsData.id) {
+        threadsUserId = threadsData.id;
+        threadsUsername = threadsData.username || '';
+        console.log('[Meta OAuth] Threads user discovered:', { threadsUserId, threadsUsername });
+      }
+    } catch (threadsErr) {
+      console.warn('[Meta OAuth] Threads discovery failed (non-blocking):', threadsErr);
+    }
+
+    console.log('[Meta OAuth] Discovery result:', { fbPageId, fbPageName, igUserId, igUsername, threadsUserId, threadsUsername, pagesCount: pages.length });
 
     // ── Step 4: Store in DB ──
-    const workspaceId = cookieStore.get('workspace-id')?.value;
+    // Resolve workspace: try cookie first, then DB lookup with userId from state
+    let workspaceId = cookieStore.get('workspace-id')?.value;
     if (!workspaceId) {
-      throw new Error('No workspace ID');
+      try {
+        console.log('[Meta OAuth] Looking up workspace for userId:', userId);
+        const allWu = await prisma.workspaceUser.findMany({
+          where: { userId },
+          select: { workspaceId: true, isDefault: true },
+        });
+        console.log('[Meta OAuth] Found workspace_users:', JSON.stringify(allWu));
+        const wu = allWu.find(w => w.isDefault) || allWu[0];
+        if (wu) workspaceId = wu.workspaceId;
+        console.log('[Meta OAuth] Resolved workspace from DB:', workspaceId);
+      } catch (e) {
+        console.error('[Meta OAuth] DB lookup for workspace failed:', e);
+      }
+    } else {
+      console.log('[Meta OAuth] Got workspace from cookie:', workspaceId);
+    }
+    if (!workspaceId) {
+      throw new Error('No workspace ID found — ensure the user belongs to a workspace');
     }
 
     const payload = {
@@ -178,6 +239,8 @@ export async function GET(req: NextRequest) {
       igUsername,
       fbPageId,
       fbPageName,
+      threadsUserId,
+      threadsUsername,
       connectedAt: new Date().toISOString(),
       connectedVia: 'oauth',
     };
@@ -192,7 +255,7 @@ export async function GET(req: NextRequest) {
       update: {
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish'],
         expiresAt,
       },
       create: {
@@ -200,22 +263,24 @@ export async function GET(req: NextRequest) {
         provider: 'META',
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish'],
         expiresAt,
       },
     });
 
     // Build success message
-    const connectedMsg = igUsername
-      ? `Conectado: @${igUsername} + ${fbPageName}`
-      : fbPageName
-        ? `Conectado: ${fbPageName}`
-        : 'Conectado exitosamente';
+    const parts: string[] = [];
+    if (igUsername) parts.push(`@${igUsername}`);
+    if (fbPageName) parts.push(fbPageName);
+    if (threadsUsername) parts.push(`🧵 ${threadsUsername}`);
+    const connectedMsg = parts.length > 0
+      ? `Conectado: ${parts.join(' + ')}`
+      : 'Conectado exitosamente';
 
-    return NextResponse.redirect(`${settingsUrl}?meta_success=${encodeURIComponent(connectedMsg)}`);
+    return finishFlow(true, connectedMsg);
   } catch (err: any) {
     console.error('[Meta OAuth Callback] Error:', err);
     const msg = err?.message || 'Error desconocido';
-    return NextResponse.redirect(`${settingsUrl}?meta_error=${encodeURIComponent(msg)}`);
+    return finishFlow(false, msg);
   }
 }

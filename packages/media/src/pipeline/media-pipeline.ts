@@ -170,14 +170,29 @@ export class MediaPipeline {
       let optimizedUrl = svgUrl;
 
       if (this.cloudinary) {
-        const uploaded = await this.cloudinary.upload(svgUrl, 'automatismos/carousels');
-        optimizedUrl = this.cloudinary.transformUrl(uploaded.publicId, {
-          width: 1080,
-          height: 1080,
-          crop: 'fill',
-          quality: 'auto',
-          format: 'webp',
-        });
+        // Convert URL-encoded SVG data URI to base64 for Cloudinary compatibility
+        let uploadSource = svgUrl;
+        if (svgUrl.startsWith('data:image/svg+xml;charset=utf-8,')) {
+          const svgContent = decodeURIComponent(
+            svgUrl.replace('data:image/svg+xml;charset=utf-8,', ''),
+          );
+          const base64 = Buffer.from(svgContent, 'utf-8').toString('base64');
+          uploadSource = `data:image/svg+xml;base64,${base64}`;
+        }
+
+        try {
+          const uploaded = await this.cloudinary.upload(uploadSource, 'automatismos/carousels');
+          optimizedUrl = this.cloudinary.transformUrl(uploaded.publicId, {
+            width: 1080,
+            height: 1080,
+            crop: 'fill',
+            quality: 'auto',
+            format: 'png',
+          });
+        } catch (uploadErr) {
+          // Log but don't fail — keep data URI as fallback
+          console.warn(`Cloudinary upload failed for slide ${i}:`, uploadErr);
+        }
       }
 
       resultSlides.push({

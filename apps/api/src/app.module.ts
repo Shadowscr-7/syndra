@@ -21,6 +21,15 @@ import { PlansModule } from './plans/plans.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { AdminModule } from './admin/admin.module';
+import { CredentialsModule } from './credentials/credentials.module';
+import { PersonasModule } from './personas/personas.module';
+import { ProfilesModule } from './profiles/profiles.module';
+import { VisualStylesModule } from './visual-styles/visual-styles.module';
+import { UserMediaModule } from './user-media/user-media.module';
+import { MediaFoldersModule } from './media-folders/media-folders.module';
+import { SchedulesModule } from './schedules/schedules.module';
+import { EmailModule } from './email/email.module';
+import { PaypalModule } from './paypal/paypal.module';
 
 @Module({
   imports: [
@@ -48,6 +57,15 @@ import { AdminModule } from './admin/admin.module';
     InvitationsModule,
     OnboardingModule,
     AdminModule,
+    CredentialsModule,
+    PersonasModule,
+    ProfilesModule,
+    VisualStylesModule,
+    UserMediaModule,
+    MediaFoldersModule,
+    SchedulesModule,
+    EmailModule,
+    PaypalModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@automatismos/db';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -57,6 +58,25 @@ export async function POST(req: NextRequest) {
         ...cookieOptions,
         maxAge: 60 * 60 * 24 * 30,
       });
+    }
+
+    // Resolve and set workspace-id cookie so OAuth flows and proxy routes work
+    if (data.user?.id) {
+      try {
+        const wu = await prisma.workspaceUser.findFirst({
+          where: { userId: data.user.id },
+          orderBy: { isDefault: 'desc' },
+          select: { workspaceId: true },
+        });
+        if (wu) {
+          response.cookies.set('workspace-id', wu.workspaceId, {
+            ...cookieOptions,
+            maxAge: 60 * 60 * 24 * 30,
+          });
+        }
+      } catch (e) {
+        console.error('[Login] Failed to resolve workspace:', e);
+      }
     }
 
     return response;

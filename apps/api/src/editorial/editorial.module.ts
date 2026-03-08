@@ -8,9 +8,10 @@ import { StrategyModule } from '../strategy/strategy.module';
 import { ContentModule } from '../content/content.module';
 import { MediaModule } from '../media/media.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
-  imports: [ResearchModule, StrategyModule, ContentModule, MediaModule, forwardRef(() => TelegramModule)],
+  imports: [ResearchModule, StrategyModule, ContentModule, MediaModule, forwardRef(() => TelegramModule), PlansModule],
   controllers: [EditorialController],
   providers: [
     EditorialOrchestratorService,

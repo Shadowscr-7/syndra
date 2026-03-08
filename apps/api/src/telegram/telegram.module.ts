@@ -7,9 +7,10 @@ import { EditorialModule } from '../editorial/editorial.module';
 import { ContentModule } from '../content/content.module';
 import { MediaModule } from '../media/media.module';
 import { VideoModule } from '../video/video.module';
+import { CredentialsModule } from '../credentials/credentials.module';
 
 @Module({
-  imports: [forwardRef(() => EditorialModule), ContentModule, MediaModule, forwardRef(() => VideoModule)],
+  imports: [forwardRef(() => EditorialModule), ContentModule, MediaModule, forwardRef(() => VideoModule), forwardRef(() => CredentialsModule)],
   controllers: [TelegramController],
   providers: [TelegramBotService, TelegramApprovalHandler, TelegramPollingService],
   exports: [TelegramBotService, TelegramApprovalHandler],

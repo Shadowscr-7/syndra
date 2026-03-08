@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { CredentialsService } from '../credentials/credentials.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -30,22 +31,24 @@ import {
 @Injectable()
 export class MediaEngineService {
   private readonly logger = new Logger(MediaEngineService.name);
-  private readonly pipeline: MediaPipeline;
-  private readonly llm: LLMAdapter;
+  /** Env-var fallback pipeline (used when no DB credentials are configured) */
+  private readonly fallbackPipeline: MediaPipeline;
+  private readonly fallbackLlm: LLMAdapter;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly credentialsService: CredentialsService,
   ) {
-    // --- LLM adapter (for AI edits) ---
+    // --- Fallback LLM adapter (from env vars) ---
     const llmProvider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const llmApiKey = this.config.get<string>('LLM_API_KEY', '');
     if (llmProvider === 'anthropic') {
-      this.llm = new AnthropicAdapter({ apiKey: llmApiKey });
+      this.fallbackLlm = new AnthropicAdapter({ apiKey: llmApiKey });
     } else {
-      this.llm = new OpenAIAdapter({ apiKey: llmApiKey });
+      this.fallbackLlm = new OpenAIAdapter({ apiKey: llmApiKey });
     }
-    // --- Imagen adapter ---
+    // --- Fallback Imagen adapter (from env vars) ---
     const imageApiKey = this.config.get<string>('IMAGE_GEN_API_KEY', '');
     const imageProvider = this.config.get<string>('IMAGE_GEN_PROVIDER', 'mock');
 
@@ -54,16 +57,16 @@ export class MediaEngineService {
       imageGen = new DallEImageAdapter({ apiKey: imageApiKey });
     } else if (imageProvider === 'huggingface' && imageApiKey) {
       imageGen = new HuggingFaceImageAdapter({ apiToken: imageApiKey });
-      this.logger.log('Using HuggingFaceImageAdapter — free AI image generation (FLUX.1-schnell)');
+      this.logger.log('Fallback: HuggingFaceImageAdapter from env vars');
     } else if (imageProvider === 'pollinations' || (!imageApiKey && imageProvider !== 'dalle')) {
       imageGen = new PollinationsImageAdapter();
-      this.logger.log('Using PollinationsImageAdapter — free AI image generation (Flux)');
+      this.logger.log('Fallback: PollinationsImageAdapter from env vars');
     } else {
       imageGen = new MockImageAdapter();
-      this.logger.warn('Using MockImageAdapter — set IMAGE_GEN_PROVIDER=huggingface or pollinations or dalle');
+      this.logger.warn('Fallback: MockImageAdapter — set IMAGE_GEN_PROVIDER');
     }
 
-    // --- Cloudinary adapter ---
+    // --- Fallback Cloudinary adapter (from env vars) ---
     const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME', '');
     const cloudKey = this.config.get<string>('CLOUDINARY_API_KEY', '');
     const cloudSecret = this.config.get<string>('CLOUDINARY_API_SECRET', '');
@@ -73,10 +76,10 @@ export class MediaEngineService {
       : undefined;
 
     if (!cloudinary) {
-      this.logger.warn('Cloudinary not configured — using direct URLs');
+      this.logger.warn('Cloudinary not configured in env — will check DB credentials at runtime');
     }
 
-    // --- Pipeline ---
+    // --- Fallback Pipeline ---
     const defaultBranding: BrandingConfig = {
       primaryFont: 'Inter',
       secondaryFont: 'Inter',
@@ -86,7 +89,90 @@ export class MediaEngineService {
       textColor: '#1A1A2E',
     };
 
-    this.pipeline = new MediaPipeline({
+    this.fallbackPipeline = new MediaPipeline({
+      imageGenerator: imageGen,
+      cloudinary: cloudinary as unknown as import('@automatismos/media').CloudinaryAdapter | undefined,
+      defaultBranding,
+    });
+  }
+
+  // ── Credential resolution helpers ──────────────────────
+
+  /** Resolve workspace owner userId for credential lookups */
+  private async resolveUserId(workspaceId: string): Promise<string | null> {
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
+      select: { userId: true },
+    });
+    return wsUser?.userId ?? null;
+  }
+
+  /** Build LLM adapter: DB credentials first, env-var fallback */
+  private async getLlm(workspaceId: string): Promise<LLMAdapter> {
+    const userId = await this.resolveUserId(workspaceId);
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      if (payload?.apiKey) {
+        const provider = payload.provider ?? 'openai';
+        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        return provider === 'anthropic'
+          ? new AnthropicAdapter({ apiKey: payload.apiKey })
+          : new OpenAIAdapter({ apiKey: payload.apiKey });
+      }
+    }
+    return this.fallbackLlm;
+  }
+
+  /** Build ImageGenerator adapter: DB credentials first, env-var fallback */
+  private async getImageGen(userId: string | null): Promise<ImageGeneratorAdapter> {
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'IMAGE_GEN');
+      if (payload?.apiKey) {
+        const provider = payload.provider ?? this.config.get<string>('IMAGE_GEN_PROVIDER', 'huggingface');
+        this.logger.log(`Using DB IMAGE_GEN credential (${provider}) for user ${userId}`);
+        if (provider === 'dalle') return new DallEImageAdapter({ apiKey: payload.apiKey });
+        if (provider === 'huggingface') return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
+        if (provider === 'pollinations') return new PollinationsImageAdapter();
+        // Default: huggingface if we have a key
+        return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
+      }
+    }
+    return this.fallbackPipeline['imageGen'] as ImageGeneratorAdapter;
+  }
+
+  /** Build Cloudinary adapter: DB credentials first, env-var fallback */
+  private async getCloudinary(userId: string | null): Promise<CloudinaryAdapter | undefined> {
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'CLOUDINARY');
+      if (payload?.cloudName && payload?.apiKey) {
+        this.logger.debug(`Using DB CLOUDINARY credential for user ${userId}`);
+        return new CloudinaryAdapter({
+          cloudName: payload.cloudName,
+          apiKey: payload.apiKey,
+          apiSecret: payload.apiSecret ?? '',
+        });
+      }
+    }
+    // Fallback to env-var configured cloudinary (may be undefined)
+    return this.fallbackPipeline['cloudinary'] as CloudinaryAdapter | undefined;
+  }
+
+  /** Build a per-request MediaPipeline using DB credentials */
+  private async getPipeline(workspaceId: string): Promise<MediaPipeline> {
+    const userId = await this.resolveUserId(workspaceId);
+    const imageGen = await this.getImageGen(userId);
+    const cloudinary = await this.getCloudinary(userId);
+
+    const defaultBranding: BrandingConfig = {
+      primaryFont: 'Inter',
+      secondaryFont: 'Inter',
+      primaryColor: '#6C63FF',
+      secondaryColor: '#F4F4FF',
+      backgroundColor: '#FFFFFF',
+      textColor: '#1A1A2E',
+    };
+
+    return new MediaPipeline({
       imageGenerator: imageGen,
       cloudinary: cloudinary as unknown as import('@automatismos/media').CloudinaryAdapter | undefined,
       defaultBranding,
@@ -130,13 +216,17 @@ export class MediaEngineService {
 
     const branding = this.extractBranding(brand);
 
+    // Build per-request pipeline from DB credentials (fallback to env)
+    const pipeline = await this.getPipeline(workspaceId);
+    const llm = await this.getLlm(workspaceId);
+
     // 3. Generar según formato
     const format = brief.format.toLowerCase();
     const mediaAssetIds: string[] = [];
 
     if (format === 'carousel') {
       try {
-        const result = await this.generateCarouselMedia(mainVersion, branding, brief);
+        const result = await this.generateCarouselMedia(mainVersion, branding, brief, pipeline);
         // Verify slides have real URLs (not SVG data URIs)
         const hasRealUrls = result.slides.some(
           (s) => s.optimizedUrl && !s.optimizedUrl.startsWith('data:'),
@@ -162,7 +252,7 @@ export class MediaEngineService {
       } catch (carouselErr) {
         // Fallback: generate a single AI image for the carousel instead of SVG slides
         this.logger.warn(`Carousel SVG generation failed, falling back to AI image: ${carouselErr}`);
-        const result = await this.generateSingleImage(mainVersion, brief);
+        const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
         const asset = await this.prisma.mediaAsset.create({
           data: {
             contentVersionId: mainVersion.id,
@@ -180,7 +270,7 @@ export class MediaEngineService {
       }
     } else {
       // Imagen simple para posts
-      const result = await this.generateSingleImage(mainVersion, brief);
+      const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
       const asset = await this.prisma.mediaAsset.create({
         data: {
           contentVersionId: mainVersion.id,
@@ -220,8 +310,12 @@ export class MediaEngineService {
 
     const version = await this.prisma.contentVersion.findUniqueOrThrow({
       where: { id: contentVersionId },
-      include: { brief: true },
+      include: { brief: { include: { editorialRun: { select: { workspaceId: true } } } } },
     });
+
+    const workspaceId = version.brief.editorialRun?.workspaceId;
+    const llm = workspaceId ? await this.getLlm(workspaceId) : this.fallbackLlm;
+    const pipeline = workspaceId ? await this.getPipeline(workspaceId) : this.fallbackPipeline;
 
     let prompt: string;
     if (customPrompt) {
@@ -229,7 +323,7 @@ export class MediaEngineService {
     } else {
       // Usar LLM para prompt contextual
       try {
-        const llmResult = await this.llm.complete(
+        const llmResult = await llm.complete(
           `You are an expert at creating image generation prompts for social media.
 Given this post content, create a vivid, detailed image prompt for AI generation.
 The image should visually represent the core message. No text/typography in the image.
@@ -243,7 +337,7 @@ Respond ONLY with the English image prompt. Max 150 words.`,
         prompt = llmResult.trim();
         this.logger.log(`LLM image prompt: ${prompt.substring(0, 100)}...`);
       } catch {
-        prompt = this.pipeline.buildImagePromptFromBrief({
+        prompt = pipeline.buildImagePromptFromBrief({
           angle: version.brief.angle,
           tone: version.brief.tone,
           format: version.brief.format,
@@ -253,7 +347,7 @@ Respond ONLY with the English image prompt. Max 150 words.`,
       }
     }
 
-    const result = await this.pipeline.generateImage(prompt);
+    const result = await pipeline.generateImage(prompt);
 
     // Marcar assets anteriores como reemplazados (soft delete via metadata)
     await this.prisma.mediaAsset.updateMany({
@@ -293,15 +387,23 @@ Respond ONLY with the English image prompt. Max 150 words.`,
       where: { id: assetId },
       include: {
         contentVersion: {
-          include: { brief: true },
+          include: {
+            brief: {
+              include: { editorialRun: { select: { workspaceId: true } } },
+            },
+          },
         },
       },
     });
 
+    const workspaceId = asset.contentVersion?.brief?.editorialRun?.workspaceId;
+    const llm = workspaceId ? await this.getLlm(workspaceId) : this.fallbackLlm;
+    const pipeline = workspaceId ? await this.getPipeline(workspaceId) : this.fallbackPipeline;
+
     if (asset.type === 'CAROUSEL_SLIDE') {
-      return this.aiEditSlide(asset, instruction);
+      return this.aiEditSlide(asset, instruction, llm);
     } else {
-      return this.aiEditImage(asset, instruction);
+      return this.aiEditImage(asset, instruction, llm, pipeline);
     }
   }
 
@@ -311,6 +413,7 @@ Respond ONLY with the English image prompt. Max 150 words.`,
   private async aiEditSlide(
     asset: any,
     instruction: string,
+    llm: LLMAdapter,
   ): Promise<{ assetId: string; updatedUrl: string }> {
     // Extract current slide info from metadata
     const metadata = (asset.metadata ?? {}) as Record<string, unknown>;
@@ -352,7 +455,7 @@ Reglas:
 - Si el tipo es "cta", incluye un llamado a la acción claro
 - Responde SOLO el JSON, sin markdown ni explicaciones`;
 
-    const response = await this.llm.complete(prompt, { temperature: 0.7 });
+    const response = await llm.complete(prompt, { temperature: 0.7 });
     let newTitle = currentTitle;
     let newBody = currentBody;
 
@@ -413,6 +516,8 @@ Reglas:
   private async aiEditImage(
     asset: any,
     instruction: string,
+    llm: LLMAdapter,
+    pipeline: MediaPipeline,
   ): Promise<{ assetId: string; updatedUrl: string }> {
     const currentPrompt = asset.prompt ?? 'professional social media image';
 
@@ -427,10 +532,10 @@ Genera un nuevo prompt de imagen optimizado que aplique el cambio solicitado.
 Responde SOLO con el nuevo prompt, sin explicaciones, en inglés.
 Máximo 200 palabras.`;
 
-    const newPrompt = await this.llm.complete(prompt, { temperature: 0.7 });
+    const newPrompt = await llm.complete(prompt, { temperature: 0.7 });
 
     // Generate new image
-    const result = await this.pipeline.generateImage(newPrompt.trim());
+    const result = await pipeline.generateImage(newPrompt.trim());
 
     // Update the asset in place
     await this.prisma.mediaAsset.update({
@@ -500,6 +605,8 @@ Máximo 200 palabras.`;
   private async generateSingleImage(
     version: { copy: string; caption: string },
     brief: { angle: string; tone: string; format: string; cta: string },
+    llm: LLMAdapter,
+    pipeline: MediaPipeline,
   ): Promise<ImagePipelineResult> {
     // Usar LLM para generar un prompt de imagen contextual y rico
     const systemPrompt = `You are an expert at creating image generation prompts for social media posts.
@@ -521,7 +628,7 @@ CTA: ${brief.cta}`;
 
     let prompt: string;
     try {
-      const llmResult = await this.llm.complete(
+      const llmResult = await llm.complete(
         `${systemPrompt}\n\n${userMessage}`,
         { temperature: 0.8, maxTokens: 300 },
       );
@@ -530,7 +637,7 @@ CTA: ${brief.cta}`;
     } catch (err) {
       // Fallback al prompt básico si el LLM falla
       this.logger.warn(`LLM prompt generation failed, using basic prompt: ${err}`);
-      prompt = this.pipeline.buildImagePromptFromBrief({
+      prompt = pipeline.buildImagePromptFromBrief({
         angle: brief.angle,
         tone: brief.tone,
         format: brief.format,
@@ -539,13 +646,14 @@ CTA: ${brief.cta}`;
       });
     }
 
-    return this.pipeline.generateImage(prompt);
+    return pipeline.generateImage(prompt);
   }
 
   private async generateCarouselMedia(
     version: { copy: string; caption: string; hook: string; title: string },
     branding: Partial<BrandingConfig>,
     brief: { angle: string; tone: string },
+    pipeline: MediaPipeline,
   ): Promise<CarouselPipelineResult> {
     // Determinar template según tono
     const category = this.toneToCategory(brief.tone);
@@ -554,7 +662,7 @@ CTA: ${brief.cta}`;
     // Construir slides desde el copy
     const slides = this.buildSlidesFromCopy(version, brief);
 
-    return this.pipeline.generateCarousel(slides, branding, template);
+    return pipeline.generateCarousel(slides, branding, template);
   }
 
   private buildSlidesFromCopy(

@@ -275,66 +275,40 @@ async function main() {
   // ADMIN USER — Migrate existing user or create new
   // ================================================================
 
-  // Migrate the legacy user (usr_migrate_001) → admin role
-  const existingAdmin = await prisma.user.findFirst({
-    where: { email: 'admin@syndra.dev' },
+  // ================================================================
+  // ADMIN USER — jcg.software.solution@gmail.com
+  // ================================================================
+
+  const bcrypt = await import('bcryptjs');
+  const defaultPasswordHash = await bcrypt.hash('SyndraJCG2026!', 12);
+
+  const admin = await prisma.user.upsert({
+    where: { email: 'jcg.software.solution@gmail.com' },
+    update: { role: 'ADMIN', emailVerified: true },
+    create: {
+      id: 'usr_jcg_admin',
+      email: 'jcg.software.solution@gmail.com',
+      passwordHash: defaultPasswordHash,
+      name: 'JCG Admin',
+      role: 'ADMIN',
+      emailVerified: true,
+    },
   });
 
-  if (existingAdmin) {
-    await prisma.user.update({
-      where: { id: existingAdmin.id },
-      data: { role: 'ADMIN' },
-    });
-    console.info(`  ✓ Admin user migrated: ${existingAdmin.email} → ADMIN`);
+  await prisma.workspaceUser.upsert({
+    where: {
+      userId_workspaceId: { userId: admin.id, workspaceId: workspace.id },
+    },
+    update: { role: 'OWNER', isDefault: true },
+    create: {
+      userId: admin.id,
+      workspaceId: workspace.id,
+      role: 'OWNER',
+      isDefault: true,
+    },
+  });
 
-    // Ensure they have a workspace link
-    const wsLink = await prisma.workspaceUser.findFirst({
-      where: { userId: existingAdmin.id, workspaceId: workspace.id },
-    });
-    if (!wsLink) {
-      await prisma.workspaceUser.create({
-        data: {
-          userId: existingAdmin.id,
-          workspaceId: workspace.id,
-          role: 'OWNER',
-          isDefault: true,
-        },
-      });
-      console.info(`  ✓ Admin linked to workspace: ${workspace.name}`);
-    }
-  } else {
-    // Create admin user with bcrypt hash of default password
-    // NOTE: Change this password immediately after first login!
-    const bcrypt = await import('bcryptjs');
-    const defaultPasswordHash = await bcrypt.hash('SyndraAdmin2026!', 12);
-
-    const admin = await prisma.user.upsert({
-      where: { email: 'admin@syndra.dev' },
-      update: {},
-      create: {
-        email: 'admin@syndra.dev',
-        passwordHash: defaultPasswordHash,
-        name: 'Admin',
-        role: 'ADMIN',
-        emailVerified: true,
-      },
-    });
-
-    await prisma.workspaceUser.upsert({
-      where: {
-        userId_workspaceId: { userId: admin.id, workspaceId: workspace.id },
-      },
-      update: {},
-      create: {
-        userId: admin.id,
-        workspaceId: workspace.id,
-        role: 'OWNER',
-        isDefault: true,
-      },
-    });
-
-    console.info(`  ✓ Admin user created: ${admin.email} (password: SyndraAdmin2026!)`);
-  }
+  console.info(`  ✓ Admin user: ${admin.email} (${admin.id})`);
 
   // ================================================================
   // DEFAULT SUBSCRIPTION — Give admin Pro plan

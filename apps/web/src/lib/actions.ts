@@ -172,10 +172,17 @@ export async function createCampaign(formData: FormData) {
   const startDate = formData.get('startDate') as string;
   const endDate = formData.get('endDate') as string || null;
   const kpiTarget = formData.get('kpiTarget') as string || null;
+  const contentProfileId = formData.get('contentProfileId') as string || null;
+  const userPersonaId = formData.get('userPersonaId') as string || null;
+  const channels = formData.getAll('channels') as string[];
+  const themeIds = formData.getAll('themeIds') as string[];
+  const channelFormatsRaw = formData.get('channelFormats') as string || '{}';
+  let channelFormats: Record<string, string[]> | null = null;
+  try { channelFormats = JSON.parse(channelFormatsRaw); } catch { /* ignore */ }
 
   if (!name?.trim()) throw new Error('Nombre requerido');
 
-  await prisma.campaign.create({
+  const campaign = await prisma.campaign.create({
     data: {
       workspaceId: session.workspaceId,
       name: name.trim(),
@@ -185,6 +192,13 @@ export async function createCampaign(formData: FormData) {
       startDate: startDate ? new Date(startDate) : new Date(),
       endDate: endDate ? new Date(endDate) : null,
       kpiTarget,
+      contentProfileId: contentProfileId || null,
+      userPersonaId: userPersonaId || null,
+      targetChannels: channels.length > 0 ? channels : ['instagram'],
+      channelFormats: channelFormats ?? undefined,
+      campaignThemes: themeIds.length > 0 ? {
+        create: themeIds.map((tId) => ({ themeId: tId })),
+      } : undefined,
     },
   });
 
@@ -208,9 +222,17 @@ export async function updateCampaign(id: string, formData: FormData) {
   const endDate = formData.get('endDate') as string || null;
   const kpiTarget = formData.get('kpiTarget') as string || null;
   const isActive = formData.get('isActive') === 'true';
+  const contentProfileId = formData.get('contentProfileId') as string || null;
+  const userPersonaId = formData.get('userPersonaId') as string || null;
+  const channels = formData.getAll('channels') as string[];
+  const themeIds = formData.getAll('themeIds') as string[];
+  const channelFormatsRaw = formData.get('channelFormats') as string || '{}';
+  let channelFormats: Record<string, string[]> | null = null;
+  try { channelFormats = JSON.parse(channelFormatsRaw); } catch { /* ignore */ }
 
   if (!name?.trim()) throw new Error('Nombre requerido');
 
+  // Update campaign fields
   await prisma.campaign.updateMany({
     where: { id, workspaceId: session.workspaceId },
     data: {
@@ -222,8 +244,20 @@ export async function updateCampaign(id: string, formData: FormData) {
       endDate: endDate ? new Date(endDate) : null,
       kpiTarget,
       isActive,
+      contentProfileId: contentProfileId || null,
+      userPersonaId: userPersonaId || null,
+      targetChannels: channels.length > 0 ? channels : undefined,
+      channelFormats: channelFormats ?? undefined,
     },
   });
+
+  // Sync campaign themes (delete + recreate)
+  if (themeIds.length > 0) {
+    await prisma.campaignTheme.deleteMany({ where: { campaignId: id } });
+    await prisma.campaignTheme.createMany({
+      data: themeIds.map((tId) => ({ campaignId: id, themeId: tId })),
+    });
+  }
 
   revalidatePath('/dashboard/campaigns');
   revalidatePath('/dashboard/editorial');

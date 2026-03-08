@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { CredentialsService } from '../credentials/credentials.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -28,20 +29,46 @@ export interface StrategyResult {
 @Injectable()
 export class StrategyService {
   private readonly logger = new Logger(StrategyService.name);
-  private llm: LLMAdapter;
+  private fallbackLlm: LLMAdapter;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly credentialsService: CredentialsService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
 
     if (provider === 'anthropic') {
-      this.llm = new AnthropicAdapter({ apiKey });
+      this.fallbackLlm = new AnthropicAdapter({ apiKey });
     } else {
-      this.llm = new OpenAIAdapter({ apiKey });
+      this.fallbackLlm = new OpenAIAdapter({ apiKey });
     }
+  }
+
+  /** Resolve workspace owner userId */
+  private async resolveUserId(workspaceId: string): Promise<string | null> {
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
+      select: { userId: true },
+    });
+    return wsUser?.userId ?? null;
+  }
+
+  /** Build LLM adapter: DB credentials first, env-var fallback */
+  private async getLlm(workspaceId: string): Promise<LLMAdapter> {
+    const userId = await this.resolveUserId(workspaceId);
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      if (payload?.apiKey) {
+        const provider = payload.provider ?? 'openai';
+        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        return provider === 'anthropic'
+          ? new AnthropicAdapter({ apiKey: payload.apiKey })
+          : new OpenAIAdapter({ apiKey: payload.apiKey });
+      }
+    }
+    return this.fallbackLlm;
   }
 
   /**
@@ -76,11 +103,56 @@ export class StrategyService {
       where: { workspaceId },
     });
 
-    // 3. Seleccionar tema más relevante
-    const themes = await this.prisma.contentTheme.findMany({
-      where: { workspaceId, isActive: true },
-      orderBy: { priority: 'desc' },
+    // 2b. Obtener persona activa y perfil de contenido del usuario del workspace
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
     });
+    const ownerId = wsUser?.userId;
+
+    const activePersona = run.userPersonaId
+      ? await this.prisma.userPersona.findUnique({ where: { id: run.userPersonaId } })
+      : ownerId
+        ? await this.prisma.userPersona.findFirst({
+            where: { userId: ownerId, isActive: true },
+          })
+        : null;
+
+    // Si el run tiene contentProfileId, usar ese; sino, el default del usuario
+    const contentProfile = run.contentProfileId
+      ? await this.prisma.contentProfile.findUnique({ where: { id: run.contentProfileId } })
+      : ownerId
+        ? await this.prisma.contentProfile.findFirst({
+            where: { userId: ownerId, isDefault: true },
+          })
+        : null;
+
+    // 3. Seleccionar tema más relevante
+    //    Si hay campaña, usar los temas asociados a esa campaña (campaign_themes).
+    //    Fallback: todos los temas activos del workspace.
+    let themes: Awaited<ReturnType<typeof this.prisma.contentTheme.findMany>> = [];
+
+    if (run.campaignId) {
+      // Obtener temas vinculados a la campaña
+      const campaignThemes = await this.prisma.campaignTheme.findMany({
+        where: { campaignId: run.campaignId },
+        include: { theme: true },
+      });
+      themes = campaignThemes
+        .map((ct) => ct.theme)
+        .filter((t) => t.isActive)
+        .sort((a, b) => b.priority - a.priority);
+      this.logger.log(
+        `Campaign ${run.campaign?.name}: ${themes.length} theme(s) → [${themes.map((t) => t.name).join(', ')}]`,
+      );
+    }
+
+    // Fallback: si la campaña no tiene temas asignados, usar todos los del workspace
+    if (themes.length === 0) {
+      themes = await this.prisma.contentTheme.findMany({
+        where: { workspaceId, isActive: true },
+        orderBy: { priority: 'desc' },
+      });
+    }
 
     // 4. Obtener ángulos previos para evitar repetición
     const recentRuns = await this.prisma.contentBrief.findMany({
@@ -94,22 +166,57 @@ export class StrategyService {
     });
 
     // 5. Generar estrategia con LLM
+    const llm = await this.getLlm(workspaceId);
+
+    // Determine available formats: campaign's channelFormats > theme preferredFormats > defaults
+    let availableFormats = themes[0]?.preferredFormats ?? ['post', 'carousel'];
+    if (run.campaign?.channelFormats && typeof run.campaign.channelFormats === 'object') {
+      const cf = run.campaign.channelFormats as Record<string, string[]>;
+      // Merge unique formats across all channels
+      const allFormats = Object.values(cf).flat();
+      if (allFormats.length > 0) {
+        availableFormats = [...new Set(allFormats)];
+      }
+    }
+
     const prompt = buildStrategyPrompt({
       researchSummary: run.researchSummary ?? 'No research summary available',
       brandVoice: brand?.voice ?? '',
       defaultTone: brand?.tone ?? 'didáctico',
       objective: run.campaign?.objective ?? 'AUTHORITY',
-      availableFormats: themes[0]?.preferredFormats ?? ['post', 'carousel'],
+      availableFormats,
       themeKeywords: themes.flatMap((t) => t.keywords),
       campaignContext: run.campaign
         ? `${run.campaign.name} (${run.campaign.objective})`
         : undefined,
       previousAngles: recentRuns.map((r) => r.angle).filter(Boolean),
+      persona: activePersona
+        ? {
+            brandName: activePersona.brandName,
+            brandDescription: activePersona.brandDescription,
+            tone: activePersona.tone,
+            expertise: activePersona.expertise,
+            targetAudience: activePersona.targetAudience,
+            avoidTopics: activePersona.avoidTopics,
+            languageStyle: activePersona.languageStyle,
+          }
+        : undefined,
+      contentProfile: contentProfile
+        ? {
+            name: contentProfile.name,
+            tone: contentProfile.tone,
+            contentLength: contentProfile.contentLength,
+            audience: contentProfile.audience,
+            language: contentProfile.language,
+            hashtags: contentProfile.hashtags,
+            postingGoal: contentProfile.postingGoal,
+          }
+        : undefined,
     });
 
     let strategy: StrategyResult;
     try {
-      const response = await this.llm.complete(prompt, {
+      const response = await llm.complete(prompt, {
         temperature: 0.7,
         maxTokens: 2048,
       });
@@ -139,19 +246,23 @@ export class StrategyService {
       hybrid_motion: 'HYBRID_MOTION',
     };
 
-    // 7. Crear ContentBrief
-    const brief = await this.prisma.contentBrief.create({
-      data: {
-        editorialRunId,
-        themeId: themes[0]?.id ?? null,
-        angle: strategy.angle,
-        format: formatMap[strategy.format] ?? 'POST',
-        cta: strategy.cta,
-        references: strategy.references,
-        seedPrompt: strategy.seedPrompt,
-        objective: run.campaign?.objective ?? 'AUTHORITY',
-        tone: strategy.tone,
-      },
+    // 7. Crear ContentBrief (upsert para idempotencia — evita violación de unique constraint
+    //    si la etapa se ejecuta más de una vez para el mismo editorialRunId)
+    const briefData = {
+      themeId: themes[0]?.id ?? null,
+      angle: strategy.angle,
+      format: formatMap[strategy.format] ?? 'POST',
+      cta: strategy.cta,
+      references: strategy.references,
+      seedPrompt: strategy.seedPrompt,
+      objective: run.campaign?.objective ?? 'AUTHORITY',
+      tone: strategy.tone,
+    };
+
+    const brief = await this.prisma.contentBrief.upsert({
+      where: { editorialRunId },
+      create: { editorialRunId, ...briefData },
+      update: briefData,
     });
 
     // 8. Actualizar status

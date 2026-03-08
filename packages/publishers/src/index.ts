@@ -25,6 +25,7 @@ export {
 // Adapters
 export { InstagramPublisher } from './adapters/instagram';
 export { FacebookPublisher } from './adapters/facebook';
+export { ThreadsPublisher, type ThreadsCredentials } from './adapters/threads';
 export { DiscordPublisher, type DiscordWebhookConfig } from './adapters/discord';
 export { MockPublisher } from './adapters/mock';
 

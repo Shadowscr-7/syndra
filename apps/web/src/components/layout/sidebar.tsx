@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 
@@ -17,6 +18,9 @@ const sections = [
     items: [
       { name: 'Campañas', href: '/dashboard/campaigns', icon: '🎯' },
       { name: 'Temas', href: '/dashboard/themes', icon: '💡' },
+      { name: 'Perfiles IA', href: '/dashboard/profiles', icon: '🧠' },
+      { name: 'Media', href: '/dashboard/media', icon: '📂' },
+      { name: 'Scheduler', href: '/dashboard/scheduler', icon: '📅' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },
     ],
   },
@@ -30,7 +34,6 @@ const sections = [
   {
     label: 'Config',
     items: [
-      { name: 'Brand Profile', href: '/dashboard/brand', icon: '🎨' },
       { name: 'Credenciales', href: '/dashboard/credentials', icon: '🔑' },
       { name: 'Configuración', href: '/dashboard/settings', icon: '⚙️' },
     ],
@@ -39,6 +42,9 @@ const sections = [
     label: 'Admin',
     items: [
       { name: 'Equipo', href: '/dashboard/team', icon: '👥' },
+      { name: 'Usuarios', href: '/dashboard/admin/users', icon: '🧑‍💼' },
+      { name: 'Comisiones', href: '/dashboard/admin/commissions', icon: '💰' },
+      { name: 'Auditoría', href: '/dashboard/admin/audit', icon: '📋' },
       { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
       { name: 'Admin', href: '/dashboard/admin', icon: '🛡️' },
     ],
@@ -67,24 +73,13 @@ export function Sidebar({ userEmail }: { userEmail: string }) {
       {/* ── Logo ─────────────────── */}
       <div className="px-5 pt-6 pb-5">
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-black text-white"
-            style={{
-              background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-              boxShadow: '0 4px 15px rgba(124, 58, 237, 0.35)',
-              letterSpacing: '-0.05em',
-            }}
-          >
-            S
-          </div>
-          <div>
-            <h1 className="text-base font-bold tracking-tight" style={{ color: '#f0f0ff' }}>
-              Syndra
-            </h1>
-            <p className="text-[10px] font-medium tracking-widest uppercase" style={{ color: 'rgba(167, 139, 250, 0.6)' }}>
-              AI Content Platform
-            </p>
-          </div>
+          <Image
+            src="/images/logosyndra.png"
+            alt="Syndra"
+            width={140}
+            height={38}
+            priority
+          />
         </div>
       </div>
 

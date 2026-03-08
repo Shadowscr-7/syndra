@@ -51,7 +51,7 @@ export interface VideoPost {
  */
 export interface PublishResult {
   success: boolean;
-  platform: 'instagram' | 'facebook' | 'discord';
+  platform: 'instagram' | 'facebook' | 'discord' | 'threads';
   externalPostId?: string;
   permalink?: string;
   error?: string;

@@ -2,17 +2,44 @@ import { prisma } from '@automatismos/db';
 import { CampaignList } from './campaign-list';
 import { createCampaign } from '@/lib/actions';
 import { getSession } from '@/lib/session';
+import { ChannelFormatsPicker } from '@/components/ui/channel-formats-picker';
 
 export default async function CampaignsPage() {
   const session = await getSession();
   const wsId = session?.workspaceId ?? 'ws_default';
+  const userId = session?.userId ?? '';
   let campaigns: any[] = [];
+  let personas: any[] = [];
+  let profiles: any[] = [];
+  let themes: any[] = [];
   let dbOk = true;
   try {
-    campaigns = await prisma.campaign.findMany({
-      where: { workspaceId: wsId },
-      orderBy: { createdAt: 'desc' },
-    });
+    [campaigns, personas, profiles, themes] = await Promise.all([
+      prisma.campaign.findMany({
+        where: { workspaceId: wsId },
+        include: {
+          contentProfile: { select: { id: true, name: true } },
+          userPersona: { select: { id: true, brandName: true } },
+          campaignThemes: { include: { theme: { select: { id: true, name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.userPersona.findMany({
+        where: { userId },
+        select: { id: true, brandName: true, isActive: true },
+        orderBy: { isActive: 'desc' },
+      }),
+      prisma.contentProfile.findMany({
+        where: { userId },
+        select: { id: true, name: true, isDefault: true },
+        orderBy: { isDefault: 'desc' },
+      }),
+      prisma.contentTheme.findMany({
+        where: { workspaceId: wsId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { priority: 'desc' },
+      }),
+    ]);
   } catch (e) {
     console.error('[CampaignsPage] DB error:', e);
     dbOk = false;
@@ -36,10 +63,11 @@ export default async function CampaignsPage() {
             action={createCampaign}
             className="glass-card p-6 mt-4 space-y-4"
           >
+            {/* Row 1: Name + Objective */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="input-label">Nombre *</label>
-                <input type="text" name="name" required placeholder="ej: Lanzamiento Producto X" className="input-field" />
+                <input type="text" name="name" required placeholder="ej: Crecimiento Q1 2026" className="input-field" />
               </div>
               <div>
                 <label className="input-label">Objetivo</label>
@@ -53,6 +81,49 @@ export default async function CampaignsPage() {
                 </select>
               </div>
             </div>
+
+            {/* Row 2: Persona + Profile */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="input-label">Persona</label>
+                <select name="userPersonaId" className="input-field">
+                  <option value="">— Usar persona activa —</option>
+                  {personas.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.brandName}{p.isActive ? ' ✓' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="input-label">Perfil de Contenido</label>
+                <select name="contentProfileId" className="input-field">
+                  <option value="">— Usar perfil default —</option>
+                  {profiles.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.isDefault ? ' ✓' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Row 3: Channels + Formats */}
+            <ChannelFormatsPicker />
+
+            {/* Row 4: Themes (multi-select) */}
+            <div>
+              <label className="input-label">Temas de la campaña</label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                {themes.map((t: any) => (
+                  <label key={t.id} className="flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-lg transition-all hover:bg-white/5" style={{ color: 'var(--color-text-secondary)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <input type="checkbox" name="themeIds" value={t.id} className="accent-purple-500" /> {t.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Row 5: Offer + Landing */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="input-label">Oferta (opcional)</label>
@@ -63,6 +134,8 @@ export default async function CampaignsPage() {
                 <input type="url" name="landingUrl" placeholder="https://..." className="input-field" />
               </div>
             </div>
+
+            {/* Row 6: Dates + KPI */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="input-label">Fecha inicio *</label>
@@ -85,7 +158,12 @@ export default async function CampaignsPage() {
       </div>
 
       <div className="animate-fade-in-delay-2">
-        <CampaignList campaigns={JSON.parse(JSON.stringify(campaigns))} />
+        <CampaignList
+          campaigns={JSON.parse(JSON.stringify(campaigns))}
+          personas={JSON.parse(JSON.stringify(personas))}
+          profiles={JSON.parse(JSON.stringify(profiles))}
+          themes={JSON.parse(JSON.stringify(themes))}
+        />
       </div>
     </div>
   );

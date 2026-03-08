@@ -1,8 +1,8 @@
 import { prisma } from '@automatismos/db';
 import Link from 'next/link';
-import { createEditorialRun } from '@/lib/actions';
 import { getSession } from '@/lib/session';
 import { AutoRefresh } from '@/components/ui/auto-refresh';
+import { ManualRunForm } from './manual-run-form';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: '#94a3b8',
@@ -24,7 +24,7 @@ export default async function EditorialPage() {
   const session = await getSession();
   const wsId = session?.workspaceId ?? 'ws_default';
   let runs: Awaited<ReturnType<typeof prisma.editorialRun.findMany>> = [];
-  let campaigns: { id: string; name: string }[] = [];
+  let campaigns: { id: string; name: string; targetChannels: string[] }[] = [];
   let dbOk = true;
   try {
     [runs, campaigns] = await Promise.all([
@@ -53,7 +53,7 @@ export default async function EditorialPage() {
       }),
       prisma.campaign.findMany({
         where: { workspaceId: wsId, isActive: true },
-        select: { id: true, name: true },
+        select: { id: true, name: true, targetChannels: true },
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -76,45 +76,7 @@ export default async function EditorialPage() {
       </div>
 
       <div className="animate-fade-in-delay-1">
-        <details>
-          <summary className="btn-primary cursor-pointer list-none text-sm w-fit select-none">
-            🚀 Nueva corrida manual
-          </summary>
-          <form
-            action={createEditorialRun}
-            className="glass-card p-6 mt-4 space-y-4"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="input-label">Campaña (opcional)</label>
-                <select name="campaignId" className="input-field">
-                  <option value="">Sin campaña</option>
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="input-label">Prioridad (1-10)</label>
-                <input type="number" name="priority" defaultValue={5} min={1} max={10} className="input-field" />
-              </div>
-              <div>
-                <label className="input-label">Canales</label>
-                <div className="flex gap-4 mt-2">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
-                    <input type="checkbox" name="channels" value="instagram" defaultChecked className="accent-purple-500" /> 📸 Instagram
-                  </label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
-                    <input type="checkbox" name="channels" value="facebook" className="accent-purple-500" /> 📘 Facebook
-                  </label>
-                </div>
-              </div>
-            </div>
-            <button type="submit" className="btn-primary w-full text-sm">
-              🚀 Crear corrida
-            </button>
-          </form>
-        </details>
+        <ManualRunForm campaigns={JSON.parse(JSON.stringify(campaigns))} />
       </div>
 
       <div className="glass-card p-0 overflow-hidden animate-fade-in-delay-1">

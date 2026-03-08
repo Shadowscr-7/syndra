@@ -84,7 +84,7 @@ export default async function PlansPage() {
                 >
                   {plan.monthlyPrice === 0
                     ? 'Gratis'
-                    : `$${plan.monthlyPrice}`}
+                    : `$${Math.round(plan.monthlyPrice / 100)}`}
                 </span>
                 {plan.monthlyPrice > 0 && (
                   <span
@@ -99,7 +99,7 @@ export default async function PlansPage() {
                     className="text-xs mt-1"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    ${plan.yearlyPrice}/año (ahorra{' '}
+                    ${Math.round(plan.yearlyPrice / 100)}/año (ahorra{' '}
                     {Math.round(
                       (1 - plan.yearlyPrice / (plan.monthlyPrice * 12)) * 100,
                     )}

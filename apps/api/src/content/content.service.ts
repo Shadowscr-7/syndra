@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { CredentialsService } from '../credentials/credentials.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -43,20 +44,46 @@ export interface ComplianceResult {
 @Injectable()
 export class ContentService {
   private readonly logger = new Logger(ContentService.name);
-  private llm: LLMAdapter;
+  private fallbackLlm: LLMAdapter;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly credentialsService: CredentialsService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
 
     if (provider === 'anthropic') {
-      this.llm = new AnthropicAdapter({ apiKey });
+      this.fallbackLlm = new AnthropicAdapter({ apiKey });
     } else {
-      this.llm = new OpenAIAdapter({ apiKey });
+      this.fallbackLlm = new OpenAIAdapter({ apiKey });
     }
+  }
+
+  /** Resolve workspace owner userId */
+  private async resolveUserId(workspaceId: string): Promise<string | null> {
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
+      select: { userId: true },
+    });
+    return wsUser?.userId ?? null;
+  }
+
+  /** Build LLM adapter: DB credentials first, env-var fallback */
+  private async getLlm(workspaceId: string): Promise<LLMAdapter> {
+    const userId = await this.resolveUserId(workspaceId);
+    if (userId) {
+      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      if (payload?.apiKey) {
+        const provider = payload.provider ?? 'openai';
+        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        return provider === 'anthropic'
+          ? new AnthropicAdapter({ apiKey: payload.apiKey })
+          : new OpenAIAdapter({ apiKey: payload.apiKey });
+      }
+    }
+    return this.fallbackLlm;
   }
 
   /**
@@ -89,14 +116,69 @@ export class ContentService {
       where: { workspaceId },
     });
 
+    // 2b. Obtener persona activa y perfil de contenido del usuario
+    const wsUser = await this.prisma.workspaceUser.findFirst({
+      where: { workspaceId, role: 'OWNER' },
+    });
+    const ownerId = wsUser?.userId;
+
+    // Cargar perfil de contenido del run o el default
+    const editRun = await this.prisma.editorialRun.findUnique({
+      where: { id: editorialRunId },
+      select: { contentProfileId: true, userPersonaId: true },
+    });
+
+    const activePersona = editRun?.userPersonaId
+      ? await this.prisma.userPersona.findUnique({ where: { id: editRun.userPersonaId } })
+      : ownerId
+        ? await this.prisma.userPersona.findFirst({
+            where: { userId: ownerId, isActive: true },
+          })
+        : null;
+
+    const contentProfile = editRun?.contentProfileId
+      ? await this.prisma.contentProfile.findUnique({ where: { id: editRun.contentProfileId } })
+      : ownerId
+        ? await this.prisma.contentProfile.findFirst({
+            where: { userId: ownerId, isDefault: true },
+          })
+        : null;
+
+    // Build persona/profile objects for prompt injection
+    const personaCtx = activePersona
+      ? {
+          brandName: activePersona.brandName,
+          brandDescription: activePersona.brandDescription,
+          tone: activePersona.tone,
+          expertise: activePersona.expertise,
+          targetAudience: activePersona.targetAudience,
+          avoidTopics: activePersona.avoidTopics,
+          languageStyle: activePersona.languageStyle,
+          examplePhrases: activePersona.examplePhrases,
+        }
+      : undefined;
+
+    const profileCtx = contentProfile
+      ? {
+          name: contentProfile.name,
+          tone: contentProfile.tone,
+          contentLength: contentProfile.contentLength,
+          audience: contentProfile.audience,
+          language: contentProfile.language,
+          hashtags: contentProfile.hashtags,
+          postingGoal: contentProfile.postingGoal,
+        }
+      : undefined;
+
     // 3. Generar copy según formato
+    const llm = await this.getLlm(workspaceId);
     let mainCopy: GeneratedCopy;
     const formatLower = brief.format.toLowerCase();
 
     if (formatLower === 'carousel') {
-      mainCopy = await this.generateCarouselCopy(brief, brand);
+      mainCopy = await this.generateCarouselCopy(brief, brand, personaCtx, profileCtx, llm);
     } else {
-      mainCopy = await this.generatePostCopy(brief, brand);
+      mainCopy = await this.generatePostCopy(brief, brand, personaCtx, profileCtx, llm);
     }
 
     // 4. Crear ContentVersion principal (v1)
@@ -118,7 +200,7 @@ export class ContentService {
     const altTone = this.pickAlternativeTone(brief.tone);
     let variantCopy: GeneratedCopy;
     try {
-      const variantResponse = await this.llm.complete(
+      const variantResponse = await llm.complete(
         buildToneVariantPrompt({
           originalCopy: mainCopy.caption,
           newTone: altTone,
@@ -151,6 +233,7 @@ export class ContentService {
       mainCopy.caption,
       brand?.prohibitedTopics ?? [],
       brand?.allowedClaims ?? [],
+      llm,
     );
 
     // 7. Determinar siguiente status
@@ -194,7 +277,8 @@ export class ContentService {
       where: { workspaceId },
     });
 
-    const correctionResponse = await this.llm.complete(
+    const llm = await this.getLlm(workspaceId);
+    const correctionResponse = await llm.complete(
       buildCorrectionPrompt({
         originalCopy: original.caption,
         feedback,
@@ -253,7 +337,8 @@ export class ContentService {
       where: { workspaceId },
     });
 
-    const response = await this.llm.complete(
+    const llm = await this.getLlm(workspaceId);
+    const response = await llm.complete(
       buildToneVariantPrompt({
         originalCopy: original.caption,
         newTone,
@@ -299,7 +384,11 @@ export class ContentService {
   private async generatePostCopy(
     brief: { angle: string; tone: string; cta: string; seedPrompt: string; references: string[] },
     brand: { voice: string } | null,
+    persona?: any,
+    contentProfile?: any,
+    llm?: LLMAdapter,
   ): Promise<GeneratedCopy> {
+    const adapter = llm ?? this.fallbackLlm;
     const prompt = buildPostCopyPrompt({
       angle: brief.angle,
       tone: brief.tone,
@@ -309,9 +398,11 @@ export class ContentService {
       references: brief.references,
       maxCaptionLength: INSTAGRAM_LIMITS.CAPTION_MAX_LENGTH,
       hashtagLimit: INSTAGRAM_LIMITS.HASHTAGS_MAX,
+      persona,
+      contentProfile,
     });
 
-    const response = await this.llm.complete(prompt, {
+    const response = await adapter.complete(prompt, {
       temperature: 0.7,
       maxTokens: 3000,
     });
@@ -322,7 +413,11 @@ export class ContentService {
   private async generateCarouselCopy(
     brief: { angle: string; tone: string; cta: string; seedPrompt: string; references: string[] },
     brand: { voice: string } | null,
+    persona?: any,
+    contentProfile?: any,
+    llm?: LLMAdapter,
   ): Promise<GeneratedCopy> {
+    const adapter = llm ?? this.fallbackLlm;
     const prompt = buildCarouselCopyPrompt({
       angle: brief.angle,
       tone: brief.tone,
@@ -331,9 +426,11 @@ export class ContentService {
       brandVoice: brand?.voice ?? '',
       references: brief.references,
       slideCount: 8,
+      persona,
+      contentProfile,
     });
 
-    const response = await this.llm.complete(prompt, {
+    const response = await adapter.complete(prompt, {
       temperature: 0.7,
       maxTokens: 4096,
     });
@@ -345,10 +442,12 @@ export class ContentService {
     content: string,
     prohibitedTopics: string[],
     allowedClaims: string[],
+    llm?: LLMAdapter,
   ): Promise<ComplianceResult> {
     try {
+      const adapter = llm ?? this.fallbackLlm;
       const prompt = buildComplianceCheckPrompt(content, prohibitedTopics, allowedClaims);
-      const response = await this.llm.complete(prompt, {
+      const response = await adapter.complete(prompt, {
         temperature: 0.1,
         maxTokens: 1024,
       });

@@ -3,6 +3,54 @@
 // ============================================================
 
 /**
+ * Helper: Build persona + profile context blocks for content prompts
+ */
+function buildPersonaContext(persona?: {
+  brandName: string;
+  brandDescription: string;
+  tone: string[];
+  expertise: string[];
+  targetAudience: string;
+  avoidTopics: string[];
+  languageStyle: string;
+  examplePhrases: string[];
+}): string {
+  if (!persona) return '';
+  return `
+
+PERSONA IA DE MARCA:
+- Marca: ${persona.brandName}
+- Descripción: ${persona.brandDescription}
+- Tonos: ${persona.tone.join(', ')}
+- Expertise: ${persona.expertise.join(', ')}
+- Audiencia: ${persona.targetAudience}
+- Estilo: ${persona.languageStyle}
+${persona.examplePhrases.length ? `- Frases ejemplo: "${persona.examplePhrases.join('", "')}"` : ''}
+${persona.avoidTopics.length ? `- NO mencionar: ${persona.avoidTopics.join(', ')}` : ''}`;
+}
+
+function buildProfileContext(profile?: {
+  name: string;
+  tone: string;
+  contentLength: string;
+  audience: string;
+  language: string;
+  hashtags: string[];
+  postingGoal: string;
+}): string {
+  if (!profile) return '';
+  return `
+
+PERFIL DE CONTENIDO: ${profile.name}
+- Tono del perfil: ${profile.tone}
+- Extensión: ${profile.contentLength}
+- Audiencia: ${profile.audience}
+- Idioma: ${profile.language}
+- Objetivo: ${profile.postingGoal}
+${profile.hashtags.length ? `- Incluir hashtags: ${profile.hashtags.join(', ')}` : ''}`;
+}
+
+/**
  * Prompt principal para generar copy de un post
  */
 export function buildPostCopyPrompt(params: {
@@ -14,6 +62,8 @@ export function buildPostCopyPrompt(params: {
   references: string[];
   maxCaptionLength: number;
   hashtagLimit: number;
+  persona?: Parameters<typeof buildPersonaContext>[0];
+  contentProfile?: Parameters<typeof buildProfileContext>[0];
 }): string {
   return `Eres un copywriter experto en redes sociales tech/IA.
 
@@ -23,6 +73,7 @@ BRIEF:
 - CTA: ${params.cta}
 - Voz de marca: ${params.brandVoice}
 - Seed: ${params.seedPrompt}
+${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}
 
 FUENTES DE REFERENCIA:
 ${params.references.map((r, i) => `${i + 1}. ${r}`).join('\n')}
@@ -59,6 +110,8 @@ export function buildCarouselCopyPrompt(params: {
   brandVoice: string;
   references: string[];
   slideCount: number;
+  persona?: Parameters<typeof buildPersonaContext>[0];
+  contentProfile?: Parameters<typeof buildProfileContext>[0];
 }): string {
   return `Eres un copywriter experto en carousels educativos de Instagram sobre tech/IA.
 
@@ -69,6 +122,7 @@ BRIEF:
 - Voz de marca: ${params.brandVoice}
 - Seed: ${params.seedPrompt}
 - Número de slides: ${params.slideCount}
+${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}
 
 FUENTES:
 ${params.references.map((r, i) => `${i + 1}. ${r}`).join('\n')}

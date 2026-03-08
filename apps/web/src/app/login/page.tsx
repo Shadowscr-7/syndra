@@ -1,15 +1,30 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('verified') === 'true') {
+      setSuccessMessage('✅ Email verificado correctamente. Ya puedes iniciar sesión.');
+    }
+    if (searchParams.get('error') === 'verification_failed') {
+      setMessage('El enlace de verificación ha expirado o no es válido.');
+    }
+    if (searchParams.get('reset') === 'success') {
+      setSuccessMessage('✅ Contraseña actualizada. Inicia sesión con tu nueva contraseña.');
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,19 +75,14 @@ export default function LoginPage() {
       <div className="w-full max-w-md glass-card p-8 relative z-10 animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div
-            className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-3xl mb-4 font-black text-white"
-            style={{
-              background: 'linear-gradient(135deg, #7c3aed, #06b6d4)',
-              boxShadow: '0 8px 32px rgba(124, 58, 237, 0.35)',
-              letterSpacing: '-0.05em',
-            }}
-          >
-            S
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight page-title">
-            Syndra
-          </h1>
+          <Image
+            src="/images/logosyndra.png"
+            alt="Syndra"
+            width={200}
+            height={56}
+            className="mx-auto mb-4"
+            priority
+          />
           <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
             Ingresa tus credenciales para acceder al panel
           </p>
@@ -133,7 +143,19 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="mt-6 text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+        {successMessage && (
+          <div className="mt-4 text-sm text-center p-3 rounded-xl" style={{ background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+            {successMessage}
+          </div>
+        )}
+
+        <div className="mt-4 text-center">
+          <Link href="/forgot-password" className="text-sm" style={{ color: '#7c3aed' }}>
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
+
+        <p className="mt-4 text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
           No tienes cuenta?{' '}
           <Link href="/register" className="font-semibold" style={{ color: '#7c3aed' }}>
             Crear cuenta

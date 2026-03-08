@@ -25,12 +25,30 @@ model User {
   isBlocked      Boolean  @default(false) @map("is_blocked")
   emailVerified  Boolean  @default(false) @map("email_verified")
   referredByCode String?  @map("referred_by_code") // affiliate code used at registration
+  referralCode   String?  @unique @map("referral_code")  // this user's own shareable code
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   workspaces    WorkspaceUser[]
   refreshTokens RefreshToken[]
+
+  // Affiliate relations
+  collaboratorReferrals AffiliateReferral[] @relation("CollaboratorReferrals")
+  userReferrals         AffiliateReferral[] @relation("UserReferrals")
+  collaboratorPayouts   CommissionPayout[]  @relation("CollaboratorPayouts")
+  auditLogs             AuditLog[]
+  userCredentials       UserCredential[]
+  telegramLink          TelegramLink?
+  telegramLinkTokens    TelegramLinkToken[]
+  personas              UserPersona[]
+  contentProfiles       ContentProfile[]
+  visualStyleProfiles   VisualStyleProfile[]
+  mediaFiles            UserMedia[]
+  mediaFolders          MediaFolder[]
+  publishSchedules      PublishSchedule[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 
   @@map("users")
 }
@@ -152,6 +170,7 @@ model ContentTheme {
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contentBriefs ContentBrief[]
+  campaignThemes CampaignTheme[]
 
   @@map("content_themes")
 }
@@ -162,23 +181,42 @@ enum ThemeType {
 }
 
 model Campaign {
-  id          String   @id @default(cuid())
-  workspaceId String   @map("workspace_id")
-  name        String
-  objective   CampaignObjective
-  offer       String?
-  landingUrl  String?  @map("landing_url")
-  startDate   DateTime @map("start_date")
-  endDate     DateTime? @map("end_date")
-  kpiTarget   String?  @map("kpi_target")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  workspaceId      String   @map("workspace_id")
+  name             String
+  objective        CampaignObjective
+  offer            String?
+  landingUrl       String?  @map("landing_url")
+  startDate        DateTime @map("start_date")
+  endDate          DateTime? @map("end_date")
+  kpiTarget        String?  @map("kpi_target")
+  contentProfileId String?  @map("content_profile_id")
+  userPersonaId    String?  @map("user_persona_id")
+  targetChannels   String[] @default(["instagram"]) @map("target_channels")
+  channelFormats   Json?    @map("channel_formats")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  editorialRuns EditorialRun[]
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentProfile ContentProfile? @relation(fields: [contentProfileId], references: [id], onDelete: SetNull)
+  userPersona    UserPersona?    @relation(fields: [userPersonaId], references: [id], onDelete: SetNull)
+  editorialRuns  EditorialRun[]
+  campaignThemes CampaignTheme[]
 
   @@map("campaigns")
+}
+
+model CampaignTheme {
+  id         String @id @default(cuid())
+  campaignId String @map("campaign_id")
+  themeId    String @map("theme_id")
+
+  campaign Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  theme    ContentTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, themeId])
+  @@map("campaign_themes")
 }
 
 enum CampaignObjective {
@@ -252,11 +290,15 @@ model EditorialRun {
   researchSummary String? @map("research_summary")
   publishWindow DateTime? @map("publish_window")
   targetChannels String[] @default(["instagram"]) @map("target_channels")
+  contentProfileId String? @map("content_profile_id")
+  userPersonaId    String? @map("user_persona_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   campaign          Campaign?          @relation(fields: [campaignId], references: [id])
+  contentProfile    ContentProfile?    @relation(fields: [contentProfileId], references: [id])
+  userPersona       UserPersona?       @relation(fields: [userPersonaId], references: [id])
   researchSnapshots ResearchSnapshot[]
   contentBrief      ContentBrief?
   approvalEvents    ApprovalEvent[]
@@ -442,6 +484,7 @@ model Publication {
 enum Platform {
   INSTAGRAM
   FACEBOOK
+  THREADS
 }
 
 enum PublicationStatus {
@@ -594,6 +637,10 @@ model Plan {
   maxSources       Int    @default(10)  @map("max_sources")
   maxChannels      Int    @default(2)   @map("max_channels")
   maxEditors       Int    @default(1)   @map("max_editors")
+  maxPersonas      Int    @default(0)   @map("max_personas")        // 0=disabled, -1=unlimited
+  maxContentProfiles Int  @default(1)   @map("max_content_profiles") // -1=unlimited
+  maxStorageMb       Int  @default(100) @map("max_storage_mb")       // media storage limit
+  maxScheduleSlots   Int  @default(0)   @map("max_schedule_slots")   // 0=disabled, -1=unlimited
   // Features
   analyticsEnabled Boolean @default(false) @map("analytics_enabled")
   aiScoringEnabled Boolean @default(false) @map("ai_scoring_enabled")
@@ -614,8 +661,14 @@ model Subscription {
   planId           String   @map("plan_id")
   status           SubscriptionStatus @default(ACTIVE)
   billingCycle     BillingCycle @default(MONTHLY) @map("billing_cycle")
+  // PayPal integration
+  paypalSubscriptionId String? @map("paypal_subscription_id")
+  paypalCustomerId     String? @map("paypal_customer_id")
+  paypalPlanId         String? @map("paypal_plan_id")       // PayPal billing plan ID
+  // Legacy Stripe fields (kept for backward compatibility)
   stripeCustomerId String?  @map("stripe_customer_id")
   stripeSubId      String?  @map("stripe_sub_id")
+  discountPercent  Int      @default(0) @map("discount_percent") // e.g. 20 for referral
   currentPeriodStart DateTime @default(now()) @map("current_period_start")
   currentPeriodEnd   DateTime @default(now()) @map("current_period_end")
   cancelAtPeriodEnd  Boolean @default(false) @map("cancel_at_period_end")
@@ -754,4 +807,407 @@ model PaymentLog {
 
   @@index([workspaceId])
   @@map("payment_logs")
+}
+
+// ============================================================
+// AFFILIATE REFERRALS — Tracking de referidos por colaborador
+// ============================================================
+// Cada vez que un usuario se registra con un código de referido,
+// se crea un AffiliateReferral que trackea la comisión.
+
+model AffiliateReferral {
+  id                String   @id @default(cuid())
+  collaboratorId    String   @map("collaborator_id")          // User con role=COLLABORATOR
+  referredUserId    String   @map("referred_user_id")          // El usuario que se registró con el código
+  referralCode      String   @map("referral_code")             // Código usado
+  subscriptionId    String?  @map("subscription_id")           // Suscripción del referido
+  planName          String?  @map("plan_name")                 // Plan elegido al registrarse
+  amountPaid        Int      @default(0) @map("amount_paid")   // Lo que pagó el cliente (centavos)
+  commissionPercent Int      @default(20) @map("commission_percent") // % de comisión
+  commissionAmount  Int      @default(0) @map("commission_amount")   // Comisión calculada (centavos)
+  status            ReferralStatus @default(PENDING)
+  payoutId          String?  @map("payout_id")                 // CommissionPayout al que pertenece
+  approvedAt        DateTime? @map("approved_at")
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  collaborator  User              @relation("CollaboratorReferrals", fields: [collaboratorId], references: [id], onDelete: Cascade)
+  referredUser  User              @relation("UserReferrals", fields: [referredUserId], references: [id], onDelete: Cascade)
+  payout        CommissionPayout? @relation(fields: [payoutId], references: [id])
+
+  @@unique([referredUserId]) // Un usuario solo puede ser referido una vez
+  @@index([collaboratorId])
+  @@index([status])
+  @@map("affiliate_referrals")
+}
+
+enum ReferralStatus {
+  PENDING    // Registrado, pendiente de revisión
+  APPROVED   // Aprobado, listo para pagar
+  PAID       // Comisión pagada
+  CANCELLED  // Cancelado / reembolsado
+}
+
+// ============================================================
+// COMMISSION PAYOUTS — Facturas/batch de pago a colaboradores
+// ============================================================
+
+model CommissionPayout {
+  id               String   @id @default(cuid())
+  collaboratorId   String   @map("collaborator_id")
+  totalAmount      Int      @default(0) @map("total_amount")    // Total a pagar (centavos)
+  currency         String   @default("USD")
+  referralCount    Int      @default(0) @map("referral_count")  // Cantidad de referidos incluidos
+  method           String?                                       // paypal, transfer, crypto, etc.
+  reference        String?                                       // Nro de transferencia / comprobante
+  notes            String?
+  status           PayoutStatus @default(DRAFT)
+  invoiceNumber    String?  @unique @map("invoice_number")       // Ej: INV-2026-001
+  generatedBy      String   @map("generated_by")                 // Admin que generó la factura
+  paidAt           DateTime? @map("paid_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  collaborator User                @relation("CollaboratorPayouts", fields: [collaboratorId], references: [id], onDelete: Cascade)
+  referrals    AffiliateReferral[]
+
+  @@index([collaboratorId])
+  @@index([status])
+  @@map("commission_payouts")
+}
+
+enum PayoutStatus {
+  DRAFT      // Borrador, aún se pueden agregar/quitar referidos
+  CONFIRMED  // Confirmado, pendiente de pago
+  PAID       // Pagado
+  VOIDED     // Anulado
+}
+
+// ============================================================
+// AUDIT LOG — Registro de acciones administrativas
+// ============================================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String                       // e.g. "user.block", "payout.generate", "role.change"
+  category    AuditCategory @default(SYSTEM)
+  performedBy String   @map("performed_by") // userId del admin que ejecutó
+  targetId    String?  @map("target_id")    // ID de la entidad afectada
+  targetType  String?  @map("target_type")  // "User", "Payout", "Subscription", etc.
+  details     Json?                          // Metadata extra: { oldRole: "USER", newRole: "COLLABORATOR" }
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  performer User @relation(fields: [performedBy], references: [id], onDelete: Cascade)
+
+  @@index([performedBy])
+  @@index([action])
+  @@index([targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum AuditCategory {
+  USER_MGMT       // Acciones sobre usuarios (block, role change, delete)
+  COMMISSION       // Acciones de comisiones (approve, payout, void)
+  SUBSCRIPTION     // Acciones de suscripciones (activate, extend, cancel)
+  LICENSE          // Acciones de licencias (generate, revoke)
+  SYSTEM           // Acciones del sistema
+}
+
+// ============================================================
+// USER CREDENTIALS — Keys y tokens por usuario (AES-256-GCM)
+// ============================================================
+
+model UserCredential {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  provider         UserCredentialProvider
+  encryptedPayload String   @map("encrypted_payload")  // AES-256-GCM JSON cifrado
+  label            String?                              // e.g. "Mi key de OpenAI"
+  isActive         Boolean  @default(true) @map("is_active")
+  lastTestedAt     DateTime? @map("last_tested_at")
+  lastTestResult   String?  @map("last_test_result")     // 'ok' | 'error: ...' 
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("user_credentials")
+}
+
+enum UserCredentialProvider {
+  LLM           // OpenRouter / OpenAI / Anthropic
+  IMAGE_GEN     // HuggingFace / DALL-E / Stability
+  RESEARCH      // Tavily / SerpAPI
+  META          // Instagram / Facebook (OAuth token)
+  DISCORD       // Webhook URL
+  CLOUDINARY    // Cloud storage
+  GOOGLE_DRIVE  // OAuth + folder
+  AWS_S3        // Bucket credentials
+  HEYGEN        // Video generation
+  TELEGRAM      // Bot token
+}
+
+// ============================================================
+// TELEGRAM LINK — Vinculación Telegram ↔ Usuario (QR Pairing)
+// ============================================================
+
+model TelegramLink {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  chatId    String   @map("chat_id")
+  username  String?
+  firstName String?  @map("first_name")
+  isActive  Boolean  @default(true) @map("is_active")
+  linkedAt  DateTime @default(now()) @map("linked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@map("telegram_links")
+}
+
+model TelegramLinkToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("telegram_link_tokens")
+}
+
+// ============================================================
+// AI PERSONA — Personalidad de la IA por usuario
+// ============================================================
+
+model UserPersona {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  brandName        String   @default("") @map("brand_name")
+  brandDescription String   @default("") @map("brand_description")
+  tone             String[] @default([])              // ["sarcástico", "experto", "directo"]
+  expertise        String[] @default([])              // ["IA", "programación", "startups"]
+  visualStyle      String   @default("") @map("visual_style")  // "minimalista"
+  targetAudience   String   @default("") @map("target_audience")
+  avoidTopics      String[] @default([]) @map("avoid_topics")
+  languageStyle    String   @default("") @map("language_style") // "tuteo, informal, con humor"
+  examplePhrases   String[] @default([]) @map("example_phrases")
+  isActive         Boolean  @default(false) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  editorialRuns EditorialRun[]
+  campaigns     Campaign[]
+
+  @@index([userId])
+  @@map("user_personas")
+}
+
+// ============================================================
+// CONTENT PROFILE — Canal / tipo de contenido por usuario
+// ============================================================
+
+model ContentProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @map("user_id")
+  name                  String                          // "Canal educativo IA"
+  tone                  String   @default("didáctico")  // tono por defecto del perfil
+  contentLength         String   @default("MEDIUM") @map("content_length") // SHORT | MEDIUM | LONG
+  audience              String   @default("")           // "emprendedores de 25-40"
+  language              String   @default("es")         // "es-MX", "en", etc.
+  hashtags              String[] @default([])
+  postingGoal           String   @default("") @map("posting_goal")
+  linkedSocialAccounts  String[] @default([]) @map("linked_social_accounts") // IDs de cuentas
+  isDefault             Boolean  @default(false) @map("is_default")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  editorialRuns     EditorialRun[]
+  visualStyleProfiles VisualStyleProfile[]
+  publishSchedules  PublishSchedule[]
+  campaigns         Campaign[]
+
+  @@index([userId])
+  @@map("content_profiles")
+}
+
+// ============================================================
+// VISUAL STYLE PROFILE — Estilo visual para generación de imágenes
+// ============================================================
+
+model VisualStyleProfile {
+  id                     String   @id @default(cuid())
+  userId                 String   @map("user_id")
+  contentProfileId       String?  @map("content_profile_id")
+  name                   String                           // "Futurista tech"
+  style                  String   @default("MINIMALIST")  // MINIMALIST | FUTURISTIC | REALISTIC | etc.
+  colorPalette           String[] @default([])  @map("color_palette")
+  primaryFont            String?  @map("primary_font")
+  secondaryFont          String?  @map("secondary_font")
+  logoUrl                String?  @map("logo_url")
+  preferredImageProvider String   @default("huggingface") @map("preferred_image_provider")
+  customPromptPrefix     String?  @map("custom_prompt_prefix")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentProfile ContentProfile? @relation(fields: [contentProfileId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("visual_style_profiles")
+}
+
+// ============================================================
+// MEDIA FOLDER — Organización de imágenes del usuario
+// ============================================================
+
+model MediaFolder {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String                       // "Logos", "Productos", "Fondos"
+  parentId  String?  @map("parent_id")   // subcarpetas
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   MediaFolder?  @relation("FolderSubfolders", fields: [parentId], references: [id], onDelete: SetNull)
+  children MediaFolder[] @relation("FolderSubfolders")
+  files    UserMedia[]
+
+  @@index([userId])
+  @@map("media_folders")
+}
+
+// ============================================================
+// USER MEDIA — Repositorio de imágenes del usuario
+// ============================================================
+
+enum MediaCategory {
+  LOGO
+  PRODUCT
+  BACKGROUND
+  PERSONAL
+  OTHER
+}
+
+model UserMedia {
+  id            String        @id @default(cuid())
+  userId        String        @map("user_id")
+  folderId      String?       @map("folder_id")
+  filename      String
+  url           String
+  thumbnailUrl  String?       @map("thumbnail_url")
+  mimeType      String        @map("mime_type")
+  sizeBytes     Int           @map("size_bytes")
+  tags          String[]      @default([])
+  category      MediaCategory @default(OTHER)
+  metadata      Json          @default("{}")   // width, height, etc.
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([category])
+  @@map("user_media")
+}
+
+// ============================================================
+// PUBLISH SCHEDULE — Horarios de publicación del usuario
+// ============================================================
+
+model PublishSchedule {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  contentProfileId String?  @map("content_profile_id")
+  name             String   @default("Mi horario")
+  timezone         String   @default("America/Mexico_City")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentProfile ContentProfile?  @relation(fields: [contentProfileId], references: [id], onDelete: SetNull)
+  slots          ScheduleSlot[]
+
+  @@index([userId])
+  @@map("publish_schedules")
+}
+
+// ============================================================
+// SCHEDULE SLOT — Cada slot de publicación (día + hora)
+// ============================================================
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model ScheduleSlot {
+  id               String   @id @default(cuid())
+  scheduleId       String   @map("schedule_id")
+  dayOfWeek        DayOfWeek @map("day_of_week")
+  time             String              // "09:00"
+  socialAccountIds String[] @default([]) @map("social_account_ids")
+  priority         Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  schedule PublishSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@map("schedule_slots")
+}
+
+// ============================================================
+// EMAIL VERIFICATION TOKEN
+// ============================================================
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("email_verification_tokens")
+}
+
+// ============================================================
+// PASSWORD RESET TOKEN
+// ============================================================
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
 }

@@ -2,11 +2,14 @@
 // AnalyticsController — REST endpoints para Fase 5
 // ============================================================
 
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { ScoringService } from './scoring.service';
+import { PlanLimitsGuard, RequireFeature } from '../plans/plan-limits.guard';
 
 @Controller('api/analytics')
+@UseGuards(PlanLimitsGuard)
+@RequireFeature('analytics')
 export class AnalyticsController {
   constructor(
     private readonly analytics: AnalyticsService,

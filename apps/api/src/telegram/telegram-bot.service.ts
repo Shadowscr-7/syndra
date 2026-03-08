@@ -22,24 +22,30 @@ export class TelegramBotService {
   private readonly logger = new Logger(TelegramBotService.name);
   private readonly botToken: string;
   private readonly apiUrl: string;
-  private readonly chatId: string;
+  private readonly defaultChatId: string;
 
   constructor(private readonly config: ConfigService) {
     this.botToken = this.config.get<string>('TELEGRAM_BOT_TOKEN', '');
     this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
-    this.chatId = this.config.get<string>('TELEGRAM_CHAT_ID', '');
+    this.defaultChatId = this.config.get<string>('TELEGRAM_CHAT_ID', '');
+  }
+
+  /** Resuelve el chatId: usa el explícito si se provee, o cae al default del env */
+  private resolveChatId(chatId?: string): string {
+    return chatId || this.defaultChatId;
   }
 
   /**
    * Envía la preview de contenido al chat de aprobación con botones inline
    */
-  async sendPreview(preview: TelegramPreview): Promise<string> {
+  async sendPreview(preview: TelegramPreview, chatId?: string): Promise<string> {
+    const target = this.resolveChatId(chatId);
     const text = formatPreviewMessage(preview);
 
     // Si hay thumbnail, enviar como foto
     if (preview.thumbnailUrl) {
       const photoResult = await this.sendPhoto({
-        chat_id: this.chatId,
+        chat_id: target,
         photo: preview.thumbnailUrl,
         caption: text.substring(0, 1024), // Telegram caption limit
         parse_mode: 'Markdown',
@@ -50,7 +56,7 @@ export class TelegramBotService {
 
     // Si no hay imagen, enviar como mensaje de texto
     const result = await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: target,
       text,
       parse_mode: 'Markdown',
       reply_markup: APPROVAL_KEYBOARD,
@@ -62,9 +68,9 @@ export class TelegramBotService {
   /**
    * Envía la opción de selección de tono
    */
-  async sendToneSelector(replyToMessageId: number): Promise<void> {
+  async sendToneSelector(replyToMessageId: number, chatId?: string): Promise<void> {
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text: '🎭 *Selecciona el nuevo tono:*',
       parse_mode: 'Markdown',
       reply_markup: TONE_KEYBOARD,
@@ -75,9 +81,9 @@ export class TelegramBotService {
   /**
    * Solicita texto de corrección al usuario
    */
-  async requestCorrectionText(replyToMessageId: number): Promise<void> {
+  async requestCorrectionText(replyToMessageId: number, chatId?: string): Promise<void> {
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text: '✏️ *Escribe tu corrección:*\n\nResponde a este mensaje con el texto de tu corrección.',
       parse_mode: 'Markdown',
       reply_to_message_id: replyToMessageId,
@@ -87,9 +93,9 @@ export class TelegramBotService {
   /**
    * Envía notificación de que el contenido fue aprobado
    */
-  async sendApprovalConfirmation(editorialRunId: string): Promise<void> {
+  async sendApprovalConfirmation(editorialRunId: string, chatId?: string): Promise<void> {
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text: `✅ *Contenido aprobado*\n\n🆔 Run: \`${editorialRunId}\`\n\n📤 Enviando a publicación...`,
       parse_mode: 'Markdown',
     });
@@ -98,10 +104,10 @@ export class TelegramBotService {
   /**
    * Envía confirmación de publicación exitosa
    */
-  async sendPublishConfirmation(platform: string, permalink: string): Promise<void> {
+  async sendPublishConfirmation(platform: string, permalink: string, chatId?: string): Promise<void> {
     const text = formatPublishConfirmation(platform, permalink);
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text,
       parse_mode: 'Markdown',
     });
@@ -110,10 +116,10 @@ export class TelegramBotService {
   /**
    * Envía notificación de error
    */
-  async sendError(stage: string, error: string): Promise<void> {
+  async sendError(stage: string, error: string, chatId?: string): Promise<void> {
     const text = formatErrorMessage(stage, error);
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text,
       parse_mode: 'Markdown',
     });
@@ -122,9 +128,9 @@ export class TelegramBotService {
   /**
    * Envía notificación genérica
    */
-  async sendNotification(message: string): Promise<void> {
+  async sendNotification(message: string, chatId?: string): Promise<void> {
     await this.sendMessage({
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       text: message,
       parse_mode: 'Markdown',
     });
@@ -137,7 +143,9 @@ export class TelegramBotService {
   async sendMediaGroup(
     photoUrls: string[],
     caption?: string,
+    chatId?: string,
   ): Promise<string[]> {
+    const target = this.resolveChatId(chatId);
     if (!this.botToken || photoUrls.length === 0) return [];
 
     const media = photoUrls.slice(0, 10).map((url, i) => ({
@@ -147,7 +155,7 @@ export class TelegramBotService {
     }));
 
     const result = await this.callApi('sendMediaGroup', {
-      chat_id: this.chatId,
+      chat_id: target,
       media,
     });
 
@@ -165,16 +173,18 @@ export class TelegramBotService {
   async sendMediaPreview(
     preview: TelegramPreview,
     mediaUrls: string[],
+    chatId?: string,
   ): Promise<string> {
+    const target = this.resolveChatId(chatId);
     const text = formatPreviewMessage(preview);
 
     if (mediaUrls.length > 1) {
       // Carrusel: enviar album primero, luego texto con botones
-      await this.sendMediaGroup(mediaUrls, `🎠 *Carrusel (${mediaUrls.length} slides)*`);
+      await this.sendMediaGroup(mediaUrls, `🎠 *Carrusel (${mediaUrls.length} slides)*`, target);
 
       // Después enviar el texto completo con botones
       const result = await this.sendMessage({
-        chat_id: this.chatId,
+        chat_id: target,
         text,
         parse_mode: 'Markdown',
         reply_markup: APPROVAL_KEYBOARD,
@@ -185,7 +195,7 @@ export class TelegramBotService {
     // Imagen simple: enviar como foto con caption
     if (mediaUrls.length === 1) {
       const photoResult = await this.sendPhoto({
-        chat_id: this.chatId,
+        chat_id: target,
         photo: mediaUrls[0]!,
         caption: text.substring(0, 1024),
         parse_mode: 'Markdown',
@@ -195,7 +205,7 @@ export class TelegramBotService {
     }
 
     // Sin media: enviar solo texto
-    return this.sendPreview(preview);
+    return this.sendPreview(preview, target);
   }
 
   /**
@@ -211,9 +221,9 @@ export class TelegramBotService {
   /**
    * Edita el reply_markup de un mensaje (para deshabilitar botones después de respuesta)
    */
-  async removeKeyboard(messageId: number): Promise<void> {
+  async removeKeyboard(messageId: number, chatId?: string): Promise<void> {
     await this.callApi('editMessageReplyMarkup', {
-      chat_id: this.chatId,
+      chat_id: this.resolveChatId(chatId),
       message_id: messageId,
       reply_markup: { inline_keyboard: [] },
     });

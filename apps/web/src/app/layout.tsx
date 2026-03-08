@@ -5,6 +5,11 @@ export const metadata: Metadata = {
   title: 'Syndra — AI Content Automation',
   description:
     'Plataforma de automatización de contenido para Instagram y Facebook con IA y aprobación humana.',
+  icons: {
+    icon: '/images/icono.png',
+    shortcut: '/images/icono.png',
+    apple: '/images/icono.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
