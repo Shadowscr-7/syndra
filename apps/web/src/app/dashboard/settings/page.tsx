@@ -4,6 +4,7 @@ import { updateWorkspaceSettings, saveApiCredential, disconnectCredential, testC
 import { MetaConnect } from './meta-connect';
 import { CloudinaryConnect } from './cloudinary-connect';
 import { OperationModeSelector } from './operation-mode';
+import { LearningConfigSection } from './learning-config';
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -117,6 +118,11 @@ export default async function SettingsPage() {
       {/* ── Operation Mode ── */}
       <div className="max-w-3xl animate-fade-in-delay-1">
         <OperationModeSelector currentMode={workspace?.operationMode ?? 'APPROVAL_REQUIRED'} />
+      </div>
+
+      {/* ── Learning Loop Config ── */}
+      <div className="max-w-3xl animate-fade-in-delay-1">
+        <LearningConfigSection />
       </div>
 
       {/* ── Meta (Instagram / Facebook) ── */}

@@ -36,6 +36,7 @@ const allSections: SidebarSection[] = [
     label: 'Datos',
     items: [
       { name: 'Analytics', href: '/dashboard/analytics', icon: '📈' },
+      { name: 'Aprendizaje', href: '/dashboard/learning', icon: '🧠' },
       { name: 'Fuentes RSS', href: '/dashboard/sources', icon: '📡' },
     ],
   },

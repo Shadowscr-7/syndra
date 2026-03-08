@@ -95,6 +95,7 @@ model Workspace {
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   industry     String?  // tech, coaching, ecommerce, personal_brand, etc.
   operationMode OperationMode @default(APPROVAL_REQUIRED) @map("operation_mode")
+  learningConfig Json?  @map("learning_config") // {autoApply: bool, dimensions: string[], minConfidence: float}
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -111,6 +112,8 @@ model Workspace {
   usageRecords    UsageRecord[]
   alerts          WorkspaceAlert[]
   churnRisk       ChurnRiskSignal?
+  learningProfiles ContentLearningProfile[]
+  learningDecisions LearningDecisionLog[]
 
   @@map("workspaces")
 }
@@ -308,6 +311,7 @@ model EditorialRun {
   approvalEvents    ApprovalEvent[]
   publications      Publication[]
   jobQueueLogs      JobQueueLog[]
+  learningDecisions LearningDecisionLog[]
 
   @@map("editorial_runs")
 }
@@ -1336,4 +1340,105 @@ model IndustryPlaybook {
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("industry_playbooks")
+}
+
+// ============================================================
+// CONTENT LEARNING LOOP — Aprendizaje adaptativo por workspace
+// ============================================================
+
+model ContentLearningProfile {
+  id                    String         @id @default(cuid())
+  workspaceId           String         @map("workspace_id")
+  platform              String?        // null = ALL platforms
+  audienceSegment       String?        @map("audience_segment")
+  lastCalculatedAt      DateTime?      @map("last_calculated_at")
+  dataWindowDays        Int            @default(30) @map("data_window_days")
+  minimumDataThreshold  Int            @default(5) @map("minimum_data_threshold")
+  confidenceScore       Float          @default(0) @map("confidence_score") // 0-1
+  status                LearningStatus @default(LOW_DATA)
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patternScores   ContentPatternScore[]
+
+  @@unique([workspaceId, platform])
+  @@map("content_learning_profiles")
+}
+
+enum LearningStatus {
+  ACTIVE    // Enough data to give recommendations
+  LOW_DATA  // Not enough data yet
+  DISABLED  // Manually disabled by user
+}
+
+model ContentPatternScore {
+  id                  String           @id @default(cuid())
+  learningProfileId   String           @map("learning_profile_id")
+  dimensionType       PatternDimension @map("dimension_type")
+  dimensionValue      String           @map("dimension_value") // e.g. "CAROUSEL", "didáctico", "19"
+  sampleSize          Int              @default(0) @map("sample_size")
+  avgEngagement       Float            @default(0) @map("avg_engagement")
+  avgReach            Float            @default(0) @map("avg_reach")
+  avgSaves            Float            @default(0) @map("avg_saves")
+  avgComments         Float            @default(0) @map("avg_comments")
+  weightedScore       Float            @default(0) @map("weighted_score") // normalized 0-100
+  trendDirection      TrendDirection   @default(FLAT) @map("trend_direction")
+  confidenceScore     Float            @default(0) @map("confidence_score") // 0-1
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  learningProfile     ContentLearningProfile @relation(fields: [learningProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([learningProfileId, dimensionType, dimensionValue])
+  @@index([learningProfileId, weightedScore(sort: Desc)])
+  @@map("content_pattern_scores")
+}
+
+enum PatternDimension {
+  THEME
+  FORMAT
+  TONE
+  CTA
+  HOUR
+  DAY
+  VISUAL_STYLE
+  HOOK_TYPE
+  LENGTH
+}
+
+enum TrendDirection {
+  UP
+  DOWN
+  FLAT
+}
+
+model LearningDecisionLog {
+  id                String    @id @default(cuid())
+  workspaceId       String    @map("workspace_id")
+  editorialRunId    String?   @map("editorial_run_id")
+  decisionType      DecisionType @map("decision_type")
+  applied           Boolean   @default(false) // true = auto-applied, false = recommendation only
+  reasonSummary     String    @map("reason_summary")
+  sourcePatternIds  Json      @default("[]") @map("source_pattern_ids")
+  beforeValue       String?   @map("before_value")
+  afterValue        String?   @map("after_value")
+  impactPrediction  String?   @map("impact_prediction")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  editorialRun  EditorialRun? @relation(fields: [editorialRunId], references: [id])
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("learning_decision_logs")
+}
+
+enum DecisionType {
+  CHOOSE_TONE
+  CHOOSE_FORMAT
+  CHOOSE_HOUR
+  CHOOSE_THEME
+  CHOOSE_CTA
+  CHOOSE_HOOK
+  AVOID_FATIGUE
+  BOOST_ENGAGEMENT
 }

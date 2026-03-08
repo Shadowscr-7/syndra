@@ -61,10 +61,10 @@ export default function ChurnPage() {
         fetch(`${base}/api/admin/churn/at-risk`, { credentials: 'include' }),
       ]);
       if (!sigRes.ok) throw new Error('Error al cargar datos');
-      const sigs = await sigRes.json();
-      const count = await countRes.json();
-      setSignals(sigs);
-      setAtRiskCount(count.count ?? 0);
+      const sigsJson = await sigRes.json();
+      const countJson = await countRes.json();
+      setSignals(Array.isArray(sigsJson) ? sigsJson : sigsJson.data ?? []);
+      setAtRiskCount(countJson.count ?? countJson.data?.count ?? 0);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -202,8 +202,13 @@ export default function ChurnPage() {
                   <td><ScoreBar score={s.riskScore} /></td>
                   <td>
                     <div className="space-y-1">
-                      {(s.reasons || []).map((r, i) => (
-                        <div key={i} className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>• {r}</div>
+                      {(s.reasons || []).map((r: any, i: number) => (
+                        <div key={i} className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                          • {typeof r === 'string' ? r : r.detail || r.reason || JSON.stringify(r)}
+                          {typeof r === 'object' && r.weight != null && (
+                            <span style={{ color: 'var(--color-text-muted)' }}> (peso: {r.weight})</span>
+                          )}
+                        </div>
                       ))}
                       {(!s.reasons || s.reasons.length === 0) && (
                         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sin señales</span>

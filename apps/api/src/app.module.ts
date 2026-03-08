@@ -34,6 +34,7 @@ import { PaypalModule } from './paypal/paypal.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ChurnModule } from './churn/churn.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { LearningModule } from './learning/learning.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { ObservabilityModule } from './observability/observability.module';
     AlertsModule,
     ChurnModule,
     ObservabilityModule,
+    LearningModule,
   ],
 })
 export class AppModule implements NestModule {

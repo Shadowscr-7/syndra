@@ -2,6 +2,22 @@
 // Prompts para Strategy Engine — ángulo, formato, CTA
 // ============================================================
 
+/** Insight de aprendizaje por dimensión para inyectar en el prompt */
+export interface PromptLearningInsight {
+  dimension: string;
+  topPerformers: { value: string; score: number; trend: string; sampleSize: number }[];
+  lowPerformers: { value: string; score: number; trend: string }[];
+}
+
+/** Datos de aprendizaje para el prompt de estrategia */
+export interface PromptLearningData {
+  autoApply: boolean;
+  confidence: number;
+  profileStatus: string;
+  insights: PromptLearningInsight[];
+  summary: string;
+}
+
 /**
  * Prompt para seleccionar el mejor ángulo y formato dados los insights de research
  */
@@ -32,6 +48,7 @@ export function buildStrategyPrompt(params: {
     hashtags: string[];
     postingGoal: string;
   };
+  learningData?: PromptLearningData;
 }): string {
   let personaBlock = '';
   if (params.persona) {
@@ -62,6 +79,46 @@ PERFIL DE CONTENIDO: ${cp.name}
 ${cp.hashtags.length ? `- Hashtags preferidos: ${cp.hashtags.join(', ')}` : ''}`;
   }
 
+  let learningBlock = '';
+  if (params.learningData && params.learningData.insights.length > 0) {
+    const ld = params.learningData;
+    const insightLines: string[] = [];
+    for (const insight of ld.insights) {
+      const dimLabel = insight.dimension;
+      const topLine = insight.topPerformers
+        .map(p => `  ✅ ${p.value} (score: ${p.score.toFixed(0)}, tendencia: ${p.trend}, n=${p.sampleSize})`)
+        .join('\n');
+      const lowLine = insight.lowPerformers.length > 0
+        ? insight.lowPerformers.map(p => `  ⚠️ ${p.value} (score: ${p.score.toFixed(0)}, ${p.trend}) — bajo rendimiento`).join('\n')
+        : '';
+      insightLines.push(`${dimLabel}:\n${topLine}${lowLine ? '\n' + lowLine : ''}`);
+    }
+
+    if (ld.autoApply) {
+      learningBlock = `
+
+🧠 DATOS DE APRENDIZAJE (MODO AUTOMÁTICO — confianza: ${(ld.confidence * 100).toFixed(0)}%)
+Estos datos están basados en el rendimiento histórico REAL de la audiencia de esta cuenta.
+DEBES priorizar fuertemente estas preferencias al elegir formato, tono, CTA y hora.
+Solo desvíate si el research del día indica una oportunidad excepcional.
+
+${insightLines.join('\n\n')}
+
+⚡ INSTRUCCIÓN: Usa estos datos como base principal para tu decisión estratégica.
+Elige los valores con mejor score siempre que sea coherente con la campaña y el research.`;
+    } else {
+      learningBlock = `
+
+🧠 DATOS DE APRENDIZAJE (MODO RECOMENDACIÓN — confianza: ${(ld.confidence * 100).toFixed(0)}%)
+Estos datos muestran el rendimiento histórico de la audiencia para referencia.
+Considéralos como sugerencias, pero prioriza tu criterio estratégico y el research del día.
+
+${insightLines.join('\n\n')}
+
+💡 NOTA: Estos datos son informativos. Usa tu mejor juicio estratégico.`;
+    }
+  }
+
   return `Eres un estratega de contenido para redes sociales especializado en tech/IA.
 
 CONTEXTO DE MARCA:
@@ -77,7 +134,7 @@ relacionados con la campaña activa y sus keywords. NO generes ángulos
 sobre temas ajenos a la campaña aunque el research mencione otros temas.
 Si el research no aporta datos relevantes para la campaña, genera un
 ángulo educativo/informativo sobre las keywords del tema.` : ''}
-${personaBlock}${profileBlock}
+${personaBlock}${profileBlock}${learningBlock}
 
 RESEARCH DEL DÍA:
 ${params.researchSummary}

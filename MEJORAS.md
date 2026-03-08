@@ -161,18 +161,20 @@ enum DecisionType {
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `ContentLearningProfile` en Prisma
-- [ ] Definir modelo `ContentPatternScore` en Prisma
-- [ ] Definir modelo `LearningDecisionLog` en Prisma
-- [ ] Crear servicio `LearningService` con recálculo de scores
-- [ ] Crear cron de recálculo post-métricas
-- [ ] Modificar `StrategyService` para consultar learning profile
-- [ ] Ponderar formato, tono, CTA, horario desde scores
-- [ ] Registrar decisiones en `LearningDecisionLog`
-- [ ] Crear endpoint API para datos de aprendizaje
-- [ ] Crear página UI "Syndra aprendió"
-- [ ] Mostrar top patrones ganadores y flojos
-- [ ] Mostrar nivel de confianza del aprendizaje
+- [x] Definir modelo `ContentLearningProfile` en Prisma
+- [x] Definir modelo `ContentPatternScore` en Prisma
+- [x] Definir modelo `LearningDecisionLog` en Prisma
+- [x] Crear servicio `LearningService` con recálculo de scores
+- [x] Crear cron de recálculo post-métricas
+- [x] Modificar `StrategyService` para consultar learning profile
+- [x] Ponderar formato, tono, CTA, horario desde scores
+- [x] Registrar decisiones en `LearningDecisionLog`
+- [x] Crear endpoint API para datos de aprendizaje
+- [x] Crear página UI "Syndra aprendió"
+- [x] Mostrar top patrones ganadores y flojos
+- [x] Mostrar nivel de confianza del aprendizaje
+- [x] Configuración: auto-apply vs recomendación
+- [x] Sección en Settings con toggle, dimensiones, confianza mínima
 
 ---
 
@@ -446,10 +448,10 @@ Selector claro en configuración de workspace/campaña:
 
 - [x] Agregar enum `OperationMode` en Prisma ✅ (FULLY_AUTOMATIC, APPROVAL_REQUIRED, MANUAL)
 - [x] Agregar campo `operationMode` a `Workspace` ✅ (default APPROVAL_REQUIRED)
-- [ ] Agregar campo `operationMode` a `Campaign` (override opcional)
+- [x] Agregar campo `operationMode` a `Campaign` (override opcional) ✅ (nullable, hereda de workspace)
 - [ ] Agregar campo `operationMode` a `Schedule` (override opcional)
 - [x] Modificar `SchedulerService` para respetar modo del workspace ✅ (filtra MANUAL)
-- [x] Modificar `EditorialOrchestratorService` para respetar modo ✅ (auto-approve en FULLY_AUTOMATIC)
+- [x] Modificar `EditorialOrchestratorService` para respetar modo ✅ (auto-approve en FULLY_AUTOMATIC, cascade campaign→workspace)
 - [ ] Modificar `PublisherService` — auto-publish solo en FULL_AUTOPILOT
 - [ ] Implementar protecciones de autopilot (compliance, credenciales, fuente)
 - [ ] Agregar whitelist/blacklist de temas por workspace
@@ -999,14 +1001,14 @@ enum AlertStatus {
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `WorkspaceAlert` en Prisma
-- [ ] Crear servicio `AlertService` (crear, resolver, listar)
-- [ ] Implementar cron de verificación de alertas (diario)
-- [ ] Generar alertas desde eventos del sistema
-- [ ] Crear endpoint API de alertas
-- [ ] Crear componente UI de alertas en dashboard (bell icon + panel)
-- [ ] Permitir dismiss de alertas
-- [ ] Enviar alertas críticas por Telegram
+- [x] Definir modelo `WorkspaceAlert` en Prisma ✅
+- [x] Crear servicio `AlertService` (crear, resolver, listar) ✅
+- [x] Implementar cron de verificación de alertas (diario) ✅ (8AM, 5 tipos)
+- [x] Generar alertas desde eventos del sistema ✅ (LOW_ACTIVITY, ENGAGEMENT_DROP, PUBLISH_ERROR, ONBOARDING_STALLED, CAMPAIGN_NO_SOURCES)
+- [x] Crear endpoint API de alertas ✅ (GET/PATCH /api/alerts)
+- [x] Crear componente UI de alertas en dashboard ✅ (/dashboard/alerts con filtros)
+- [x] Permitir dismiss de alertas ✅
+- [x] Enviar alertas críticas por Telegram ✅
 
 ---
 
@@ -1032,11 +1034,11 @@ enum AlertStatus {
 
 #### Checklist de implementación
 
-- [ ] Crear modelo `OperationalMetric` para métricas diarias
-- [ ] Crear servicio `ObservabilityService` (cálculo de métricas)
-- [ ] Crear cron diario de cálculo de métricas
-- [ ] Crear página admin `/dashboard/admin/operations`
-- [ ] Gráficas de tendencias por métrica
+- [x] Crear modelo `OperationalMetric` para métricas diarias ✅
+- [x] Crear servicio `ObservabilityService` (cálculo de métricas) ✅
+- [x] Crear cron diario de cálculo de métricas ✅ (2AM, 11 métricas)
+- [x] Crear página admin `/dashboard/admin/operations` ✅ (KPIs + sparklines + tendencias)
+- [x] Gráficas de tendencias por métrica ✅ (sparklines 14d)
 - [ ] Alertas por umbrales (ej: fallos > 20%)
 
 ---
@@ -1076,13 +1078,13 @@ model ChurnRiskSignal {
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `ChurnRiskSignal` en Prisma
-- [ ] Crear servicio `ChurnDetectionService`
-- [ ] Implementar reglas de scoring con pesos
-- [ ] Crear cron semanal de evaluación de churn
-- [ ] Mostrar risk score en admin panel por usuario
+- [x] Definir modelo `ChurnRiskSignal` en Prisma ✅
+- [x] Crear servicio `ChurnDetectionService` ✅
+- [x] Implementar reglas de scoring con pesos ✅ (6 señales, score 0-100)
+- [x] Crear cron semanal de evaluación de churn ✅ (domingos 6AM)
+- [x] Mostrar risk score en admin panel por usuario ✅ (/dashboard/admin/churn)
 - [ ] Crear alertas admin para workspaces AT_RISK
-- [ ] Mostrar lista de "usuarios en riesgo" en `/dashboard/admin`
+- [x] Mostrar lista de "usuarios en riesgo" en admin ✅ (tabla con filtros + evaluación manual)
 
 ---
 
@@ -1107,8 +1109,8 @@ model ChurnRiskSignal {
 - [x] Crear servicio `ExecutiveSummaryService` (cálculo mensual) ✅ (getExecutiveSummary() en AnalyticsService)
 - [x] Crear endpoint API de resumen ejecutivo ✅ (GET /api/analytics/summary)
 - [x] Crear componente UI de resumen en dashboard home ✅ (ExecutiveSummary component)
-- [ ] Enviar resumen mensual por email
-- [ ] Enviar resumen mensual por Telegram
+- [x] Enviar resumen mensual por email ✅ (cron 1° de mes, email HTML dark theme)
+- [x] Enviar resumen mensual por Telegram ✅ (cron 1° de mes, por workspace con owner chatId)
 
 ---
 

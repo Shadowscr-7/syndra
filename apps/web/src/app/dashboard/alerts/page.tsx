@@ -47,10 +47,13 @@ export default function AlertsPage() {
         fetch(`${base}/api/alerts${statusParam}`, { credentials: 'include' }),
         fetch(`${base}/api/alerts/count`, { credentials: 'include' }),
       ]);
-      if (alertsRes.ok) setAlerts(await alertsRes.json());
+      if (alertsRes.ok) {
+        const json = await alertsRes.json();
+        setAlerts(Array.isArray(json) ? json : json.data ?? []);
+      }
       if (countRes.ok) {
         const c = await countRes.json();
-        setCount(c.count ?? 0);
+        setCount(c.count ?? c.data?.count ?? 0);
       }
     } catch {
       // silent

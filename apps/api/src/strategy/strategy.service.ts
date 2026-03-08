@@ -2,10 +2,11 @@
 // Strategy Service — Selección de ángulo, formato, tono, CTA
 // ============================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
+import { LearningService, StrategyLearningData } from '../learning/learning.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -35,6 +36,7 @@ export class StrategyService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    @Optional() @Inject(LearningService) private readonly learningService?: LearningService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
@@ -179,6 +181,19 @@ export class StrategyService {
       }
     }
 
+    // 5b. Obtener datos de aprendizaje (Learning Loop)
+    let learningData: StrategyLearningData | null | undefined = null;
+    try {
+      if (this.learningService) {
+        learningData = await this.learningService.getLearningInsightsForStrategy(workspaceId);
+        if (learningData) {
+          this.logger.log(`Learning data available: confidence=${learningData.confidence.toFixed(2)}, autoApply=${learningData.autoApply}, insights=${learningData.insights.length}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to fetch learning data: ${err}`);
+    }
+
     const prompt = buildStrategyPrompt({
       researchSummary: run.researchSummary ?? 'No research summary available',
       brandVoice: brand?.voice ?? '',
@@ -212,6 +227,7 @@ export class StrategyService {
             postingGoal: contentProfile.postingGoal,
           }
         : undefined,
+      learningData: learningData ?? undefined,
     });
 
     let strategy: StrategyResult;
@@ -234,6 +250,39 @@ export class StrategyService {
         estimatedEngagement: 'medium',
         suggestedHashtags: ['#AI', '#tech', '#automation'],
       };
+    }
+
+    // 5c. Log learning decisions if learning data was used
+    if (learningData && this.learningService) {
+      try {
+        const isAutoApply = learningData.autoApply;
+
+        // Log format decision
+        if (strategy.format) {
+          await this.learningService.logDecision({
+            workspaceId,
+            editorialRunId,
+            decisionType: 'CHOOSE_FORMAT',
+            applied: isAutoApply,
+            reasonSummary: `Formato "${strategy.format}" seleccionado${isAutoApply ? ' automáticamente' : ' como recomendación'} basado en datos de aprendizaje`,
+            afterValue: strategy.format,
+          });
+        }
+
+        // Log tone decision
+        if (strategy.tone) {
+          await this.learningService.logDecision({
+            workspaceId,
+            editorialRunId,
+            decisionType: 'CHOOSE_TONE',
+            applied: isAutoApply,
+            reasonSummary: `Tono "${strategy.tone}" seleccionado${isAutoApply ? ' automáticamente' : ' como recomendación'} basado en datos de aprendizaje`,
+            afterValue: strategy.tone,
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to log learning decisions: ${err}`);
+      }
     }
 
     // 6. Mapear formato a ContentFormat enum de Prisma
