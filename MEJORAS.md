@@ -1270,6 +1270,262 @@ model ContentPlaybook {
 
 ---
 
+### ✅ 21. Generación de Video Escalable para Reels y Publicaciones
+
+**Estado:** feature final del pipeline de video / crítico para diferenciación
+
+**Qué es:** Evolucionar el motor de video actual (HeyGen avatar) a un sistema de generación de video multi-tier que soporte reels, stories y publicaciones con video de forma escalable y económicamente sostenible.
+
+**Por qué importa:** El video es el formato de mayor alcance en Instagram, Facebook y Threads. Hoy Syndra ya genera avatar videos con HeyGen, pero depende 100% de una API de pago cara. Esta mejora introduce un pipeline de video escalonado que permite operar desde MVP barato hasta producción seria.
+
+#### 21.1 Estrategia de 3 tiers
+
+| Tier | Nombre | Cuándo usarlo | Proveedores | Costo |
+|------|--------|---------------|-------------|-------|
+| **Tier 1** | MVP / Validación | Lanzamiento, planes Free/Starter | Pika, Luma Dream Machine | Bajo (API con créditos) |
+| **Tier 2** | Semi-gratis operable | Planes Pro, volumen medio | Edge TTS + Stable Video Diffusion / Wan / Hunyuan (GPU propia) | Medio (infra GPU) |
+| **Tier 3** | Producción comercial | Enterprise, máxima calidad | HeyGen + ElevenLabs + GPU dedicada | Alto (APIs premium + infra) |
+
+#### 21.2 Tier 1 — MVP / Validación
+
+**Objetivo:** Lanzar video como feature limitada por plan o créditos sin infraestructura GPU pesada.
+
+**Proveedores:**
+- **Pika** — generación de video desde texto/imagen, estilo creativo
+- **Luma Dream Machine** — image-to-video de alta calidad
+
+**Flujo:**
+1. Syndra genera imagen (existente) o toma imagen del editorial run
+2. Se envía a Pika/Luma como image-to-video con prompt de movimiento
+3. Se recibe video renderizado (async, polling de estado)
+4. Upload a Cloudinary → listo para publicar como reel/video post
+
+**Limitaciones:**
+- Gated por plan: FREE = 0 videos, STARTER = 3/mes, PRO = 15/mes
+- Cola de baja prioridad (no tiempo real)
+- Watermark en plan FREE si se habilita preview
+
+#### 21.3 Tier 2 — Semi-gratis operable
+
+**Objetivo:** Generar video completo (guion + voz + visual + animación) con costo mínimo operativo.
+
+**Pipeline completo:**
+
+```
+📝 Guion (LLM existente)
+    ↓
+🔊 Voz (Edge TTS — gratis, local)
+    ↓
+🖼️ Imagen/Carousel (pipeline existente)
+    ↓
+🎬 Animación image-to-video
+    ├── Stable Video Diffusion (SVD) — open source
+    ├── Wan 2.1 — open source, alta calidad
+    └── Hunyuan Video — open source, Tencent
+    ↓
+🎞️ Composición final (ffmpeg: video + audio + subtítulos)
+    ↓
+☁️ Upload Cloudinary → Publicar
+```
+
+**Infra requerida:**
+- Máquina GPU separada (ej: RunPod, Vast.ai, o servidor propio con RTX 4090)
+- API interna tipo worker: recibe job → renderiza → devuelve URL
+- Cola `video_render_jobs` para procesamiento async
+
+**Modelos open source soportados:**
+
+| Modelo | Tipo | Ventaja |
+|--------|------|--------|
+| **Stable Video Diffusion (SVD)** | Image-to-video | Estable, bien documentado, comunidad activa |
+| **Wan 2.1** | Text/Image-to-video | Alta calidad, open source por Alibaba |
+| **Hunyuan Video** | Text/Image-to-video | Open source por Tencent, buen motion |
+
+#### 21.4 Tier 3 — Producción comercial
+
+**Objetivo:** Máxima calidad para clientes Enterprise.
+
+**Stack:**
+- **HeyGen** para avatar videos (ya existente)
+- **ElevenLabs** para voz premium (ya existente)
+- **GPU dedicada** con modelos fine-tuneados por vertical
+- **Pika/Runway** para efectos avanzados
+
+**Nota importante:** No contar con planes "gratis" de APIs como base estable. Los planes free suelen venir con créditos limitados, colas, watermarks o restricciones de uso que pueden cambiar. Lo gratis sirve para probar mercado; para escalar, se necesita pago o infraestructura propia.
+
+#### 21.5 Modelos de datos
+
+##### A. Modelo `VideoRenderJob` (extensión del existente)
+
+```prisma
+model VideoRenderJob {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  editorialRunId  String?
+  provider        VideoProvider
+  tier            VideoTier
+  inputType       VideoInputType
+  inputPayload    Json      // {imageUrl, prompt, script, voiceConfig, ...}
+  outputUrl       String?
+  thumbnailUrl    String?
+  durationSeconds Int?
+  aspectRatio     String    @default("9:16")
+  status          VideoJobStatus @default(QUEUED)
+  externalJobId   String?   // ID del provider externo
+  errorMessage    String?
+  retryCount      Int       @default(0)
+  creditsUsed     Int       @default(1)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id])
+  editorialRun    EditorialRun? @relation(fields: [editorialRunId], references: [id])
+}
+
+enum VideoProvider {
+  HEYGEN
+  PIKA
+  LUMA
+  SVD_LOCAL
+  WAN_LOCAL
+  HUNYUAN_LOCAL
+  EDGE_TTS_COMPOSE
+  MOCK
+}
+
+enum VideoTier {
+  MVP        // Pika/Luma API
+  SELFHOST   // GPU propia + open source
+  PREMIUM    // HeyGen + ElevenLabs
+}
+
+enum VideoInputType {
+  IMAGE_TO_VIDEO
+  TEXT_TO_VIDEO
+  SCRIPT_WITH_VOICE
+  AVATAR_TALKING
+  CAROUSEL_ANIMATION
+}
+
+enum VideoJobStatus {
+  QUEUED
+  RENDERING
+  COMPOSING
+  UPLOADING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+```
+
+##### B. Modelo `VideoCredit` (control de uso por plan)
+
+```prisma
+model VideoCredit {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  totalCredits    Int       @default(0)
+  usedCredits     Int       @default(0)
+  periodStart     DateTime
+  periodEnd       DateTime
+  source          String    // PLAN, ADDON, PROMO
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id])
+}
+```
+
+#### 21.6 Adaptadores a crear en `@automatismos/media`
+
+| Adaptador | Ubicación | Descripción |
+|-----------|-----------|-------------|
+| `PikaVideoAdapter` | `packages/media/src/adapters/pika-video.ts` | Image/text-to-video via Pika API |
+| `LumaVideoAdapter` | `packages/media/src/adapters/luma-video.ts` | Image-to-video via Luma Dream Machine API |
+| `LocalGPUVideoAdapter` | `packages/media/src/adapters/local-gpu-video.ts` | Proxy a worker GPU propio (SVD/Wan/Hunyuan) |
+| `CompositeVideoAdapter` | `packages/media/src/adapters/composite-video.ts` | Composición ffmpeg: video + audio + subtítulos |
+
+#### 21.7 Servicio `VideoTierRouter`
+
+Lógica de selección de tier automática:
+
+```typescript
+// Pseudocódigo
+function selectVideoTier(workspace, plan, request): VideoTier {
+  // 1. Si el workspace tiene GPU propia configurada → SELFHOST
+  if (workspace.hasLocalGPU && request.type !== 'AVATAR_TALKING') return 'SELFHOST';
+  
+  // 2. Si plan Enterprise o tiene créditos premium → PREMIUM  
+  if (plan.tier === 'ENTERPRISE' || request.preferPremium) return 'PREMIUM';
+  
+  // 3. Si tiene créditos de video disponibles → MVP
+  if (videoCredits.remaining > 0) return 'MVP';
+  
+  // 4. Sin créditos → rechazar o encolar para cuando haya
+  throw new VideoCreditsExhausted();
+}
+```
+
+#### 21.8 Integración con pipeline editorial
+
+| Punto de integración | Cambio |
+|---------------------|--------|
+| `editorial-orchestrator` | Si el brief indica formato `reel` o `video`, encolar `VideoRenderJob` en vez de solo imagen |
+| `publisher.service` | Detectar si hay video asset → publicar como reel (IG), video post (FB), video (Threads) |
+| `channel-formats-picker` | Agregar formato "Reel" y "Video" a las opciones de canal |
+| Manual run form | Opción de "incluir video" con selector de tier |
+| Telegram preview | Preview con thumbnail + botón "Ver video" |
+
+#### 21.9 UI esperada
+
+**En `/dashboard/videos`** (existente, extender):
+- Selector de tier preferido por workspace
+- Medidor de créditos de video restantes
+- Estado de GPU local (si configurada)
+- Historial de renders con proveedor y costo
+
+**En editorial detail** (existente, extender):
+- Botón "Generar como Reel" disponible en runs con imagen
+- Preview de video inline
+- Selector de estilo de animación (zoom, pan, dynamic)
+
+**En configuración** (existente, extender):
+- Config de GPU local: URL del worker, API key, modelos disponibles
+- Preferencia de tier por defecto
+- Límites de créditos visibles
+
+#### Checklist de implementación
+
+**Tier 1 — MVP (lanzamiento):**
+- [ ] Definir modelos `VideoRenderJob` y `VideoCredit` en Prisma
+- [ ] Crear `PikaVideoAdapter` (image-to-video via API)
+- [ ] Crear `LumaVideoAdapter` (image-to-video via API)
+- [ ] Crear servicio `VideoTierRouter` (selección de tier)
+- [ ] Crear servicio `VideoCreditService` (control de créditos por plan)
+- [ ] Integrar generación de video en pipeline editorial (formato reel)
+- [ ] Extender publisher para publicar reels en IG/FB/Threads
+- [ ] Agregar formato Reel/Video al `channel-formats-picker`
+- [ ] UI de créditos de video en `/dashboard/videos`
+- [ ] Gate por plan: verificar créditos antes de renderizar
+
+**Tier 2 — Self-hosted (post-lanzamiento):**
+- [ ] Crear `LocalGPUVideoAdapter` (proxy a worker GPU)
+- [ ] Crear worker GPU con API REST (SVD/Wan/Hunyuan)
+- [ ] Crear `CompositeVideoAdapter` (ffmpeg: video + Edge TTS audio + SRT)
+- [ ] Crear cola `video_render_jobs` en pgmq
+- [ ] Pipeline completo: guion → voz → imagen → animación → composición
+- [ ] UI de configuración de GPU local en settings
+- [ ] Soporte multi-modelo: selector SVD vs Wan vs Hunyuan
+
+**Tier 3 — Premium (enterprise):**
+- [ ] Integrar con pipeline HeyGen existente via tier routing
+- [ ] Agregar ElevenLabs como opción de voz premium en tier router
+- [ ] Fine-tuning de modelos por vertical (opcional)
+- [ ] Métricas de costo por render y ROI de video
+
+---
+
 ## 📋 ORDEN RECOMENDADO DE DESARROLLO
 
 ### Fase 1 — Motor de Aprendizaje + Strategist + Modos
@@ -1324,16 +1580,30 @@ model ContentPlaybook {
 | 21 | `ChurnRiskSignal` + reglas de detección |
 | 22 | Resumen ejecutivo mensual |
 
-### Fase 6 — Pro/Enterprise
+### Fase 6 — Video Escalable
+> ⏱️ Sprint medio-largo
+
+| # | Tarea |
+|---|-------|
+| 23 | `VideoRenderJob` + `VideoCredit` + modelos Prisma |
+| 24 | `PikaVideoAdapter` + `LumaVideoAdapter` (Tier 1 MVP) |
+| 25 | `VideoTierRouter` + `VideoCreditService` |
+| 26 | Integrar video en pipeline editorial + publisher (reels) |
+| 27 | UI de créditos + formato reel en channel picker |
+| 28 | `LocalGPUVideoAdapter` + worker GPU (Tier 2 self-hosted) |
+| 29 | `CompositeVideoAdapter` (ffmpeg: video + voz + subtítulos) |
+
+### Fase 7 — Pro/Enterprise
 > ⏱️ Sprint largo
 
 | # | Tarea |
 |---|-------|
-| 23 | Benchmarking entre canales |
-| 24 | `EditorialComment` + `EditorialAssignment` + `ApprovalStep` |
-| 25 | Versionado de `StrategyPlan` |
-| 26 | `ContentPlaybook` reutilizables |
-| 27 | Scoring predictivo avanzado |
+| 30 | Benchmarking entre canales |
+| 31 | `EditorialComment` + `EditorialAssignment` + `ApprovalStep` |
+| 32 | Versionado de `StrategyPlan` |
+| 33 | `ContentPlaybook` reutilizables |
+| 34 | Scoring predictivo avanzado |
+| 35 | Tier 3 video premium (HeyGen + ElevenLabs via tier router) |
 
 ---
 
@@ -1345,7 +1615,8 @@ model ContentPlaybook {
 | **P1** | 5 features | A/B testing, Fatiga, Playbooks nicho, Source trust, Afiliados |
 | **P2** | 5 features | Recomendador frecuencia, Alertas, Observabilidad, Churn, Resumen |
 | **P3** | 5 features | Benchmarking, Colaboración, Versionado, Playbooks, Scoring avanzado |
-| **Total** | **20 features** | **~43 tareas de checklist** · **~27 fases de desarrollo** |
+| **PV** | 1 feature | Video escalable multi-tier (MVP → Self-hosted → Premium) |
+| **Total** | **21 features** | **~66 tareas de checklist** · **~35 fases de desarrollo** |
 
 ### Modelos nuevos a crear
 
@@ -1373,8 +1644,10 @@ model ContentPlaybook {
 | `EditorialAssignment` | P3 |
 | `ApprovalStep` | P3 |
 | `ContentPlaybook` | P3 |
+| `VideoRenderJob` | PV |
+| `VideoCredit` | PV |
 
-> **22 modelos nuevos** sumados a los 38 existentes = **60 modelos totales**
+> **24 modelos nuevos** sumados a los 38 existentes = **62 modelos totales**
 
 ---
 
