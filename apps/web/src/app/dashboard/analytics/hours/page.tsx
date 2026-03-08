@@ -75,28 +75,44 @@ async function getTimeAnalytics() {
   }
 }
 
-function HourBar({ label, value, maxValue, count, extra }: {
+function TimeBar({ label, value, maxValue, count, likes, reach, rank }: {
   label: string;
   value: number;
   maxValue: number;
   count: number;
-  extra: string;
+  likes: number;
+  reach: number;
+  rank: number;
 }) {
   const pct = maxValue > 0 ? (value / maxValue) * 100 : 0;
-  const isTop = pct >= 80;
+  const isTop = rank < 3;
+
+  const barGradient = isTop
+    ? 'linear-gradient(90deg, #10b981, #34d399)'
+    : 'linear-gradient(90deg, var(--color-primary), var(--color-primary-light))';
 
   return (
-    <div className="flex items-center gap-3 py-2">
-      <div className="w-14 text-sm font-mono text-gray-600">{label}</div>
-      <div className="flex-1">
-        <div className="w-full bg-gray-100 rounded-full h-6 relative overflow-hidden">
+    <div className="flex items-center gap-3 py-2 group">
+      <div
+        className="w-16 text-sm font-mono font-semibold text-right shrink-0"
+        style={{ color: isTop ? '#10b981' : 'var(--color-text-secondary)' }}
+      >
+        {label}
+      </div>
+      <div className="flex-1 flex items-center gap-3">
+        <div className="flex-1 rounded-full h-2.5 overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <div
-            className={`h-6 rounded-full transition-all ${isTop ? 'bg-green-500' : 'bg-blue-400'}`}
-            style={{ width: `${Math.max(pct, 2)}%` }}
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${Math.max(pct, 3)}%`, background: barGradient }}
           />
-          <span className="absolute inset-0 flex items-center px-2 text-xs font-medium">
-            {value}% eng · {count} posts · {extra}
+        </div>
+        <div className="flex items-center gap-3 text-xs shrink-0 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+          <span style={{ color: isTop ? '#10b981' : 'var(--color-primary-light)' }} className="font-semibold min-w-[36px] text-right">
+            {value}%
           </span>
+          <span>❤️ {likes}</span>
+          <span>👁️ {reach}</span>
+          <span className="opacity-60">{count} pub</span>
         </div>
       </div>
     </div>
@@ -108,9 +124,10 @@ export default async function HoursPage() {
 
   if (!data) {
     return (
-      <div className="bg-white rounded-lg border p-12 text-center">
-        <div className="text-4xl mb-4">⏰</div>
-        <h3 className="text-lg font-semibold text-gray-700">Error cargando datos</h3>
+      <div className="glass-card p-12 text-center">
+        <span className="text-4xl animate-float inline-block mb-4">⏰</span>
+        <h3 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>Error cargando datos</h3>
+        <p style={{ color: 'var(--color-text-muted)' }}>No se pudieron obtener los datos temporales.</p>
       </div>
     );
   }
@@ -119,87 +136,110 @@ export default async function HoursPage() {
   const maxDayEng = Math.max(...data.dayData.map((d) => d.avgEngagement), 1);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">⏰ Mejores Horas y Días</h1>
-          <p className="text-gray-500 mt-1">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between animate-fade-in">
+        <div className="page-header">
+          <h1 className="page-title">⏰ Mejores Horas y Días</h1>
+          <p className="page-subtitle">
             Optimización de horario basada en {data.totalPublications} publicaciones
           </p>
         </div>
-        <Link
-          href="/dashboard/analytics"
-          className="px-4 py-2 text-gray-600 hover:text-gray-900 text-sm"
-        >
+        <Link href="/dashboard/analytics" className="btn-ghost text-sm">
           ← Volver a Analytics
         </Link>
       </div>
 
       {data.totalPublications === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <div className="text-4xl mb-3">📭</div>
-          <h3 className="font-semibold text-yellow-800">Sin datos suficientes</h3>
-          <p className="text-sm text-yellow-700 mt-1">
+        <div className="glass-card p-8 text-center animate-fade-in-delay-1" style={{ borderColor: 'rgba(245,158,11,0.2)' }}>
+          <span className="text-5xl animate-float inline-block mb-4">📭</span>
+          <h3 className="font-bold" style={{ color: '#f59e0b' }}>Sin datos suficientes</h3>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
             Publica contenido para ver qué horarios funcionan mejor.
           </p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {data.hourData.slice(0, 3).map((h, i) => (
-              <div
-                key={h.hour}
-                className={`rounded-lg border p-5 text-center ${
-                  i === 0
-                    ? 'bg-green-50 border-green-300'
-                    : 'bg-white'
-                }`}
-              >
-                <div className="text-3xl mb-2">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</div>
-                <div className="text-2xl font-bold">{h.label}</div>
-                <div className="text-sm text-gray-500 mt-1">
-                  {h.avgEngagement}% engagement promedio
+          {/* Top 3 Podium */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-fade-in-delay-1">
+            {data.hourData.slice(0, 3).map((h, i) => {
+              const medals = ['🥇', '🥈', '🥉'];
+              const colors = [
+                { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.25)', text: '#10b981' },
+                { bg: 'rgba(124,58,237,0.06)', border: 'rgba(124,58,237,0.2)', text: 'var(--color-primary-light)' },
+                { bg: 'rgba(6,182,212,0.06)', border: 'rgba(6,182,212,0.2)', text: '#06b6d4' },
+              ];
+              const c = colors[i];
+              return (
+                <div
+                  key={h.hour}
+                  className="glass-card p-5 text-center"
+                  style={{ background: c.bg, borderColor: c.border }}
+                >
+                  <div className="text-3xl mb-2">{medals[i]}</div>
+                  <div className="text-3xl font-black tracking-tight" style={{ color: c.text }}>
+                    {h.label}
+                  </div>
+                  <div className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span className="font-bold" style={{ color: c.text }}>{h.avgEngagement}%</span> engagement promedio
+                  </div>
+                  <div className="text-xs mt-1.5 flex items-center justify-center gap-2" style={{ color: 'var(--color-text-muted)' }}>
+                    <span>{h.count} publicaciones</span>
+                    <span>·</span>
+                    <span>❤️ {h.avgLikes}</span>
+                    <span>·</span>
+                    <span>👁️ {h.avgReach}</span>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  {h.count} publicaciones · ❤️ {h.avgLikes} · 👁️ {h.avgReach}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Hours Chart */}
-          <div className="bg-white rounded-lg border">
-            <div className="p-4 border-b bg-gray-50">
-              <h2 className="font-bold text-gray-800">📊 Engagement por Hora (ordenado)</h2>
+          <div className="glass-card overflow-hidden animate-fade-in-delay-2">
+            <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-lg">📊</span>
+              <h2 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>Engagement por Hora</h2>
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)' }}>
+                {data.hourData.length} horas
+              </span>
             </div>
-            <div className="p-4 space-y-1">
-              {data.hourData.map((h) => (
-                <HourBar
+            <div className="p-5 space-y-0.5">
+              {data.hourData.map((h, i) => (
+                <TimeBar
                   key={h.hour}
                   label={h.label}
                   value={h.avgEngagement}
                   maxValue={maxHourEng}
                   count={h.count}
-                  extra={`❤️ ${h.avgLikes} · 👁️ ${h.avgReach}`}
+                  likes={h.avgLikes}
+                  reach={h.avgReach}
+                  rank={i}
                 />
               ))}
             </div>
           </div>
 
           {/* Days Chart */}
-          <div className="bg-white rounded-lg border">
-            <div className="p-4 border-b bg-gray-50">
-              <h2 className="font-bold text-gray-800">📅 Engagement por Día de Semana</h2>
+          <div className="glass-card overflow-hidden animate-fade-in-delay-1">
+            <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-lg">📅</span>
+              <h2 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>Engagement por Día de Semana</h2>
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)' }}>
+                {data.dayData.length} días
+              </span>
             </div>
-            <div className="p-4 space-y-2">
-              {data.dayData.map((d) => (
-                <HourBar
+            <div className="p-5 space-y-0.5">
+              {data.dayData.map((d, i) => (
+                <TimeBar
                   key={d.day}
                   label={d.label}
                   value={d.avgEngagement}
                   maxValue={maxDayEng}
                   count={d.count}
-                  extra={`❤️ ${d.avgLikes} · 👁️ ${d.avgReach}`}
+                  likes={d.avgLikes}
+                  reach={d.avgReach}
+                  rank={i}
                 />
               ))}
             </div>
@@ -207,10 +247,19 @@ export default async function HoursPage() {
         </>
       )}
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-        <strong>💡 Tip:</strong> El sistema usa estos datos para el scoring predictivo. Cuando
-        programes una publicación, el pipeline asignará un score basándose en el horario, formato y
-        tema elegidos.
+      {/* Tip */}
+      <div
+        className="glass-card px-5 py-4 text-sm animate-fade-in-delay-2"
+        style={{ borderColor: 'rgba(124,58,237,0.2)', background: 'rgba(124,58,237,0.04)' }}
+      >
+        <span style={{ color: 'var(--color-primary-light)' }}>
+          <strong>💡 Tip:</strong>
+        </span>
+        <span style={{ color: 'var(--color-text-secondary)' }}>
+          {' '}El sistema usa estos datos para el scoring predictivo. Cuando
+          programes una publicación, el pipeline asignará un score basándose en el horario, formato y
+          tema elegidos.
+        </span>
       </div>
     </div>
   );

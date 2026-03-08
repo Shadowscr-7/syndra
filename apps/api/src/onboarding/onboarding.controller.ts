@@ -56,6 +56,15 @@ export class OnboardingController {
   }
 
   /**
+   * GET /api/onboarding/playbooks — Full playbook list for admin
+   */
+  @Roles('ADMIN')
+  @Get('playbooks')
+  async listPlaybooks() {
+    return { data: await this.onboarding.listPlaybooksFull() };
+  }
+
+  /**
    * POST /api/onboarding/seed-playbooks — Seed industry playbooks (admin only)
    */
   @Roles('ADMIN')

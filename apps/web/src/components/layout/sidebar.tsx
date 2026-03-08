@@ -60,6 +60,7 @@ const allSections: SidebarSection[] = [
       { name: 'Usuarios', href: '/dashboard/admin/users', icon: '🧑‍💼' },
       { name: 'Comisiones', href: '/dashboard/admin/commissions', icon: '💰' },
       { name: 'Auditoría', href: '/dashboard/admin/audit', icon: '📋' },
+      { name: 'Playbooks', href: '/dashboard/admin/playbooks', icon: '📚' },
       { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
       { name: 'Admin', href: '/dashboard/admin', icon: '🛡️' },
     ],

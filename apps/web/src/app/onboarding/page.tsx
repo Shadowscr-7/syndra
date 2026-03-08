@@ -1,9 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-const INDUSTRIES = [
+interface Industry {
+  id: string;
+  name: string;
+  icon: string;
+  description?: string;
+}
+
+const FALLBACK_INDUSTRIES: Industry[] = [
   { id: 'ecommerce', name: 'E-commerce', icon: '🛒' },
   { id: 'restaurant', name: 'Restaurante', icon: '🍽️' },
   { id: 'fitness', name: 'Fitness', icon: '💪' },
@@ -24,6 +31,27 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [industries, setIndustries] = useState<Industry[]>(FALLBACK_INDUSTRIES);
+
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    fetch(`${base}/api/onboarding/industries`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((json) => {
+        const list = Array.isArray(json.data) ? json.data : [];
+        if (list.length > 0) {
+          setIndustries(
+            list.map((item: { slug?: string; id?: string; name: string; icon: string; description?: string }) => ({
+              id: item.slug ?? item.id ?? item.name,
+              name: item.name,
+              icon: item.icon,
+              description: item.description,
+            })),
+          );
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
 
   const [data, setData] = useState({
     workspaceName: '',
@@ -169,7 +197,7 @@ export default function OnboardingPage() {
                   Industria *
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {INDUSTRIES.map((ind) => (
+                  {industries.map((ind) => (
                     <button
                       key={ind.id}
                       type="button"
@@ -367,7 +395,7 @@ export default function OnboardingPage() {
                 <SummaryRow
                   label="Industria"
                   value={
-                    INDUSTRIES.find((i) => i.id === data.industry)
+                    industries.find((i) => i.id === data.industry)
                       ?.name || '-'
                   }
                 />

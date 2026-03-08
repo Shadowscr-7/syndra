@@ -194,6 +194,15 @@ export class OnboardingService {
     }));
   }
 
+  /**
+   * Full playbook list for admin management
+   */
+  async listPlaybooksFull() {
+    return this.prisma.industryPlaybook.findMany({
+      orderBy: { name: 'asc' },
+    });
+  }
+
   // ── Seed industry playbooks to DB ────────────────────
   async seedPlaybooks() {
     const playbooks = [
