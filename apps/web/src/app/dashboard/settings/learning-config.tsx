@@ -28,17 +28,17 @@ export function LearningConfigSection() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/learning/config`, { credentials: 'include' })
+    fetch(`${API}/api/learning/config`, { credentials: 'include' })
       .then(r => r.json())
       .then(json => { if (json?.data) setConfig(json.data); })
-      .catch(() => {});
+      .catch((err) => console.error('Learning config fetch error:', err));
   }, []);
 
   const save = async (patch: Partial<LearningConfig>) => {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch(`${API}/learning/config`, {
+      const res = await fetch(`${API}/api/learning/config`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
