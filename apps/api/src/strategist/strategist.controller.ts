@@ -89,4 +89,13 @@ export class StrategistController {
     const result = await this.planService.generateRunsFromPlan(id, workspaceId);
     return { data: result };
   }
+
+  /**
+   * GET /strategist/frequency — Get frequency recommendation based on analytics
+   */
+  @Get('frequency')
+  async getFrequencyRecommendation(@CurrentWorkspace() workspaceId: string) {
+    const rec = await this.planService.computeFrequencyRecommendation(workspaceId);
+    return { data: rec };
+  }
 }

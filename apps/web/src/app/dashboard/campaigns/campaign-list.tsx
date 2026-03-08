@@ -29,6 +29,13 @@ const CHANNEL_ICONS: Record<string, string> = {
   discord: '💜',
 };
 
+const OPERATION_MODES = [
+  { value: '', label: '🔗 Heredar de Workspace', desc: 'Usa el modo del workspace' },
+  { value: 'FULLY_AUTOMATIC', label: '🤖 Automático', desc: 'Publica sin revisión' },
+  { value: 'APPROVAL_REQUIRED', label: '✅ Aprobación', desc: 'Requiere aprobación vía Telegram' },
+  { value: 'MANUAL', label: '🖐️ Manual', desc: 'Solo desde el dashboard' },
+];
+
 interface Campaign {
   id: string;
   name: string;
@@ -36,6 +43,7 @@ interface Campaign {
   offer: string | null;
   landingUrl: string | null;
   isActive: boolean;
+  operationMode: string | null;
   startDate: string;
   endDate: string | null;
   kpiTarget: string | null;
@@ -183,10 +191,18 @@ export function CampaignList({
                   <input type="date" name="endDate" defaultValue={toDateInput(campaign.endDate)} className="input-field" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="input-label">KPI Target</label>
                   <input type="text" name="kpiTarget" defaultValue={campaign.kpiTarget ?? ''} className="input-field" />
+                </div>
+                <div>
+                  <label className="input-label">Modo de Operación</label>
+                  <select name="operationMode" defaultValue={campaign.operationMode ?? ''} className="input-field">
+                    {OPERATION_MODES.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="input-label">Estado</label>
@@ -263,6 +279,12 @@ export function CampaignList({
                 </div>
               )}
 
+              {campaign.operationMode && (
+                <span className="text-xs mt-2 inline-block px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(139,92,246,0.12)', color: '#a78bfa' }}>
+                  {campaign.operationMode === 'FULLY_AUTOMATIC' ? '🤖' : campaign.operationMode === 'MANUAL' ? '🖐️' : '✅'}{' '}
+                  {campaign.operationMode === 'FULLY_AUTOMATIC' ? 'Automático' : campaign.operationMode === 'MANUAL' ? 'Manual' : 'Aprobación'}
+                </span>
+              )}
               {campaign.kpiTarget && (
                 <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
                   🎯 KPI: {campaign.kpiTarget}

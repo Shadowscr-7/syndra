@@ -449,15 +449,15 @@ Selector claro en configuración de workspace/campaña:
 - [x] Agregar enum `OperationMode` en Prisma ✅ (FULLY_AUTOMATIC, APPROVAL_REQUIRED, MANUAL)
 - [x] Agregar campo `operationMode` a `Workspace` ✅ (default APPROVAL_REQUIRED)
 - [x] Agregar campo `operationMode` a `Campaign` (override opcional) ✅ (nullable, hereda de workspace)
-- [ ] Agregar campo `operationMode` a `Schedule` (override opcional)
+- [x] Agregar campo `operationMode` a `Schedule` (override opcional)
 - [x] Modificar `SchedulerService` para respetar modo del workspace ✅ (filtra MANUAL)
 - [x] Modificar `EditorialOrchestratorService` para respetar modo ✅ (auto-approve en FULLY_AUTOMATIC, cascade campaign→workspace)
-- [ ] Modificar `PublisherService` — auto-publish solo en FULL_AUTOPILOT
-- [ ] Implementar protecciones de autopilot (compliance, credenciales, fuente)
-- [ ] Agregar whitelist/blacklist de temas por workspace
+- [x] Modificar `PublisherService` — auto-publish solo en FULL_AUTOPILOT
+- [x] Implementar protecciones de autopilot (compliance, credenciales, fuente)
+- [x] Agregar whitelist/blacklist de temas por workspace
 - [x] Crear UI selector de modo en `/dashboard/settings` ✅ (radio-style 3 modos)
-- [ ] Crear UI selector de modo en formulario de campaña
-- [ ] Documentar comportamiento de cada modo
+- [x] Crear UI selector de modo en formulario de campaña
+- [x] Documentar comportamiento de cada modo
 
 ---
 
@@ -539,16 +539,16 @@ CTA por cada paso incompleto: "Completar ahora →"
 
 #### Checklist de implementación
 
-- [ ] Definir modelo `OnboardingProgress` en Prisma
-- [ ] Crear servicio `OnboardingTrackingService`
-- [ ] Instrumentar eventos en registro, verificación, OAuth, etc.
-- [ ] Actualizar `OnboardingProgress` en cada evento
+- [x] Definir modelo `OnboardingProgress` en Prisma
+- [x] Crear servicio `OnboardingTrackingService`
+- [x] Instrumentar eventos en registro, verificación, OAuth, etc.
+- [x] Actualizar `OnboardingProgress` en cada evento
 - [x] Calcular `activationScore` dinámicamente ✅ (getStatus() devuelve 11 pasos + percent)
 - [x] Crear endpoint API de progreso de onboarding ✅ (GET /api/onboarding/status)
 - [x] Crear componente UI de checklist con barra de progreso ✅ (OnboardingChecklist)
 - [x] Mostrar checklist en dashboard home (si no completado) ✅ (integrado en dashboard/page.tsx)
-- [ ] Implementar nudges por email (Resend)
-- [ ] Implementar banners in-app contextuales
+- [x] Implementar nudges por email (Resend)
+- [x] Implementar banners in-app contextuales
 
 ---
 
@@ -930,11 +930,11 @@ Recomendación semanal:
 
 #### Checklist de implementación
 
-- [ ] Crear lógica de recomendación de frecuencia en `StrategyPlanService`
-- [ ] Calcular frecuencia óptima por canal
-- [ ] Calcular mix de formatos ideal
-- [ ] Integrar en plan estratégico semanal
-- [ ] Mostrar recomendación en UI `/dashboard/strategist`
+- [x] Crear lógica de recomendación de frecuencia en `StrategyPlanService`
+- [x] Calcular frecuencia óptima por canal
+- [x] Calcular mix de formatos ideal
+- [x] Integrar en plan estratégico semanal
+- [x] Mostrar recomendación en UI `/dashboard/strategist`
 
 ---
 
@@ -1039,7 +1039,7 @@ enum AlertStatus {
 - [x] Crear cron diario de cálculo de métricas ✅ (2AM, 11 métricas)
 - [x] Crear página admin `/dashboard/admin/operations` ✅ (KPIs + sparklines + tendencias)
 - [x] Gráficas de tendencias por métrica ✅ (sparklines 14d)
-- [ ] Alertas por umbrales (ej: fallos > 20%)
+- [x] Alertas por umbrales (ej: fallos > 20%)
 
 ---
 
@@ -1083,7 +1083,7 @@ model ChurnRiskSignal {
 - [x] Implementar reglas de scoring con pesos ✅ (6 señales, score 0-100)
 - [x] Crear cron semanal de evaluación de churn ✅ (domingos 6AM)
 - [x] Mostrar risk score en admin panel por usuario ✅ (/dashboard/admin/churn)
-- [ ] Crear alertas admin para workspaces AT_RISK
+- [x] Crear alertas admin para workspaces AT_RISK
 - [x] Mostrar lista de "usuarios en riesgo" en admin ✅ (tabla con filtros + evaluación manual)
 
 ---

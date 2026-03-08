@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { TelegramBotService } from '../telegram/telegram-bot.service';
 
 interface RiskReason {
   reason: string;
@@ -16,7 +17,10 @@ interface RiskReason {
 export class ChurnDetectionService {
   private readonly logger = new Logger(ChurnDetectionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly telegram: TelegramBotService,
+  ) {}
 
   // ── Weekly cron ───────────────────────────────────────
 
@@ -169,6 +173,47 @@ export class ChurnDetectionService {
       },
     });
 
+    // Create admin alert and notify via Telegram for AT_RISK workspaces
+    if (status === 'AT_RISK') {
+      const wsInfo = await this.prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true, slug: true },
+      });
+
+      const reasonSummary = reasons.map(r => `• ${r.reason} (${r.detail})`).join('\n');
+
+      // Create CHURN_AT_RISK alert (dedup: don't create if already active)
+      const existingAlert = await this.prisma.workspaceAlert.findFirst({
+        where: { workspaceId, type: 'CHURN_AT_RISK', status: 'ACTIVE' },
+      });
+
+      if (!existingAlert) {
+        await this.prisma.workspaceAlert.create({
+          data: {
+            workspaceId,
+            type: 'CHURN_AT_RISK' as any,
+            severity: 'CRITICAL',
+            title: `Riesgo de abandono detectado (score: ${riskScore})`,
+            message: `El workspace "${wsInfo?.name ?? workspaceId}" está en riesgo de abandono.\n\nFactores:\n${reasonSummary}`,
+            suggestedAction: 'Contacta al usuario para ofrecer asistencia o incentivos de retención.',
+          },
+        });
+
+        // Notify admin via Telegram (owner of the workspace)
+        try {
+          const ownerLink = await this.resolveOwnerChatId(workspaceId);
+          if (ownerLink) {
+            await this.telegram.sendNotification(
+              `🚨 *Alerta de Churn*\n\n*Workspace:* ${wsInfo?.name ?? workspaceId}\n*Score:* ${riskScore}/100\n*Status:* AT_RISK\n\n${reasonSummary}`,
+              ownerLink,
+            );
+          }
+        } catch {
+          // ignore telegram errors
+        }
+      }
+    }
+
     return signal;
   }
 
@@ -193,5 +238,23 @@ export class ChurnDetectionService {
     return this.prisma.churnRiskSignal.count({
       where: { status: 'AT_RISK' },
     });
+  }
+
+  // ── Private helpers ───────────────────────────────────
+
+  private async resolveOwnerChatId(workspaceId: string): Promise<string | undefined> {
+    try {
+      const owner = await this.prisma.workspaceUser.findFirst({
+        where: { workspaceId, role: 'OWNER' },
+        select: { userId: true },
+      });
+      if (!owner) return undefined;
+      const link = await this.prisma.telegramLink.findUnique({
+        where: { userId: owner.userId },
+      });
+      return link?.chatId ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 }

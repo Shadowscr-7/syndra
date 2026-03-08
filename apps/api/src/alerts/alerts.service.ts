@@ -243,8 +243,30 @@ export class AlertService {
       count++;
     }
 
-    // 6. Auto-resolve old alerts that no longer apply
-    await this.autoResolveAlerts(workspaceId, recentPubs, recentErrors);
+    // 6. Pipeline failure rate > 20%
+    const recentRuns = await this.prisma.editorialRun.count({
+      where: { workspaceId, createdAt: { gte: sevenDaysAgo } },
+    });
+    const failedRuns = await this.prisma.editorialRun.count({
+      where: { workspaceId, status: 'FAILED', createdAt: { gte: sevenDaysAgo } },
+    });
+    if (recentRuns >= 5) {
+      const failureRate = (failedRuns / recentRuns) * 100;
+      if (failureRate > 20) {
+        await this.createAlert({
+          workspaceId,
+          type: 'PIPELINE_FAILURE_RATE',
+          severity: failureRate > 50 ? 'CRITICAL' : 'WARNING',
+          title: `Tasa de fallos del pipeline: ${Math.round(failureRate)}%`,
+          message: `${failedRuns} de ${recentRuns} runs editoriales han fallado en los últimos 7 días. Esto puede indicar un problema con las credenciales o la configuración del LLM.`,
+          suggestedAction: 'Revisa los logs de errores y verifica tus credenciales de API.',
+        });
+        count++;
+      }
+    }
+
+    // 7. Auto-resolve old alerts that no longer apply
+    await this.autoResolveAlerts(workspaceId, recentPubs, recentErrors, recentRuns > 0 ? (failedRuns / recentRuns) : 0);
 
     return count;
   }
@@ -253,6 +275,7 @@ export class AlertService {
     workspaceId: string,
     recentPubs: number,
     recentErrors: number,
+    failureRate: number = 0,
   ) {
     // Resolve LOW_ACTIVITY if they published recently
     if (recentPubs > 0) {
@@ -265,6 +288,13 @@ export class AlertService {
     if (recentErrors === 0) {
       await this.prisma.workspaceAlert.updateMany({
         where: { workspaceId, type: 'PUBLISH_ERROR', status: 'ACTIVE' },
+        data: { status: 'RESOLVED' },
+      });
+    }
+    // Resolve PIPELINE_FAILURE_RATE if rate dropped below 15%
+    if (failureRate <= 0.15) {
+      await this.prisma.workspaceAlert.updateMany({
+        where: { workspaceId, type: 'PIPELINE_FAILURE_RATE', status: 'ACTIVE' },
         data: { status: 'RESOLVED' },
       });
     }

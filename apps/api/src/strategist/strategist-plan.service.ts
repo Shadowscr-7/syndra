@@ -230,8 +230,8 @@ export class StrategyPlanService {
       endDate.setDate(0);
     }
 
-    // Gather all inputs
-    const [analytics, learningInsights, activeCampaigns, recentResearch, detectedTrends, workspace, brand, subscription] = await Promise.all([
+    // Gather all inputs + frequency analysis
+    const [analytics, learningInsights, activeCampaigns, recentResearch, detectedTrends, workspace, brand, subscription, frequencyRec] = await Promise.all([
       this.gatherAnalytics(workspaceId),
       this.gatherLearningInsights(workspaceId),
       this.prisma.campaign.findMany({
@@ -254,11 +254,17 @@ export class StrategyPlanService {
       }),
       this.prisma.brandProfile.findUnique({ where: { workspaceId } }),
       this.prisma.subscription.findFirst({ where: { workspaceId, status: 'ACTIVE' }, include: { plan: true } }),
+      this.computeFrequencyRecommendation(workspaceId),
     ]);
 
     const maxPostsPerWeek = (subscription?.plan as any)?.maxRunsPerMonth
       ? Math.ceil(((subscription!.plan as any).maxRunsPerMonth as number) / 4)
       : 5;
+
+    // Use frequency recommendation if available, capped by plan limits
+    const recommendedPostsPerWeek = frequencyRec.hasData
+      ? Math.min(frequencyRec.optimalPostsPerWeek, maxPostsPerWeek)
+      : maxPostsPerWeek;
 
     const input: StrategyPlanInput = {
       analytics,
@@ -285,7 +291,7 @@ export class StrategyPlanService {
         brandVoice: brand?.voice ?? '',
         brandTone: brand?.tone ?? 'didáctico',
       },
-      planLimits: { maxPostsPerWeek },
+      planLimits: { maxPostsPerWeek: recommendedPostsPerWeek },
       periodType,
       startDate: startDate.toISOString().split('T')[0]!,
       endDate: endDate.toISOString().split('T')[0]!,
@@ -347,6 +353,26 @@ export class StrategyPlanService {
       });
     }
 
+    // Add AI-frequency recommendation if we have data
+    if (frequencyRec.hasData && frequencyRec.channelBreakdown.length > 0) {
+      const channelSummary = frequencyRec.channelBreakdown
+        .map(c => `${c.platform}: ${c.optimalPostsPerWeek}/sem (eng: ${c.avgEngagement}%)`)
+        .join(', ');
+
+      await this.prisma.strategyRecommendation.create({
+        data: {
+          strategyPlanId: plan.id,
+          type: 'POST_COUNT',
+          title: `Frecuencia óptima: ${frequencyRec.optimalPostsPerWeek} posts/semana`,
+          description: `Recomendación basada en datos: ${channelSummary}. ${frequencyRec.reasoning}`,
+          priorityScore: 0.85,
+          confidenceScore: Math.min(0.9, 0.5 + (frequencyRec.channelBreakdown[0]?.avgEngagement ?? 0) / 10),
+          recommendedAction: `Publica ${frequencyRec.optimalPostsPerWeek} veces por semana para maximizar engagement.`,
+          sourceData: frequencyRec as any,
+        },
+      });
+    }
+
     this.logger.log(`Strategy plan created: ${plan.id} with ${generated.recommendations?.length ?? 0} recommendations`);
 
     return this.prisma.strategyPlan.findUniqueOrThrow({
@@ -401,6 +427,139 @@ export class StrategyPlanService {
           recommendedAction: `Crear al menos ${Math.ceil(maxPosts * 0.5)} ${analytics.topFormat || 'carousels'} esta semana`,
         },
       ],
+    };
+  }
+
+  // ── Frequency recommendation engine ────────────────────
+
+  async computeFrequencyRecommendation(workspaceId: string) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Get publications with engagement data per channel
+    const publications = await this.prisma.publication.findMany({
+      where: {
+        editorialRun: { workspaceId },
+        publishedAt: { gte: thirtyDaysAgo },
+        status: 'PUBLISHED',
+      },
+      include: {
+        editorialRun: { include: { contentBrief: true } },
+      },
+      orderBy: { publishedAt: 'desc' },
+    });
+
+    if (publications.length < 3) {
+      // Not enough data — return sensible defaults
+      return {
+        hasData: false,
+        optimalPostsPerWeek: 4,
+        channelBreakdown: [],
+        formatMixRecommendation: [],
+        reasoning: 'Datos insuficientes — se necesitan al menos 3 publicaciones para recomendaciones personalizadas.',
+      };
+    }
+
+    // Group by platform/channel
+    const byPlatform: Record<string, { count: number; totalEng: number; bestDay: Record<string, number>; bestHour: Record<string, number> }> = {};
+    const byFormat: Record<string, { count: number; totalEng: number }> = {};
+
+    const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    let totalWeeks = 0;
+
+    // Calculate days span
+    const oldestPub = publications[publications.length - 1]?.publishedAt;
+    const newestPub = publications[0]?.publishedAt;
+    if (oldestPub && newestPub) {
+      totalWeeks = Math.max(1, Math.ceil((newestPub.getTime() - oldestPub.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+    } else {
+      totalWeeks = 4;
+    }
+
+    for (const pub of publications) {
+      const platform = pub.platform?.toLowerCase() ?? 'instagram';
+      const eng = pub.engagementRate ?? 0;
+      const format = pub.editorialRun?.contentBrief?.format?.toLowerCase() ?? 'post';
+
+      if (!byPlatform[platform]) byPlatform[platform] = { count: 0, totalEng: 0, bestDay: {}, bestHour: {} };
+      byPlatform[platform]!.count++;
+      byPlatform[platform]!.totalEng += eng;
+
+      if (!byFormat[format]) byFormat[format] = { count: 0, totalEng: 0 };
+      byFormat[format]!.count++;
+      byFormat[format]!.totalEng += eng;
+
+      if (pub.publishedAt) {
+        const day = dayNames[pub.publishedAt.getDay()]!;
+        const hour = pub.publishedAt.getHours().toString().padStart(2, '0') + ':00';
+        byPlatform[platform]!.bestDay[day] = (byPlatform[platform]!.bestDay[day] ?? 0) + eng;
+        byPlatform[platform]!.bestHour[hour] = (byPlatform[platform]!.bestHour[hour] ?? 0) + eng;
+      }
+    }
+
+    // Compute per-channel optimal frequency
+    const channelBreakdown = Object.entries(byPlatform).map(([platform, data]) => {
+      const avgEngPerPost = data.totalEng / data.count;
+      const postsPerWeek = data.count / totalWeeks;
+
+      // Optimal posts: if current engagement is good (>2%), maintain; if low, suggest reducing
+      let optimalPerWeek: number;
+      if (avgEngPerPost > 3) {
+        optimalPerWeek = Math.min(Math.ceil(postsPerWeek * 1.2), 7); // increase slightly
+      } else if (avgEngPerPost > 1.5) {
+        optimalPerWeek = Math.round(postsPerWeek); // maintain
+      } else {
+        optimalPerWeek = Math.max(Math.floor(postsPerWeek * 0.8), 2); // reduce slightly
+      }
+
+      const bestDay = Object.entries(data.bestDay).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'martes';
+      const bestHour = Object.entries(data.bestHour).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '10:00';
+
+      return {
+        platform,
+        currentPostsPerWeek: Math.round(postsPerWeek * 10) / 10,
+        optimalPostsPerWeek: optimalPerWeek,
+        avgEngagement: Math.round(avgEngPerPost * 100) / 100,
+        bestDay,
+        bestHour,
+      };
+    }).sort((a, b) => b.avgEngagement - a.avgEngagement);
+
+    // Compute format mix recommendation
+    const formatMixRecommendation = Object.entries(byFormat)
+      .map(([format, data]) => {
+        const avgEng = data.totalEng / data.count;
+        const share = data.count / publications.length;
+        // Recommend increasing high-engagement formats
+        const recommendedShare = avgEng > 2
+          ? Math.min(share * 1.3, 0.6)
+          : avgEng > 1
+            ? share
+            : Math.max(share * 0.7, 0.1);
+        return {
+          format,
+          currentShare: Math.round(share * 100),
+          recommendedShare: Math.round(recommendedShare * 100),
+          avgEngagement: Math.round(avgEng * 100) / 100,
+        };
+      })
+      .sort((a, b) => b.avgEngagement - a.avgEngagement);
+
+    // Normalize recommended shares to 100%
+    const totalRecommended = formatMixRecommendation.reduce((s, f) => s + f.recommendedShare, 0);
+    if (totalRecommended > 0) {
+      for (const f of formatMixRecommendation) {
+        f.recommendedShare = Math.round((f.recommendedShare / totalRecommended) * 100);
+      }
+    }
+
+    const optimalPostsPerWeek = channelBreakdown.reduce((s, c) => s + c.optimalPostsPerWeek, 0);
+
+    return {
+      hasData: true,
+      optimalPostsPerWeek,
+      channelBreakdown,
+      formatMixRecommendation,
+      reasoning: `Basado en ${publications.length} publicaciones de los últimos 30 días (${totalWeeks} semanas).`,
     };
   }
 

@@ -121,6 +121,7 @@ model Workspace {
   fatigueScores   ContentFatigueScore[]
   sourceTrust     SourceTrustProfile[]
   complianceRules ComplianceRule[]
+  onboardingProgress OnboardingProgress?
 
   @@map("workspaces")
 }
@@ -154,6 +155,8 @@ model BrandProfile {
   allowedClaims   String[] @default([]) @map("allowed_claims")
   baseCta         String   @default("") @map("base_cta")
   prohibitedTopics String[] @default([]) @map("prohibited_topics")
+  topicWhitelist  String[] @default([]) @map("topic_whitelist") // Temas permitidos (vacío = todos)
+  topicBlacklist  String[] @default([]) @map("topic_blacklist") // Temas bloqueados
   hashtags        String[] @default([])
   visualStyle     Json?    @map("visual_style") // Tipografías, colores, etc.
   createdAt       DateTime @default(now()) @map("created_at")
@@ -1149,6 +1152,7 @@ model PublishSchedule {
   contentProfileId String?  @map("content_profile_id")
   name             String   @default("Mi horario")
   timezone         String   @default("America/Mexico_City")
+  operationMode    OperationMode? @map("operation_mode") // Override, null = hereda workspace
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -1261,6 +1265,8 @@ enum AlertType {
   ONBOARDING_STALLED
   HIGH_FATIGUE
   PLAN_LIMIT_NEAR
+  PIPELINE_FAILURE_RATE  // Pipeline failure rate > threshold
+  CHURN_AT_RISK         // Workspace detected as AT_RISK churn
 }
 
 enum AlertSeverity {
@@ -1711,4 +1717,45 @@ model ComplianceRule {
 
   @@index([workspaceId, isActive])
   @@map("compliance_rules")
+}
+
+// ============================================================
+// ONBOARDING PROGRESS — Tracking granular del embudo de activación
+// ============================================================
+
+model OnboardingProgress {
+  id                    String    @id @default(cuid())
+  workspaceId           String    @unique @map("workspace_id")
+
+  // Step completion timestamps
+  accountCreatedAt      DateTime? @map("account_created_at")
+  emailVerifiedAt       DateTime? @map("email_verified_at")
+  workspaceConfiguredAt DateTime? @map("workspace_configured_at")
+  brandConfiguredAt     DateTime? @map("brand_configured_at")
+  channelsConnectedAt   DateTime? @map("channels_connected_at")
+  themesConfiguredAt    DateTime? @map("themes_configured_at")
+  sourcesAddedAt        DateTime? @map("sources_added_at")
+  llmConfiguredAt       DateTime? @map("llm_configured_at")
+  telegramLinkedAt      DateTime? @map("telegram_linked_at")
+  personaCreatedAt      DateTime? @map("persona_created_at")
+  profileCreatedAt      DateTime? @map("profile_created_at")
+  firstRunTriggeredAt   DateTime? @map("first_run_triggered_at")
+  firstPublicationAt    DateTime? @map("first_publication_at")
+
+  // Nudge tracking
+  lastNudgeSentAt       DateTime? @map("last_nudge_sent_at")
+  nudgeCount            Int       @default(0) @map("nudge_count")
+  nudgeDismissed        Boolean   @default(false) @map("nudge_dismissed")
+
+  // Overall progress
+  completedSteps        Int       @default(0) @map("completed_steps")
+  totalSteps            Int       @default(13) @map("total_steps")
+  percentComplete       Float     @default(0) @map("percent_complete")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_progress")
 }

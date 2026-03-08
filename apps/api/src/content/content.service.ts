@@ -228,12 +228,14 @@ export class ContentService {
       },
     });
 
-    // 6. Validar compliance
+    // 6. Validar compliance (includes whitelist/blacklist filtering)
     const complianceCheck = await this.checkCompliance(
       mainCopy.caption,
       brand?.prohibitedTopics ?? [],
       brand?.allowedClaims ?? [],
       llm,
+      brand?.topicWhitelist ?? [],
+      brand?.topicBlacklist ?? [],
     );
 
     // 7. Determinar siguiente status
@@ -443,7 +445,40 @@ export class ContentService {
     prohibitedTopics: string[],
     allowedClaims: string[],
     llm?: LLMAdapter,
+    topicWhitelist: string[] = [],
+    topicBlacklist: string[] = [],
   ): Promise<ComplianceResult> {
+    const issues: string[] = [];
+
+    // Pre-LLM: check topic blacklist (fast keyword match)
+    if (topicBlacklist.length > 0) {
+      const contentLower = content.toLowerCase();
+      for (const blocked of topicBlacklist) {
+        if (contentLower.includes(blocked.toLowerCase())) {
+          issues.push(`Contenido menciona tema bloqueado: "${blocked}"`);
+        }
+      }
+    }
+
+    // Pre-LLM: if whitelist is set, verify at least one whitelisted topic appears
+    if (topicWhitelist.length > 0) {
+      const contentLower = content.toLowerCase();
+      const hasWhitelisted = topicWhitelist.some((t) => contentLower.includes(t.toLowerCase()));
+      if (!hasWhitelisted) {
+        issues.push(`Contenido no incluye ningún tema de la lista blanca: ${topicWhitelist.join(', ')}`);
+      }
+    }
+
+    // If pre-checks already found issues, return early as non-compliant
+    if (issues.length > 0) {
+      return {
+        isCompliant: false,
+        issues,
+        suggestions: ['Ajusta el contenido para respetar la whitelist/blacklist de temas configurada.'],
+        riskLevel: 'medium',
+      };
+    }
+
     try {
       const adapter = llm ?? this.fallbackLlm;
       const prompt = buildComplianceCheckPrompt(content, prohibitedTopics, allowedClaims);

@@ -21,6 +21,26 @@ interface Recommendation {
   recommendedAction: string | null;
 }
 
+interface FrequencyRec {
+  hasData: boolean;
+  optimalPostsPerWeek: number;
+  channelBreakdown: Array<{
+    platform: string;
+    currentPostsPerWeek: number;
+    optimalPostsPerWeek: number;
+    avgEngagement: number;
+    bestDay: string;
+    bestHour: string;
+  }>;
+  formatMixRecommendation: Array<{
+    format: string;
+    currentShare: number;
+    recommendedShare: number;
+    avgEngagement: number;
+  }>;
+  reasoning: string;
+}
+
 interface StrategyPlan {
   id: string;
   periodType: string;
@@ -62,6 +82,7 @@ const TYPE_ICONS: Record<string, string> = {
 export default function StrategistPage() {
   const [activePlan, setActivePlan] = useState<StrategyPlan | null>(null);
   const [history, setHistory] = useState<StrategyPlan[]>([]);
+  const [frequencyRec, setFrequencyRec] = useState<FrequencyRec | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -75,14 +96,17 @@ export default function StrategistPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [activeRes, historyRes] = await Promise.all([
+      const [activeRes, historyRes, freqRes] = await Promise.all([
         fetch(`${API}/api/strategist/active`, { credentials: 'include' }),
         fetch(`${API}/api/strategist/plans?limit=10`, { credentials: 'include' }),
+        fetch(`${API}/api/strategist/frequency`, { credentials: 'include' }),
       ]);
       const activeJson = await activeRes.json();
       const historyJson = await historyRes.json();
+      const freqJson = await freqRes.json();
       setActivePlan(activeJson?.data ?? null);
       setHistory((historyJson?.data ?? []).filter((p: StrategyPlan) => p.status !== 'ACTIVE'));
+      setFrequencyRec(freqJson?.data ?? null);
     } catch (err) {
       console.error('Error fetching strategist data:', err);
     } finally {
@@ -313,6 +337,55 @@ export default function StrategistPage() {
                     {t.topic} <span className="text-orange-500">({(t.score * 100).toFixed(0)}%)</span>
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Frequency Recommendation */}
+          {frequencyRec?.hasData && (
+            <div className="bg-gradient-to-br from-[#1a1a2e] to-[#1a1a30] rounded-xl border border-indigo-500/20 p-5">
+              <h3 className="text-sm font-semibold text-indigo-400 mb-3">📊 Recomendación de Frecuencia</h3>
+              <p className="text-xs text-gray-400 mb-4">{frequencyRec.reasoning}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Channel breakdown */}
+                <div>
+                  <h4 className="text-xs font-medium text-gray-300 mb-2">Por Canal</h4>
+                  <div className="space-y-2">
+                    {frequencyRec.channelBreakdown.map((ch, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm bg-black/20 rounded-lg px-3 py-2">
+                        <span className="text-white font-medium capitalize">{ch.platform}</span>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="text-gray-400">Actual: {ch.currentPostsPerWeek}/sem</span>
+                          <span className="text-indigo-400 font-medium">→ {ch.optimalPostsPerWeek}/sem</span>
+                          <span className="text-green-400">{ch.avgEngagement}% eng</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Format mix */}
+                <div>
+                  <h4 className="text-xs font-medium text-gray-300 mb-2">Mix de Formatos</h4>
+                  <div className="space-y-2">
+                    {frequencyRec.formatMixRecommendation.map((f, i) => (
+                      <div key={i}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-white font-medium capitalize">{f.format}</span>
+                          <span className="text-xs text-gray-400">{f.currentShare}% → <span className="text-indigo-400">{f.recommendedShare}%</span></span>
+                        </div>
+                        <div className="w-full bg-gray-800 rounded-full h-1.5 flex">
+                          <div className="bg-gray-600 h-1.5 rounded-full" style={{ width: `${f.currentShare}%` }} />
+                          <div className="bg-indigo-500 h-1.5 rounded-full -ml-px" style={{ width: `${Math.max(0, f.recommendedShare - f.currentShare)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 text-center">
+                <span className="text-lg font-bold text-indigo-300">
+                  {frequencyRec.optimalPostsPerWeek} posts/semana recomendados
+                </span>
               </div>
             </div>
           )}

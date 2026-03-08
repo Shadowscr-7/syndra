@@ -334,22 +334,48 @@ export class EditorialOrchestratorService {
         }
 
         case 'review': {
-          // Check campaign-level operationMode first, then workspace fallback
+          // Resolve effective operation mode: campaign → schedule → workspace (cascade)
           const runForMode = await this.prisma.editorialRun.findUnique({
             where: { id: editorialRunId },
-            select: {
+            include: {
               campaign: { select: { operationMode: true } },
               workspace: { select: { operationMode: true } },
             },
           });
 
+          // Check schedule-level operationMode (via workspace owner's schedule)
+          const ownerUser = await this.prisma.workspaceUser.findFirst({
+            where: { workspaceId, role: 'OWNER' },
+            select: { userId: true },
+          });
+          let scheduleMode: string | null | undefined = null;
+          if (ownerUser) {
+            const activeSchedule = await this.prisma.publishSchedule.findFirst({
+              where: { userId: ownerUser.userId, isActive: true, operationMode: { not: null } },
+              select: { operationMode: true },
+            });
+            scheduleMode = activeSchedule?.operationMode;
+          }
           const effectiveMode =
             runForMode?.campaign?.operationMode ??
+            scheduleMode ??
             runForMode?.workspace?.operationMode;
 
           if (effectiveMode === 'FULLY_AUTOMATIC') {
-            this.logger.log(`Run ${editorialRunId} auto-approved (FULLY_AUTOMATIC mode — ${runForMode?.campaign?.operationMode ? 'campaign' : 'workspace'} level)`);
+            const source = runForMode?.campaign?.operationMode
+              ? 'campaign'
+              : scheduleMode
+                ? 'schedule'
+                : 'workspace';
+            this.logger.log(`Run ${editorialRunId} auto-approved (FULLY_AUTOMATIC mode — ${source} level)`);
             await this.onApproved(editorialRunId);
+            return { nextStage: null };
+          }
+
+          if (effectiveMode === 'MANUAL') {
+            // MANUAL mode: do NOT auto-approve or send to Telegram.
+            // Content stays in REVIEW until explicit user action via dashboard.
+            this.logger.log(`Run ${editorialRunId} requires manual approval (MANUAL mode) — waiting for dashboard action`);
             return { nextStage: null };
           }
 

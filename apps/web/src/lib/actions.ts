@@ -174,6 +174,7 @@ export async function createCampaign(formData: FormData) {
   const kpiTarget = formData.get('kpiTarget') as string || null;
   const contentProfileId = formData.get('contentProfileId') as string || null;
   const userPersonaId = formData.get('userPersonaId') as string || null;
+  const operationMode = formData.get('operationMode') as string || null;
   const channels = formData.getAll('channels') as string[];
   const themeIds = formData.getAll('themeIds') as string[];
   const channelFormatsRaw = formData.get('channelFormats') as string || '{}';
@@ -192,6 +193,7 @@ export async function createCampaign(formData: FormData) {
       startDate: startDate ? new Date(startDate) : new Date(),
       endDate: endDate ? new Date(endDate) : null,
       kpiTarget,
+      operationMode: operationMode ? (operationMode as any) : null,
       contentProfileId: contentProfileId || null,
       userPersonaId: userPersonaId || null,
       targetChannels: channels.length > 0 ? channels : ['instagram'],
@@ -222,6 +224,7 @@ export async function updateCampaign(id: string, formData: FormData) {
   const endDate = formData.get('endDate') as string || null;
   const kpiTarget = formData.get('kpiTarget') as string || null;
   const isActive = formData.get('isActive') === 'true';
+  const operationMode = formData.get('operationMode') as string || null;
   const contentProfileId = formData.get('contentProfileId') as string || null;
   const userPersonaId = formData.get('userPersonaId') as string || null;
   const channels = formData.getAll('channels') as string[];
@@ -244,6 +247,7 @@ export async function updateCampaign(id: string, formData: FormData) {
       endDate: endDate ? new Date(endDate) : null,
       kpiTarget,
       isActive,
+      operationMode: operationMode ? (operationMode as any) : null,
       contentProfileId: contentProfileId || null,
       userPersonaId: userPersonaId || null,
       targetChannels: channels.length > 0 ? channels : undefined,

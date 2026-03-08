@@ -123,8 +123,8 @@ export default async function CampaignsPage() {
               </div>
             </div>
 
-            {/* Row 5: Offer + Landing */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Row 5: Offer + Landing + Operation Mode */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="input-label">Oferta (opcional)</label>
                 <input type="text" name="offer" placeholder="ej: 20% descuento" className="input-field" />
@@ -132,6 +132,15 @@ export default async function CampaignsPage() {
               <div>
                 <label className="input-label">Landing URL (opcional)</label>
                 <input type="url" name="landingUrl" placeholder="https://..." className="input-field" />
+              </div>
+              <div>
+                <label className="input-label">Modo de Operación</label>
+                <select name="operationMode" className="input-field">
+                  <option value="">🔗 Heredar de Workspace</option>
+                  <option value="FULLY_AUTOMATIC">🤖 Automático</option>
+                  <option value="APPROVAL_REQUIRED">✅ Aprobación</option>
+                  <option value="MANUAL">🖐️ Manual</option>
+                </select>
               </div>
             </div>
 
