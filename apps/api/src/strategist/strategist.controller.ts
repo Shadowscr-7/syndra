@@ -4,6 +4,7 @@
 
 import { Controller, Get, Post, Patch, Param, Query, UseGuards, Body } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentWorkspace } from '../auth/decorators';
 import { StrategyPlanService } from './strategist-plan.service';
 
 @Controller('strategist')
@@ -16,7 +17,7 @@ export class StrategistController {
    */
   @Post('generate')
   async generatePlan(
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
     @Body() body: { periodType?: 'WEEKLY' | 'MONTHLY' },
   ) {
     const plan = await this.planService.generatePlan(
@@ -30,7 +31,7 @@ export class StrategistController {
    * GET /strategist/active — Get the active plan for the workspace
    */
   @Get('active')
-  async getActivePlan(@Query('workspaceId') workspaceId: string) {
+  async getActivePlan(@CurrentWorkspace() workspaceId: string) {
     const plan = await this.planService.getActivePlan(workspaceId);
     return { data: plan };
   }
@@ -40,7 +41,7 @@ export class StrategistController {
    */
   @Get('plans')
   async listPlans(
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
     @Query('limit') limit?: string,
   ) {
     const plans = await this.planService.listPlans(workspaceId, limit ? parseInt(limit) : 10);
@@ -71,7 +72,7 @@ export class StrategistController {
   @Post('plan/:id/create-campaign')
   async createCampaignFromPlan(
     @Param('id') id: string,
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
   ) {
     const campaign = await this.planService.createCampaignFromPlan(id, workspaceId);
     return { data: campaign };
@@ -83,7 +84,7 @@ export class StrategistController {
   @Post('plan/:id/generate-runs')
   async generateRunsFromPlan(
     @Param('id') id: string,
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
   ) {
     const result = await this.planService.generateRunsFromPlan(id, workspaceId);
     return { data: result };

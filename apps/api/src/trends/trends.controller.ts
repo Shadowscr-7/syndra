@@ -2,8 +2,9 @@
 // TrendsController — API REST para tendencias detectadas
 // ============================================================
 
-import { Controller, Get, Post, Patch, Param, Query, UseGuards, Body } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentWorkspace } from '../auth/decorators';
 import { TrendDetectionService } from './trend-detection.service';
 
 @Controller('trends')
@@ -16,7 +17,7 @@ export class TrendsController {
    */
   @Get()
   async listTrends(
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
   ) {
@@ -41,7 +42,7 @@ export class TrendsController {
    * POST /trends/detect — Trigger manual trend detection
    */
   @Post('detect')
-  async detectTrends(@Query('workspaceId') workspaceId: string) {
+  async detectTrends(@CurrentWorkspace() workspaceId: string) {
     const result = await this.trendService.detectTrends(workspaceId);
     return { data: result };
   }
@@ -70,7 +71,7 @@ export class TrendsController {
   @Post(':id/create-run')
   async createRunFromTrend(
     @Param('id') id: string,
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
   ) {
     const run = await this.trendService.createRunFromTrend(id, workspaceId);
     return { data: run };
@@ -82,7 +83,7 @@ export class TrendsController {
   @Post(':id/add-to-plan')
   async addTrendToPlan(
     @Param('id') id: string,
-    @Query('workspaceId') workspaceId: string,
+    @CurrentWorkspace() workspaceId: string,
   ) {
     const recommendation = await this.trendService.addTrendToPlan(id, workspaceId);
     return { data: recommendation };
