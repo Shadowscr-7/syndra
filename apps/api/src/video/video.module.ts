@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { QueueModule } from '../queue/queue.module';
 import { TelegramModule } from '../telegram/telegram.module';
+import { PlansModule } from '../plans/plans.module';
 import { VideoService } from './video.service';
 import { VideoWorkerService } from './video-worker.service';
 import { VideoTierRouterService } from './video-tier-router.service';
@@ -18,6 +19,7 @@ import { VideoController } from './video.controller';
     ConfigModule,
     PrismaModule,
     QueueModule,
+    PlansModule,
     forwardRef(() => TelegramModule),
   ],
   providers: [VideoService, VideoWorkerService, VideoTierRouterService, VideoCreditService],

@@ -263,12 +263,12 @@ function UserCard({ user, onClick }: { user: User; onClick: () => void }) {
       </span>
 
       {/* Plan */}
-      <div className="w-20 shrink-0 text-right">
+      <div className="w-28 shrink-0 text-right">
         {plan ? (
-          <div>
+          <div className="flex items-center justify-end gap-1.5 flex-wrap">
             <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>{plan}</span>
             {discount && discount > 0 ? (
-              <span className="ml-1 text-[10px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
+              <span className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
                 -{discount}%
               </span>
             ) : null}
@@ -279,7 +279,7 @@ function UserCard({ user, onClick }: { user: User; onClick: () => void }) {
       </div>
 
       {/* Referral */}
-      <div className="w-24 shrink-0 text-center">
+      <div className="w-20 shrink-0 text-center">
         {user.referralCode ? (
           <code className="text-[11px] font-mono font-semibold px-2 py-1 rounded-lg" style={{ background: 'rgba(124,58,237,0.1)', color: '#a78bfa' }}>
             {user.referralCode}

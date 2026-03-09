@@ -8,6 +8,8 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 
 const BCRYPT_ROUNDS = 12;
+const RECURRING_THRESHOLD = 20; // Mínimo de referidos activos para comisiones recurrentes
+const COMMISSION_PERCENT = 20;  // % de comisión estándar
 
 @Injectable()
 export class AdminService {
@@ -382,17 +384,17 @@ export class AdminService {
         },
       });
 
-      // Create starter subscription (free for collaborators)
-      const starterPlan = await tx.plan.findFirst({
-        where: { name: 'starter' },
+      // Create creator subscription (free for collaborators — no expiration)
+      const creatorPlan = await tx.plan.findFirst({
+        where: { name: 'creator' },
       });
-      if (starterPlan) {
+      if (creatorPlan) {
         const periodEnd = new Date();
-        periodEnd.setFullYear(periodEnd.getFullYear() + 10); // Long-lived for collaborators
+        periodEnd.setFullYear(periodEnd.getFullYear() + 100); // Permanent for collaborators
         await tx.subscription.create({
           data: {
             workspaceId: workspace.id,
-            planId: starterPlan.id,
+            planId: creatorPlan.id,
             status: 'ACTIVE',
             billingCycle: 'MONTHLY',
             discountPercent: 0,
@@ -471,6 +473,11 @@ export class AdminService {
       totalCommissionPaid,
       totalCollaborators,
       totalPayouts,
+      firstPurchaseCount,
+      recurringCount,
+      recurringPending,
+      recurringApproved,
+      recurringPaid,
     ] = await Promise.all([
       this.prisma.affiliateReferral.count(),
       this.prisma.affiliateReferral.count({ where: { status: 'PENDING' } }),
@@ -482,6 +489,11 @@ export class AdminService {
       this.prisma.affiliateReferral.aggregate({ where: { status: 'PAID' }, _sum: { commissionAmount: true } }),
       this.prisma.user.count({ where: { role: 'COLLABORATOR' } }),
       this.prisma.commissionPayout.count({ where: { status: 'PAID' } }),
+      this.prisma.affiliateReferral.count({ where: { commissionType: 'FIRST_PURCHASE' } }),
+      this.prisma.affiliateReferral.count({ where: { commissionType: 'RECURRING' } }),
+      this.prisma.affiliateReferral.aggregate({ where: { commissionType: 'RECURRING', status: 'PENDING' }, _sum: { commissionAmount: true } }),
+      this.prisma.affiliateReferral.aggregate({ where: { commissionType: 'RECURRING', status: 'APPROVED' }, _sum: { commissionAmount: true } }),
+      this.prisma.affiliateReferral.aggregate({ where: { commissionType: 'RECURRING', status: 'PAID' }, _sum: { commissionAmount: true } }),
     ]);
 
     return {
@@ -495,6 +507,13 @@ export class AdminService {
       totalCommissionPaid: totalCommissionPaid._sum.commissionAmount || 0,
       totalCollaborators,
       totalPayouts,
+      // Breakdown by type
+      firstPurchaseCount,
+      recurringCount,
+      recurringPendingAmount: recurringPending._sum.commissionAmount || 0,
+      recurringApprovedAmount: recurringApproved._sum.commissionAmount || 0,
+      recurringPaidAmount: recurringPaid._sum.commissionAmount || 0,
+      recurringThreshold: RECURRING_THRESHOLD,
     };
   }
 
@@ -514,9 +533,27 @@ export class AdminService {
             id: true,
             status: true,
             commissionAmount: true,
+            commissionType: true,
             amountPaid: true,
             planName: true,
             createdAt: true,
+            referredUser: {
+              select: {
+                id: true,
+                workspaces: {
+                  where: { isDefault: true },
+                  select: {
+                    workspace: {
+                      select: {
+                        subscription: {
+                          select: { status: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         collaboratorPayouts: {
@@ -533,14 +570,23 @@ export class AdminService {
 
     return collaborators.map((c) => {
       const referrals = c.collaboratorReferrals;
-      const totalReferrals = referrals.length;
+      const firstPurchaseRefs = referrals.filter((r) => r.commissionType === 'FIRST_PURCHASE');
+      const recurringRefs = referrals.filter((r) => r.commissionType === 'RECURRING');
+
+      // Count unique active referred users (FIRST_PURCHASE refs with active subscription)
+      const activeReferredUsers = firstPurchaseRefs.filter((r) => {
+        const sub = r.referredUser?.workspaces?.[0]?.workspace?.subscription;
+        return sub?.status === 'ACTIVE' && r.status !== 'CANCELLED';
+      }).length;
+
+      const totalReferrals = firstPurchaseRefs.length;
       const pendingCount = referrals.filter((r) => r.status === 'PENDING').length;
       const approvedCount = referrals.filter((r) => r.status === 'APPROVED').length;
       const paidCount = referrals.filter((r) => r.status === 'PAID').length;
       const pendingAmount = referrals.filter((r) => r.status === 'PENDING').reduce((s, r) => s + r.commissionAmount, 0);
       const approvedAmount = referrals.filter((r) => r.status === 'APPROVED').reduce((s, r) => s + r.commissionAmount, 0);
       const paidAmount = referrals.filter((r) => r.status === 'PAID').reduce((s, r) => s + r.commissionAmount, 0);
-      const totalRevenue = referrals.reduce((s, r) => s + r.amountPaid, 0);
+      const totalRevenue = firstPurchaseRefs.reduce((s, r) => s + r.amountPaid, 0);
 
       return {
         id: c.id,
@@ -551,6 +597,10 @@ export class AdminService {
         createdAt: c.createdAt,
         stats: {
           totalReferrals,
+          activeReferredUsers,
+          recurringEligible: activeReferredUsers >= RECURRING_THRESHOLD,
+          recurringThreshold: RECURRING_THRESHOLD,
+          recurringEntriesCount: recurringRefs.length,
           pendingCount,
           approvedCount,
           paidCount,
@@ -607,10 +657,22 @@ export class AdminService {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ commissionType: 'asc' }, { createdAt: 'desc' }],
     });
 
-    return { collaborator: user, referrals };
+    // Count active referred users for threshold display
+    const activeReferredUsers = referrals.filter((r) => {
+      const sub = r.referredUser?.workspaces?.[0]?.workspace?.subscription;
+      return r.commissionType === 'FIRST_PURCHASE' && sub?.status === 'ACTIVE' && r.status !== 'CANCELLED';
+    }).length;
+
+    return {
+      collaborator: user,
+      referrals,
+      activeReferredUsers,
+      recurringEligible: activeReferredUsers >= RECURRING_THRESHOLD,
+      recurringThreshold: RECURRING_THRESHOLD,
+    };
   }
 
   /** Approve pending referrals (batch or single) */
@@ -779,6 +841,166 @@ export class AdminService {
     });
     if (!payout) throw new NotFoundException('Payout no encontrado');
     return payout;
+  }
+
+  // ================================================================
+  // RECURRING COMMISSIONS — Comisiones recurrentes mensuales
+  // ================================================================
+
+  /**
+   * Generate recurring commissions for the current month.
+   * Rules:
+   * - Only collaborators with 20+ active referred users qualify
+   * - Commission = 20% of each active user's current monthly plan price
+   * - Skips users that already have a RECURRING entry for this month
+   * - Creates entries as PENDING for admin review
+   */
+  async generateRecurringCommissions() {
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const periodLabel = `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}`;
+
+    // Get all collaborators
+    const collaborators = await this.prisma.user.findMany({
+      where: { role: 'COLLABORATOR', isBlocked: false },
+      select: { id: true, email: true, name: true, referralCode: true },
+    });
+
+    let totalCreated = 0;
+    let totalAmount = 0;
+    const results: { collaboratorEmail: string; activeUsers: number; entriesCreated: number; amount: number }[] = [];
+
+    for (const collab of collaborators) {
+      if (!collab.referralCode) continue;
+
+      // Find all FIRST_PURCHASE referrals (non-cancelled) for this collaborator
+      // and check if the referred user's subscription is still ACTIVE
+      const firstPurchaseRefs = await this.prisma.affiliateReferral.findMany({
+        where: {
+          collaboratorId: collab.id,
+          commissionType: 'FIRST_PURCHASE',
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          referredUserId: true,
+          referralCode: true,
+          referredUser: {
+            select: {
+              id: true,
+              workspaces: {
+                where: { isDefault: true },
+                select: {
+                  workspace: {
+                    select: {
+                      subscription: {
+                        select: {
+                          id: true,
+                          status: true,
+                          billingCycle: true,
+                          plan: {
+                            select: {
+                              displayName: true,
+                              monthlyPrice: true,
+                              yearlyPrice: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Filter to only active users
+      const activeUsers = firstPurchaseRefs.filter((r) => {
+        const sub = r.referredUser?.workspaces?.[0]?.workspace?.subscription;
+        return sub?.status === 'ACTIVE';
+      });
+
+      // Check threshold: must have 20+ active referred users
+      if (activeUsers.length < RECURRING_THRESHOLD) {
+        continue;
+      }
+
+      let collabCreated = 0;
+      let collabAmount = 0;
+
+      for (const ref of activeUsers) {
+        const sub = ref.referredUser.workspaces[0]?.workspace?.subscription;
+        if (!sub) continue;
+
+        // Calculate monthly equivalent price
+        const monthlyPrice = sub.billingCycle === 'YEARLY'
+          ? Math.round(sub.plan.yearlyPrice / 12)
+          : sub.plan.monthlyPrice;
+
+        if (monthlyPrice <= 0) continue;
+
+        const commissionAmount = Math.round(monthlyPrice * (COMMISSION_PERCENT / 100));
+
+        // Check if already exists for this month
+        const existing = await this.prisma.affiliateReferral.findUnique({
+          where: {
+            referredUserId_commissionType_periodStart: {
+              referredUserId: ref.referredUserId,
+              commissionType: 'RECURRING',
+              periodStart,
+            },
+          },
+        });
+        if (existing) continue;
+
+        // Create the recurring commission entry
+        await this.prisma.affiliateReferral.create({
+          data: {
+            collaboratorId: collab.id,
+            referredUserId: ref.referredUserId,
+            referralCode: ref.referralCode,
+            subscriptionId: sub.id,
+            planName: sub.plan.displayName,
+            amountPaid: monthlyPrice,
+            commissionPercent: COMMISSION_PERCENT,
+            commissionAmount,
+            commissionType: 'RECURRING',
+            periodStart,
+            periodEnd,
+            status: 'PENDING',
+          },
+        });
+
+        collabCreated++;
+        collabAmount += commissionAmount;
+      }
+
+      if (collabCreated > 0) {
+        results.push({
+          collaboratorEmail: collab.email,
+          activeUsers: activeUsers.length,
+          entriesCreated: collabCreated,
+          amount: collabAmount,
+        });
+        totalCreated += collabCreated;
+        totalAmount += collabAmount;
+      }
+    }
+
+    this.logger.log(
+      `🔄 Recurring commissions generated for ${periodLabel}: ${totalCreated} entries | $${(totalAmount / 100).toFixed(2)} total`,
+    );
+
+    return {
+      period: periodLabel,
+      periodStart,
+      periodEnd,
+      totalEntriesCreated: totalCreated,
+      totalCommissionAmount: totalAmount,
+      collaborators: results,
+    };
   }
 
   // ================================================================

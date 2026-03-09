@@ -12,6 +12,10 @@ interface PartnerData {
   };
   stats: {
     totalReferrals: number;
+    activeReferredUsers: number;
+    recurringEligible: boolean;
+    recurringThreshold: number;
+    recurringEntriesCount: number;
     pendingCount: number;
     approvedCount: number;
     paidCount: number;
@@ -24,10 +28,22 @@ interface PartnerData {
   };
   referrals: {
     id: string;
-    referredUser: { id: string; name: string; email: string; createdAt: string };
+    referredUser: {
+      id: string;
+      name: string;
+      email: string;
+      createdAt: string;
+      workspaces?: Array<{
+        workspace: {
+          subscription?: { status: string } | null;
+        };
+      }>;
+    };
     planName: string | null;
     amountPaid: number;
     commissionAmount: number;
+    commissionType: 'FIRST_PURCHASE' | 'RECURRING';
+    periodStart: string | null;
     status: string;
     createdAt: string;
   }[];
@@ -142,11 +158,54 @@ export default function PartnerPage() {
         </div>
       </div>
 
+      {/* Recurring Threshold Progress */}
+      <div
+        className="glass-card p-5 animate-fade-in"
+        style={{
+          background: stats.recurringEligible
+            ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,182,212,0.05))'
+            : undefined,
+          borderColor: stats.recurringEligible ? 'rgba(16,185,129,0.2)' : undefined,
+        }}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xl">{stats.recurringEligible ? '🔄' : '🎯'}</span>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: stats.recurringEligible ? '#10b981' : 'var(--color-text)' }}>
+              {stats.recurringEligible ? 'Comisiones Recurrentes Activas' : 'Desbloquea Comisiones Recurrentes'}
+            </p>
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {stats.recurringEligible
+                ? `Ganas 20% mensual sobre tus ${stats.activeReferredUsers} usuarios activos`
+                : `Consigue ${stats.recurringThreshold} referidos activos para ganar 20% mensual recurrente`}
+            </p>
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${Math.min(100, (stats.activeReferredUsers / stats.recurringThreshold) * 100)}%`,
+                background: stats.recurringEligible
+                  ? 'linear-gradient(90deg, #10b981, #06b6d4)'
+                  : 'linear-gradient(90deg, #7c3aed, #06b6d4)',
+              }}
+            />
+          </div>
+          <span className="text-sm font-bold shrink-0" style={{ color: stats.recurringEligible ? '#10b981' : '#a78bfa' }}>
+            {stats.activeReferredUsers}/{stats.recurringThreshold}
+          </span>
+        </div>
+      </div>
+
       {/* KPI Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in-delay-1">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 animate-fade-in-delay-1">
         <KpiCard label="Referidos totales" value={String(stats.totalReferrals)} icon="👥" />
+        <KpiCard label="Activos" value={String(stats.activeReferredUsers)} icon="✅" subtext={stats.recurringEligible ? 'Recurrente activo' : `Meta: ${stats.recurringThreshold}`} />
         <KpiCard label="Pendientes" value={String(stats.pendingCount)} icon="⏳" subtext={fmt(stats.pendingAmount)} />
-        <KpiCard label="Aprobadas" value={String(stats.approvedCount)} icon="✅" subtext={fmt(stats.approvedAmount)} />
+        <KpiCard label="Aprobadas" value={String(stats.approvedCount)} icon="📋" subtext={fmt(stats.approvedAmount)} />
         <KpiCard label="Total cobrado" value={fmt(stats.totalPayoutsPaid)} icon="💰" />
       </div>
 
@@ -168,6 +227,7 @@ export default function PartnerPage() {
               <thead>
                 <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                   <th className="text-left py-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Usuario</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Tipo</th>
                   <th className="text-left py-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Plan</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Pago</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Comisión</th>
@@ -177,13 +237,24 @@ export default function PartnerPage() {
               </thead>
               <tbody>
                 {referrals.map((r) => {
-                  const sc = STATUS_COLORS[r.status] ?? STATUS_COLORS['PENDING'];
+                  const sc = (STATUS_COLORS[r.status] || STATUS_COLORS['PENDING'])!;
                   return (
                     <tr key={r.id} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <td className="py-2.5 px-3">
                         <p className="font-medium text-xs" style={{ color: 'var(--color-text)' }}>
                           {r.referredUser.name || r.referredUser.email}
                         </p>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
+                          style={{
+                            backgroundColor: r.commissionType === 'RECURRING' ? 'rgba(6,182,212,0.12)' : 'rgba(124,58,237,0.1)',
+                            color: r.commissionType === 'RECURRING' ? '#06b6d4' : '#a78bfa',
+                          }}
+                        >
+                          {r.commissionType === 'RECURRING' ? '🔄 Recurrente' : '🛒 1ª Compra'}
+                        </span>
                       </td>
                       <td className="py-2.5 px-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                         {r.planName || '—'}
@@ -234,7 +305,7 @@ export default function PartnerPage() {
               </thead>
               <tbody>
                 {payouts.map((p) => {
-                  const sc = STATUS_COLORS[p.status] ?? STATUS_COLORS['DRAFT'];
+                  const sc = (STATUS_COLORS[p.status] || STATUS_COLORS['DRAFT'])!;
                   return (
                     <tr key={p.id} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <td className="py-2.5 px-3 text-xs font-mono" style={{ color: 'var(--color-text)' }}>

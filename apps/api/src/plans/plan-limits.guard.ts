@@ -2,11 +2,12 @@
 // Plan Limits Guard — Enforce plan limits on protected actions
 // ============================================================
 //
-// Usage: @PlanCheck('PUBLICATIONS') or @PlanCheck('VIDEOS') on controller methods
+// Usage:
+//   @PlanCheck('PUBLICATIONS')  — numeric limit
+//   @RequireFeature('video')    — boolean feature gate
 //
-// This guard runs after AuthGuard and checks if the workspace has
-// reached its plan limits for the specified metric before allowing
-// the action.
+// Both decorators set metadata; guard reads both and returns
+// consistent 403 JSON.
 // ============================================================
 
 import {
@@ -18,38 +19,30 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PlansService } from './plans.service';
+import { PlansService, PlanMetric, PlanFeatureKey } from './plans.service';
 
-// ── Decorator ──────────────────────────────────────────────
+// ── Decorator: numeric limit ───────────────────────────────
 
 export const PLAN_CHECK_KEY = 'plan_check_metric';
 
 /**
  * Decorator to enforce plan limits on a controller method.
- * @param metric The metric to check: 'PUBLICATIONS' | 'VIDEOS' | 'RESEARCH_SOURCES' | 'CHANNELS' | 'EDITORS'
  */
-export const PlanCheck = (
-  metric: 'PUBLICATIONS' | 'VIDEOS' | 'RESEARCH_SOURCES' | 'CHANNELS' | 'EDITORS',
-) => SetMetadata(PLAN_CHECK_KEY, metric);
+export const PlanCheck = (metric: PlanMetric) =>
+  SetMetadata(PLAN_CHECK_KEY, metric);
 
-// ── Feature Gate Decorator ─────────────────────────────────
+// ── Decorator: feature gate ────────────────────────────────
 
 export const FEATURE_GATE_KEY = 'feature_gate';
 
-export type PlanFeature =
-  | 'analytics'
-  | 'aiScoring'
-  | 'prioritySupport'
-  | 'customBranding'
-  | 'personas'
-  | 'scheduleSlots';
-
 /**
  * Decorator to restrict endpoint to plans that have a specific feature.
- * @param feature The plan feature required
  */
-export const RequireFeature = (feature: PlanFeature) =>
+export const RequireFeature = (feature: PlanFeatureKey) =>
   SetMetadata(FEATURE_GATE_KEY, feature);
+
+// Re-export for backwards compat
+export type PlanFeature = PlanFeatureKey;
 
 // ── Guard ──────────────────────────────────────────────────
 
@@ -63,12 +56,12 @@ export class PlanLimitsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const metric = this.reflector.getAllAndOverride<string>(PLAN_CHECK_KEY, [
+    const metric = this.reflector.getAllAndOverride<PlanMetric>(PLAN_CHECK_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    const feature = this.reflector.getAllAndOverride<PlanFeature>(FEATURE_GATE_KEY, [
+    const feature = this.reflector.getAllAndOverride<PlanFeatureKey>(FEATURE_GATE_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -79,48 +72,46 @@ export class PlanLimitsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const workspaceId = request.workspaceId;
 
-    if (!workspaceId) return true; // Let auth guard handle missing auth
+    if (!workspaceId) return true; // Let auth guard handle missing workspace
 
     // ── Metric-based limit check ────────────────────────
     if (metric) {
-      const result = await this.plansService.checkLimit(
-        workspaceId,
-        metric as any,
-      );
+      const result = await this.plansService.checkLimit(workspaceId, metric);
 
       if (!result.allowed) {
-        const sub = await this.plansService.getSubscription(workspaceId);
-        const planName = (sub as any)?.plan?.displayName || 'tu plan';
-
         this.logger.warn(
           `Plan limit reached: ${workspaceId} → ${metric} (${result.current}/${result.limit})`,
         );
 
         throw new ForbiddenException({
-          error: 'PLAN_LIMIT_REACHED',
-          message: `Has alcanzado el límite de ${this.metricLabel(metric)} en ${planName}. Actualiza tu plan para continuar.`,
-          metric,
-          current: result.current,
-          limit: result.limit,
-          upgrade: true,
+          statusCode: 403,
+          code: 'PLAN_LIMIT',
+          message: `Has alcanzado el límite de ${PlansService.getMetricLabel(metric)} en tu plan actual. Actualiza tu plan para continuar.`,
+          details: {
+            resource: metric,
+            limit: result.limit,
+            current: result.current,
+            requiredPlan: result.requiredPlan ?? 'pro',
+            requiredPlanDisplayName: this.planDisplayName(result.requiredPlan ?? 'pro'),
+          },
         });
       }
     }
 
     // ── Feature gate check ──────────────────────────────
     if (feature) {
-      const sub = await this.plansService.getSubscription(workspaceId);
-      const plan = (sub as any)?.plan;
+      const result = await this.plansService.checkFeature(workspaceId, feature);
 
-      if (!plan) return true;
-
-      const hasFeature = this.checkFeature(plan, feature);
-      if (!hasFeature) {
+      if (!result.allowed) {
         throw new ForbiddenException({
-          error: 'FEATURE_NOT_AVAILABLE',
-          message: `La función "${this.featureLabel(feature)}" no está disponible en tu plan actual. Actualiza para desbloquearla.`,
-          feature,
-          upgrade: true,
+          statusCode: 403,
+          code: 'PLAN_LIMIT',
+          message: `La función "${PlansService.getFeatureLabel(feature)}" no está disponible en tu plan actual. Actualiza para desbloquearla.`,
+          details: {
+            feature,
+            requiredPlan: result.requiredPlan ?? 'creator',
+            requiredPlanDisplayName: this.planDisplayName(result.requiredPlan ?? 'creator'),
+          },
         });
       }
     }
@@ -128,45 +119,12 @@ export class PlanLimitsGuard implements CanActivate {
     return true;
   }
 
-  private checkFeature(plan: any, feature: PlanFeature): boolean {
-    switch (feature) {
-      case 'analytics':
-        return plan.analyticsEnabled;
-      case 'aiScoring':
-        return plan.aiScoringEnabled;
-      case 'prioritySupport':
-        return plan.prioritySupport;
-      case 'customBranding':
-        return plan.customBranding;
-      case 'personas':
-        return plan.maxPersonas !== 0;
-      case 'scheduleSlots':
-        return plan.maxScheduleSlots !== 0;
-      default:
-        return true;
-    }
-  }
-
-  private metricLabel(metric: string): string {
-    const labels: Record<string, string> = {
-      PUBLICATIONS: 'publicaciones',
-      VIDEOS: 'vídeos',
-      RESEARCH_SOURCES: 'fuentes de investigación',
-      CHANNELS: 'canales conectados',
-      EDITORS: 'editores/colaboradores',
+  private planDisplayName(name: string): string {
+    const map: Record<string, string> = {
+      starter: 'Starter',
+      creator: 'Creator',
+      pro: 'Pro',
     };
-    return labels[metric] || metric;
-  }
-
-  private featureLabel(feature: PlanFeature): string {
-    const labels: Record<PlanFeature, string> = {
-      analytics: 'Analíticas avanzadas',
-      aiScoring: 'Scoring con IA',
-      prioritySupport: 'Soporte prioritario',
-      customBranding: 'Branding personalizado',
-      personas: 'Personas de contenido',
-      scheduleSlots: 'Programación de publicaciones',
-    };
-    return labels[feature] || feature;
+    return map[name] || name;
   }
 }

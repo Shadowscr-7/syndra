@@ -50,12 +50,14 @@ export async function POST(req: NextRequest) {
     if (data.user?.id) {
       response.cookies.set('auth-user-id', data.user.id, {
         ...cookieOptions,
+        httpOnly: false, // Must be readable by client-side JS
         maxAge: 60 * 60 * 24 * 30,
       });
     }
     if (data.user?.email) {
       response.cookies.set('auth-email', data.user.email, {
         ...cookieOptions,
+        httpOnly: false, // Must be readable by client-side JS
         maxAge: 60 * 60 * 24 * 30,
       });
     }
@@ -71,6 +73,7 @@ export async function POST(req: NextRequest) {
         if (wu) {
           response.cookies.set('workspace-id', wu.workspaceId, {
             ...cookieOptions,
+            httpOnly: false, // Must be readable by client-side JS (PlanContext, etc.)
             maxAge: 60 * 60 * 24 * 30,
           });
         }

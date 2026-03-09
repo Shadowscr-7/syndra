@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { ContentService } from './content.service';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('content')
+@UseGuards(PlanLimitsGuard)
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
@@ -11,6 +13,7 @@ export class ContentController {
    */
   @Post('generate')
   @HttpCode(200)
+  @PlanCheck('PUBLICATIONS')
   async generate(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {

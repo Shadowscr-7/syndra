@@ -14,10 +14,20 @@ interface ReferralStats {
   totalCommissionPaid: number;
   totalCollaborators: number;
   totalPayouts: number;
+  firstPurchaseCount: number;
+  recurringCount: number;
+  recurringPendingAmount: number;
+  recurringApprovedAmount: number;
+  recurringPaidAmount: number;
+  recurringThreshold: number;
 }
 
 interface CollaboratorStats {
   totalReferrals: number;
+  activeReferredUsers: number;
+  recurringEligible: boolean;
+  recurringThreshold: number;
+  recurringEntriesCount: number;
   pendingCount: number;
   approvedCount: number;
   paidCount: number;
@@ -52,6 +62,8 @@ interface ReferralDetail {
   amountPaid: number;
   commissionPercent: number;
   commissionAmount: number;
+  commissionType: 'FIRST_PURCHASE' | 'RECURRING';
+  periodStart: string | null;
   status: string;
   approvedAt: string | null;
   paidAt: string | null;
@@ -136,6 +148,7 @@ export default function CommissionsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [payModal, setPayModal] = useState<Payout | null>(null);
+  const [generatingRecurring, setGeneratingRecurring] = useState(false);
 
   const notify = (text: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ text, type });
@@ -271,6 +284,29 @@ export default function CommissionsPage() {
     }
   };
 
+  const handleGenerateRecurring = async () => {
+    if (!confirm('¿Generar comisiones recurrentes del mes actual para colaboradores con 20+ referidos activos?')) return;
+    setGeneratingRecurring(true);
+    try {
+      const res = await apiFetch('/api/admin/commissions/generate-recurring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const d = res.data;
+      if (d.totalEntriesCreated === 0) {
+        notify('No hay comisiones recurrentes nuevas para generar este mes', 'ok');
+      } else {
+        notify(`🔄 ${d.totalEntriesCreated} comisiones recurrentes generadas (${cents(d.totalCommissionAmount)}) — Período: ${d.period}`);
+      }
+      fetchAll();
+    } catch (e: any) {
+      notify(e.message, 'err');
+    } finally {
+      setGeneratingRecurring(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -303,9 +339,25 @@ export default function CommissionsPage() {
 
       {/* Header */}
       <div className="animate-fade-in">
-        <div className="page-header" style={{ marginBottom: 0 }}>
-          <h1 className="page-title">Comisiones de Colaboradores</h1>
-          <p className="page-subtitle">Gestión de referidos, comisiones y pagos a colaboradores</p>
+        <div className="page-header flex items-start justify-between" style={{ marginBottom: 0 }}>
+          <div>
+            <h1 className="page-title">Comisiones de Colaboradores</h1>
+            <p className="page-subtitle">Gestión de referidos, comisiones y pagos a colaboradores</p>
+          </div>
+          <button
+            onClick={handleGenerateRecurring}
+            disabled={generatingRecurring}
+            className="btn-primary text-xs px-4 py-2 flex items-center gap-2 shrink-0 disabled:opacity-50"
+          >
+            {generatingRecurring ? (
+              <>
+                <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Generando...
+              </>
+            ) : (
+              <>🔄 Generar Recurrentes</>
+            )}
+          </button>
         </div>
       </div>
 
@@ -314,7 +366,7 @@ export default function CommissionsPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-in-delay-1">
           {[
             { label: 'Colaboradores', val: stats.totalCollaborators, icon: '🤝', grad: 'stat-gradient-purple' },
-            { label: 'Referidos', val: stats.totalReferrals, icon: '👥', grad: 'stat-gradient-cyan' },
+            { label: 'Referidos', val: stats.totalReferrals, icon: '👥', grad: 'stat-gradient-cyan', sub: `${stats.firstPurchaseCount} compra · ${stats.recurringCount} recurrentes` },
             { label: 'Pendiente', val: cents(stats.totalCommissionPending), icon: '⏳', grad: 'stat-gradient-amber', sub: `${stats.pendingReferrals} ref.` },
             { label: 'Por pagar', val: cents(stats.totalCommissionApproved), icon: '📋', grad: 'stat-gradient-pink', sub: `${stats.approvedReferrals} ref.` },
             { label: 'Pagado', val: cents(stats.totalCommissionPaid), icon: '✅', grad: 'stat-gradient-purple', sub: `${stats.paidReferrals} ref.` },
@@ -494,6 +546,7 @@ function CollaboratorCard({
         {/* Quick stats */}
         <div className="hidden md:flex items-center gap-4 shrink-0">
           <QuickStat label="Referidos" value={s.totalReferrals} />
+          <QuickStat label="Activos" value={`${s.activeReferredUsers}/${s.recurringThreshold}`} highlight={s.recurringEligible} warn={!s.recurringEligible && s.activeReferredUsers > 0} />
           <QuickStat label="Pendiente" value={cents(s.pendingAmount)} warn={s.pendingCount > 0} />
           <QuickStat label="Por pagar" value={cents(s.approvedAmount)} highlight={s.approvedCount > 0} />
           <QuickStat label="Pagado" value={cents(s.paidAmount)} success />
@@ -515,8 +568,8 @@ function CollaboratorCard({
       {!isExpanded && (
         <div className="flex md:hidden items-center gap-3 px-4 pb-3">
           <QuickStat label="Ref" value={s.totalReferrals} />
+          <QuickStat label="Activos" value={`${s.activeReferredUsers}/${s.recurringThreshold}`} highlight={s.recurringEligible} />
           <QuickStat label="Pend" value={cents(s.pendingAmount)} warn={s.pendingCount > 0} />
-          <QuickStat label="Pagar" value={cents(s.approvedAmount)} highlight={s.approvedCount > 0} />
           <QuickStat label="Pagado" value={cents(s.paidAmount)} success />
         </div>
       )}
@@ -536,6 +589,46 @@ function CollaboratorCard({
             </div>
           ) : detail && detail.referrals.length > 0 ? (
             <>
+              {/* Recurring eligibility banner */}
+              <div
+                className="rounded-lg px-4 py-3 flex items-center gap-3 border"
+                style={{
+                  background: s.recurringEligible ? 'rgba(16,185,129,0.08)' : 'rgba(251,191,36,0.06)',
+                  borderColor: s.recurringEligible ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.15)',
+                }}
+              >
+                <span className="text-lg">{s.recurringEligible ? '🔄' : '📈'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold" style={{ color: s.recurringEligible ? '#10b981' : '#fbbf24' }}>
+                      {s.recurringEligible ? 'Comisiones recurrentes ACTIVAS' : `${s.activeReferredUsers}/${s.recurringThreshold} referidos activos`}
+                    </span>
+                    {s.recurringEligible && s.recurringEntriesCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}>
+                        {s.recurringEntriesCount} entradas recurrentes
+                      </span>
+                    )}
+                  </div>
+                  {/* Threshold progress bar */}
+                  <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, (s.activeReferredUsers / s.recurringThreshold) * 100)}%`,
+                        background: s.recurringEligible
+                          ? 'linear-gradient(90deg, #10b981, #06b6d4)'
+                          : 'linear-gradient(90deg, #fbbf24, #f59e0b)',
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    {s.recurringEligible
+                      ? `Gana 20% mensual sobre los ${s.activeReferredUsers} usuarios activos`
+                      : `Necesita ${s.recurringThreshold - s.activeReferredUsers} referidos activos más para desbloquear comisiones recurrentes`}
+                  </p>
+                </div>
+              </div>
+
               {/* Stats summary cards */}
               <div className="grid grid-cols-4 gap-2">
                 <MiniStat label="Revenue generado" value={cents(s.totalRevenue)} icon="💰" />
@@ -593,6 +686,7 @@ function CollaboratorCard({
                         />
                       </th>
                       <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--color-text-muted)' }}>Usuario referido</th>
+                      <th className="px-3 py-2 text-center font-medium" style={{ color: 'var(--color-text-muted)' }}>Tipo</th>
                       <th className="px-3 py-2 text-left font-medium" style={{ color: 'var(--color-text-muted)' }}>Plan</th>
                       <th className="px-3 py-2 text-right font-medium" style={{ color: 'var(--color-text-muted)' }}>Pagó</th>
                       <th className="px-3 py-2 text-right font-medium" style={{ color: 'var(--color-text-muted)' }}>Comisión</th>
@@ -633,6 +727,22 @@ function CollaboratorCard({
                               {ref.referredUser.name || 'Sin nombre'}
                             </div>
                             <div style={{ color: 'var(--color-text-muted)', fontSize: '10px' }}>{ref.referredUser.email}</div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span
+                              className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap"
+                              style={{
+                                background: ref.commissionType === 'RECURRING' ? 'rgba(6,182,212,0.12)' : 'rgba(124,58,237,0.1)',
+                                color: ref.commissionType === 'RECURRING' ? '#06b6d4' : '#a78bfa',
+                              }}
+                            >
+                              {ref.commissionType === 'RECURRING' ? '🔄 Recurrente' : '🛒 1ª Compra'}
+                            </span>
+                            {ref.periodStart && (
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: '9px' }}>
+                                {new Date(ref.periodStart).toLocaleDateString('es', { month: 'short', year: 'numeric' })}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2.5">
                             <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>

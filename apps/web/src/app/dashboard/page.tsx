@@ -2,6 +2,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { RunLink } from '@/components/ui/run-link';
 import { ExecutiveSummary } from '@/components/dashboard/executive-summary';
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
+import { GrowthEngineCard } from '@/components/dashboard/growth-engine-card';
 import { prisma } from '@automatismos/db';
 import Link from 'next/link';
 
@@ -91,6 +92,11 @@ export default async function DashboardPage() {
             gradient="stat-gradient-green"
           />
         </div>
+      </div>
+
+      {/* AI Growth Engine */}
+      <div className="animate-fade-in-delay-2">
+        <GrowthEngineCard />
       </div>
 
       {/* Recent Activity */}

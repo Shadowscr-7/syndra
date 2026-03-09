@@ -193,6 +193,7 @@ export class AuthService {
             amountPaid: discountedPrice,
             commissionPercent: 20,
             commissionAmount,
+            commissionType: 'FIRST_PURCHASE',
             status: 'PENDING',
           },
         });

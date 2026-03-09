@@ -2,10 +2,12 @@
 // Media Controller — Endpoints REST para gestión de media assets
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards } from '@nestjs/common';
 import { MediaEngineService } from './media-engine.service';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('media')
+@UseGuards(PlanLimitsGuard)
 export class MediaController {
   private readonly logger = new Logger(MediaController.name);
 
@@ -39,6 +41,7 @@ export class MediaController {
    * Dispara generación de media para un editorial run
    */
   @Post('generate')
+  @PlanCheck('STORAGE_MB')
   async generateMedia(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {

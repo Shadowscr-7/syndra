@@ -2,12 +2,15 @@
 // Video Controller — REST endpoints para gestión de videos
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
+import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
 
 @Controller('api/videos')
+@UseGuards(PlanLimitsGuard)
+@RequireFeature('video')
 export class VideoController {
   private readonly logger = new Logger(VideoController.name);
 
@@ -53,6 +56,7 @@ export class VideoController {
    * POST /api/videos/generate — Genera video desde un editorial run
    */
   @Post('generate')
+  @PlanCheck('VIDEOS')
   async generateVideo(
     @Body() body: {
       editorialRunId: string;
@@ -78,6 +82,7 @@ export class VideoController {
    * POST /api/videos/convert/:editorialRunId — Convierte contenido a video
    */
   @Post('convert/:editorialRunId')
+  @PlanCheck('VIDEOS')
   async convertToVideo(
     @Param('editorialRunId') editorialRunId: string,
     @Body() body?: { mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion' },
@@ -126,6 +131,7 @@ export class VideoController {
   }
 
   @Post('render')
+  @PlanCheck('VIDEOS')
   async createRenderJob(
     @Body() body: {
       workspaceId: string;

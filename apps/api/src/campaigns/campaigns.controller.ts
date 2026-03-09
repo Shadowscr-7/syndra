@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Patch, Body, Query } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Body, Query, UseGuards } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
+import { PlanLimitsGuard } from '../plans/plan-limits.guard';
 
 @Controller('campaigns')
+@UseGuards(PlanLimitsGuard)
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 

@@ -15,11 +15,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
-import { PlanLimitsGuard, RequireFeature } from '../plans/plan-limits.guard';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('schedules')
 @UseGuards(PlanLimitsGuard)
-@RequireFeature('scheduleSlots')
+@PlanCheck('SCHEDULE_SLOTS')
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 

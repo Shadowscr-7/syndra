@@ -389,6 +389,20 @@ export class AdminController {
     this.admin.logAudit({ action: 'payout.void', category: 'COMMISSION', performedBy: user.sub, targetId: id, targetType: 'CommissionPayout' }).catch(() => {});
     return { data: payout };
   }
+
+  /** POST /api/admin/commissions/generate-recurring — Generate recurring commissions for current month */
+  @Roles('ADMIN')
+  @Post('commissions/generate-recurring')
+  async generateRecurringCommissions(@CurrentUser() user: JwtPayload) {
+    const result = await this.admin.generateRecurringCommissions();
+    this.admin.logAudit({
+      action: 'commission.generate_recurring',
+      category: 'COMMISSION',
+      performedBy: user.sub,
+      details: { period: result.period, totalEntries: result.totalEntriesCreated, totalAmount: result.totalCommissionAmount },
+    }).catch(() => {});
+    return { data: result };
+  }
   // ── Enhanced dashboard ──────────────────────────────────
 
   /** GET /api/admin/dashboard/enhanced — Full admin metrics */

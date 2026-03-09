@@ -11,6 +11,7 @@ import {
   Body,
   Param,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { InvitationsService } from './invitations.service';
 import {
@@ -19,9 +20,12 @@ import {
   CurrentWorkspace,
   Roles,
 } from '../auth/decorators';
+import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
 import type { JwtPayload } from '../auth/auth.guard';
 
 @Controller('team')
+@UseGuards(PlanLimitsGuard)
+@RequireFeature('team')
 export class InvitationsController {
   private readonly logger = new Logger(InvitationsController.name);
 
@@ -51,6 +55,7 @@ export class InvitationsController {
    */
   @Roles('OWNER')
   @Post('invite')
+  @PlanCheck('EDITORS')
   async invite(
     @CurrentWorkspace() workspaceId: string,
     @CurrentUser() user: JwtPayload,

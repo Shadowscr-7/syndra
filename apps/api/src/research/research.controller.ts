@@ -2,10 +2,12 @@
 // Research Controller — Endpoints de investigación
 // ============================================================
 
-import { Controller, Get, Param, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { ResearchService } from './research.service';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('research')
+@UseGuards(PlanLimitsGuard)
 export class ResearchController {
   constructor(private readonly researchService: ResearchService) {}
 
@@ -25,6 +27,7 @@ export class ResearchController {
    */
   @Post('execute')
   @HttpCode(200)
+  @PlanCheck('RESEARCH_SOURCES')
   async executeResearch(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {

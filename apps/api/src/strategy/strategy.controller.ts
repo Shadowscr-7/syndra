@@ -1,7 +1,10 @@
-import { Controller, Get, Param, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { StrategyService } from './strategy.service';
+import { PlanLimitsGuard, RequireFeature } from '../plans/plan-limits.guard';
 
 @Controller('strategy')
+@UseGuards(PlanLimitsGuard)
+@RequireFeature('aiStrategist')
 export class StrategyController {
   constructor(private readonly strategyService: StrategyService) {}
 

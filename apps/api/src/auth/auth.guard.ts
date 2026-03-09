@@ -75,6 +75,17 @@ export class AuthGuard implements CanActivate {
         }
       }
 
+      // If x-user-id header is present, resolve that specific user (for multi-user dev)
+      const headerUserId = request.headers?.['x-user-id'] as string | undefined;
+      if (headerUserId) {
+        const specificUser = await this.resolveDevUserById(headerUserId);
+        if (specificUser) {
+          request.user = specificUser;
+          request.workspaceId = request.workspaceId || specificUser.workspaceId || 'ws_default';
+          return true;
+        }
+      }
+
       request.user = await this.getDevUser();
       // TenantMiddleware runs BEFORE guards, so it can't resolve workspace.
       // Set workspace from the cached dev user.
@@ -96,6 +107,32 @@ export class AuthGuard implements CanActivate {
     } catch (err) {
       this.logger.warn(`JWT verification failed: ${err}`);
       throw new UnauthorizedException('Token inválido o expirado');
+    }
+  }
+
+  /**
+   * Resolve a specific user by ID for dev mode (multi-user support).
+   */
+  private async resolveDevUserById(userId: string): Promise<JwtPayload | null> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return null;
+
+      const membership = await this.prisma.workspaceUser.findFirst({
+        where: { userId: user.id },
+        orderBy: { isDefault: 'desc' },
+        select: { workspaceId: true },
+      });
+
+      this.logger.debug(`🔧 Dev mode resolved user: ${user.email} (${user.role})`);
+      return {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        workspaceId: membership?.workspaceId ?? 'ws_default',
+      };
+    } catch {
+      return null;
     }
   }
 

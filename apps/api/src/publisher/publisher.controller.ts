@@ -2,10 +2,12 @@
 // Publisher Controller — Endpoints REST para publicaciones
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards } from '@nestjs/common';
 import { PublisherService } from './publisher.service';
+import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 
 @Controller('publications')
+@UseGuards(PlanLimitsGuard)
 export class PublisherController {
   private readonly logger = new Logger(PublisherController.name);
 
@@ -54,6 +56,7 @@ export class PublisherController {
    * POST /api/publications/publish/:editorialRunId — Publicar manualmente un run aprobado
    */
   @Post('publish/:editorialRunId')
+  @PlanCheck('PUBLICATIONS')
   async publishManually(@Param('editorialRunId') editorialRunId: string) {
     this.logger.log(`Manual publish requested for run ${editorialRunId}`);
     const results = await this.publisherService.publishManually(editorialRunId);
@@ -64,6 +67,7 @@ export class PublisherController {
    * POST /api/publications/enqueue — Encolar publicación desde pipeline
    */
   @Post('enqueue')
+  @PlanCheck('PUBLICATIONS')
   async enqueue(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {

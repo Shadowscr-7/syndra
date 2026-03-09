@@ -5,6 +5,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+const RECURRING_THRESHOLD = 20;
+
 @Injectable()
 export class PartnerService {
   private readonly logger = new Logger(PartnerService.name);
@@ -25,10 +27,27 @@ export class PartnerService {
       where: { collaboratorId: userId },
       include: {
         referredUser: {
-          select: { id: true, name: true, email: true, createdAt: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            workspaces: {
+              where: { isDefault: true },
+              select: {
+                workspace: {
+                  select: {
+                    subscription: {
+                      select: { status: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ commissionType: 'asc' }, { createdAt: 'desc' }],
     });
 
     const payouts = await this.prisma.commissionPayout.findMany({
@@ -36,7 +55,16 @@ export class PartnerService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const totalReferrals = referrals.length;
+    const firstPurchaseRefs = referrals.filter((r) => r.commissionType === 'FIRST_PURCHASE');
+    const recurringRefs = referrals.filter((r) => r.commissionType === 'RECURRING');
+
+    // Count active referred users (non-cancelled FIRST_PURCHASE refs with active subscription)
+    const activeReferredUsers = firstPurchaseRefs.filter((r) => {
+      const sub = r.referredUser?.workspaces?.[0]?.workspace?.subscription;
+      return sub?.status === 'ACTIVE' && r.status !== 'CANCELLED';
+    }).length;
+
+    const totalReferrals = firstPurchaseRefs.length;
     const pendingCount = referrals.filter((r) => r.status === 'PENDING').length;
     const approvedCount = referrals.filter((r) => r.status === 'APPROVED').length;
     const paidCount = referrals.filter((r) => r.status === 'PAID').length;
@@ -50,7 +78,7 @@ export class PartnerService {
     const paidAmount = referrals
       .filter((r) => r.status === 'PAID')
       .reduce((s, r) => s + r.commissionAmount, 0);
-    const totalRevenue = referrals.reduce((s, r) => s + r.amountPaid, 0);
+    const totalRevenue = firstPurchaseRefs.reduce((s, r) => s + r.amountPaid, 0);
 
     const totalPayoutsPaid = payouts
       .filter((p) => p.status === 'PAID')
@@ -66,6 +94,10 @@ export class PartnerService {
       },
       stats: {
         totalReferrals,
+        activeReferredUsers,
+        recurringEligible: activeReferredUsers >= RECURRING_THRESHOLD,
+        recurringThreshold: RECURRING_THRESHOLD,
+        recurringEntriesCount: recurringRefs.length,
         pendingCount,
         approvedCount,
         paidCount,
@@ -74,7 +106,7 @@ export class PartnerService {
         paidAmount,
         totalRevenue,
         totalPayoutsPaid,
-        commissionPercent: 20, // standard rate
+        commissionPercent: 20,
       },
       referrals: referrals.map((r) => ({
         id: r.id,
@@ -82,6 +114,8 @@ export class PartnerService {
         planName: r.planName,
         amountPaid: r.amountPaid,
         commissionAmount: r.commissionAmount,
+        commissionType: r.commissionType,
+        periodStart: r.periodStart,
         status: r.status,
         createdAt: r.createdAt,
       })),

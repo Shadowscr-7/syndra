@@ -655,28 +655,45 @@ enum CredentialProvider {
 
 model Plan {
   id             String   @id @default(cuid())
-  name           String   @unique // free, pro, enterprise
+  name           String   @unique // starter, creator, pro
   displayName    String   @map("display_name")
   description    String   @default("")
   monthlyPrice   Int      @default(0) @map("monthly_price") // cents
   yearlyPrice    Int      @default(0) @map("yearly_price")  // cents
-  // Limits
-  maxPublications  Int    @default(30)  @map("max_publications")   // per month
-  maxVideos        Int    @default(5)   @map("max_videos")         // per month
-  maxSources       Int    @default(10)  @map("max_sources")
-  maxChannels      Int    @default(2)   @map("max_channels")
-  maxEditors       Int    @default(1)   @map("max_editors")
-  maxPersonas      Int    @default(0)   @map("max_personas")        // 0=disabled, -1=unlimited
-  maxContentProfiles Int  @default(1)   @map("max_content_profiles") // -1=unlimited
-  maxStorageMb       Int  @default(100) @map("max_storage_mb")       // media storage limit
-  maxScheduleSlots   Int  @default(0)   @map("max_schedule_slots")   // 0=disabled, -1=unlimited
-  // Features
-  analyticsEnabled Boolean @default(false) @map("analytics_enabled")
-  aiScoringEnabled Boolean @default(false) @map("ai_scoring_enabled")
-  prioritySupport  Boolean @default(false) @map("priority_support")
-  customBranding   Boolean @default(false) @map("custom_branding")
-  isActive         Boolean @default(true) @map("is_active")
-  createdAt        DateTime @default(now()) @map("created_at")
+
+  // ── Numeric limits (-1 = unlimited, 0 = disabled) ──
+  maxPublications    Int @default(30)  @map("max_publications")
+  maxVideos          Int @default(0)   @map("max_videos")
+  maxSources         Int @default(3)   @map("max_sources")
+  maxChannels        Int @default(2)   @map("max_channels")
+  maxEditors         Int @default(1)   @map("max_editors")
+  maxPersonas        Int @default(1)   @map("max_personas")
+  maxContentProfiles Int @default(1)   @map("max_content_profiles")
+  maxVisualStyles    Int @default(1)   @map("max_visual_styles")
+  maxStorageMb       Int @default(500) @map("max_storage_mb")
+  maxScheduleSlots   Int @default(5)   @map("max_schedule_slots")
+  maxExperiments     Int @default(0)   @map("max_experiments")
+
+  // ── Boolean feature flags ──
+  analyticsEnabled       Boolean @default(true)  @map("analytics_enabled")
+  aiScoringEnabled       Boolean @default(false) @map("ai_scoring_enabled")
+  trendDetectionEnabled  Boolean @default(false) @map("trend_detection_enabled")
+  aiStrategistEnabled    Boolean @default(false) @map("ai_strategist_enabled")
+  videoEnabled           Boolean @default(false) @map("video_enabled")
+  brandMemoryEnabled     Boolean @default(false) @map("brand_memory_enabled")
+  teamEnabled            Boolean @default(false) @map("team_enabled")
+  priorityQueue          Boolean @default(false) @map("priority_queue")
+  apiAccess              Boolean @default(false) @map("api_access")
+  prioritySupport        Boolean @default(false) @map("priority_support")
+  customBranding         Boolean @default(false) @map("custom_branding")
+
+  // ── Tiered feature levels ──
+  analyticsLevel    String @default("basic")    @map("analytics_level")    // basic | complete | ai
+  learningLoopLevel String @default("none")     @map("learning_loop_level") // none | basic | medium | full
+  autopilotLevel    String @default("manual")   @map("autopilot_level")    // manual | approval | assisted | full
+
+  isActive  Boolean  @default(true)  @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
 
   subscriptions Subscription[]
   licenseKeys   LicenseKey[]
@@ -854,6 +871,9 @@ model AffiliateReferral {
   amountPaid        Int      @default(0) @map("amount_paid")   // Lo que pagó el cliente (centavos)
   commissionPercent Int      @default(20) @map("commission_percent") // % de comisión
   commissionAmount  Int      @default(0) @map("commission_amount")   // Comisión calculada (centavos)
+  commissionType    CommissionType @default(FIRST_PURCHASE) @map("commission_type")
+  periodStart       DateTime? @map("period_start")             // Para RECURRING: inicio del período (1ro del mes)
+  periodEnd         DateTime? @map("period_end")               // Para RECURRING: fin del período
   status            ReferralStatus @default(PENDING)
   payoutId          String?  @map("payout_id")                 // CommissionPayout al que pertenece
   approvedAt        DateTime? @map("approved_at")
@@ -865,9 +885,10 @@ model AffiliateReferral {
   referredUser  User              @relation("UserReferrals", fields: [referredUserId], references: [id], onDelete: Cascade)
   payout        CommissionPayout? @relation(fields: [payoutId], references: [id])
 
-  @@unique([referredUserId]) // Un usuario solo puede ser referido una vez
+  @@unique([referredUserId, commissionType, periodStart]) // Un usuario: 1 FIRST_PURCHASE + 1 RECURRING por mes
   @@index([collaboratorId])
   @@index([status])
+  @@index([commissionType])
   @@map("affiliate_referrals")
 }
 
@@ -876,6 +897,11 @@ enum ReferralStatus {
   APPROVED   // Aprobado, listo para pagar
   PAID       // Comisión pagada
   CANCELLED  // Cancelado / reembolsado
+}
+
+enum CommissionType {
+  FIRST_PURCHASE // Comisión única por primera compra
+  RECURRING      // Comisión recurrente mensual (si tiene 20+ referidos activos)
 }
 
 // ============================================================

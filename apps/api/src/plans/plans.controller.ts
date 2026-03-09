@@ -30,13 +30,12 @@ export class PlansController {
   }
 
   /**
-   * POST /api/plans/seed — Seed default plans (admin)
+   * GET /api/plans/info — Full plan info + usage for current workspace
    */
-  @Public()
-  @Post('seed')
-  async seedPlans() {
-    await this.plansService.seedPlans();
-    return { data: { success: true } };
+  @Get('info')
+  async getPlanInfo(@CurrentWorkspace() workspaceId: string) {
+    const info = await this.plansService.getPlanInfo(workspaceId);
+    return { data: info };
   }
 
   /**
@@ -90,6 +89,15 @@ export class PlansController {
       workspaceId,
       metric.toUpperCase() as any,
     );
+    return { data: result };
+  }
+
+  /**
+   * GET /api/plans/usage-percentages — Usage percentages for notifications
+   */
+  @Get('usage-percentages')
+  async getUsagePercentages(@CurrentWorkspace() workspaceId: string) {
+    const result = await this.plansService.getUsagePercentages(workspaceId);
     return { data: result };
   }
 }
