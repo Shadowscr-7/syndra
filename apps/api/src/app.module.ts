@@ -41,6 +41,9 @@ import { ExperimentsModule } from './experiments/experiments.module';
 import { BrandMemoryModule } from './brand-memory/brand-memory.module';
 import { SourceTrustModule } from './source-trust/source-trust.module';
 import { PlaybookModule } from './playbooks/playbook.module';
+import { BusinessProfileModule } from './business-profile/business-profile.module';
+import { BusinessBriefsModule } from './business-briefs/business-briefs.module';
+import { CreditsModule } from './credits/credits.module';
 
 @Module({
   imports: [
@@ -88,6 +91,9 @@ import { PlaybookModule } from './playbooks/playbook.module';
     BrandMemoryModule,
     SourceTrustModule,
     PlaybookModule,
+    BusinessProfileModule,
+    BusinessBriefsModule,
+    CreditsModule,
   ],
 })
 export class AppModule implements NestModule {

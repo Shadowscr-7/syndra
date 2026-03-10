@@ -43,7 +43,7 @@ CONTEXTO DE LA MARCA:
 - Objetivos: ${input.workspace.objectives.join(', ') || 'engagement y autoridad'}
 - Voz de marca: ${input.workspace.brandVoice || 'profesional'}
 - Tono: ${input.workspace.brandTone}
-- Keywords de interés: ${input.workspace.themeKeywords.join(', ') || 'tecnología, IA, innovación'}
+- Keywords de interés: ${input.workspace.themeKeywords.join(', ') || input.workspace.industry || 'contenido digital'}
 ${existingBlock}
 
 ARTÍCULOS RECIENTES:

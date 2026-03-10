@@ -140,7 +140,18 @@ export class UserMediaController {
   async update(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { tags?: string[]; category?: string; folderId?: string },
+    @Body() body: {
+      tags?: string[];
+      category?: string;
+      folderId?: string;
+      productName?: string;
+      productSku?: string;
+      productPrice?: string;
+      productUrl?: string;
+      productDescription?: string;
+      useInPipeline?: boolean;
+      isLogo?: boolean;
+    },
   ) {
     const userId = req.user?.sub;
     const updated = await this.userMediaService.update(userId, id, body);

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Patch, Body, Query, UseGuards } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { PlanLimitsGuard } from '../plans/plan-limits.guard';
 
@@ -20,6 +20,59 @@ export class CampaignsController {
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.campaignsService.findById(id);
+  }
+
+  /** POST /api/campaigns — Crear campaña */
+  @Post()
+  create(@Body() body: {
+    workspaceId: string;
+    name: string;
+    objective: string;
+    offer?: string;
+    landingUrl?: string;
+    startDate: string;
+    endDate?: string;
+    kpiTarget?: string;
+    contentProfileId?: string;
+    userPersonaId?: string;
+    targetChannels?: string[];
+    operationMode?: string;
+  }) {
+    return this.campaignsService.create(body);
+  }
+
+  /** PUT /api/campaigns/:id — Editar campaña */
+  @Put(':id')
+  update(
+    @Param('id') id: string,
+    @Body() body: {
+      name?: string;
+      objective?: string;
+      offer?: string;
+      landingUrl?: string;
+      startDate?: string;
+      endDate?: string | null;
+      kpiTarget?: string;
+      contentProfileId?: string | null;
+      userPersonaId?: string | null;
+      targetChannels?: string[];
+      operationMode?: string | null;
+      isActive?: boolean;
+    },
+  ) {
+    return this.campaignsService.update(id, body);
+  }
+
+  /** DELETE /api/campaigns/:id — Eliminar campaña */
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.campaignsService.remove(id);
+  }
+
+  /** PATCH /api/campaigns/:id/toggle — Activar/desactivar */
+  @Patch(':id/toggle')
+  toggleActive(@Param('id') id: string) {
+    return this.campaignsService.toggleActive(id);
   }
 
   /** PATCH /api/campaigns/:id/operation-mode */

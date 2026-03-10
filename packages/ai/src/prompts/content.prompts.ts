@@ -64,8 +64,12 @@ export function buildPostCopyPrompt(params: {
   hashtagLimit: number;
   persona?: Parameters<typeof buildPersonaContext>[0];
   contentProfile?: Parameters<typeof buildProfileContext>[0];
+  industryContext?: string;
+  businessContext?: string;
 }): string {
-  return `Eres un copywriter experto en redes sociales tech/IA.
+  const industry = params.industryContext || 'contenido digital';
+  return `Eres un copywriter experto en redes sociales de ${industry}.
+${params.businessContext ? `\nCONTEXTO DEL NEGOCIO:\n${params.businessContext}\n` : ''}
 
 BRIEF:
 - Ángulo: ${params.angle}
@@ -112,8 +116,12 @@ export function buildCarouselCopyPrompt(params: {
   slideCount: number;
   persona?: Parameters<typeof buildPersonaContext>[0];
   contentProfile?: Parameters<typeof buildProfileContext>[0];
+  industryContext?: string;
+  businessContext?: string;
 }): string {
-  return `Eres un copywriter experto en carousels educativos de Instagram sobre tech/IA.
+  const industry = params.industryContext || 'contenido digital';
+  return `Eres un copywriter experto en carousels de Instagram sobre ${industry}.
+${params.businessContext ? `\nCONTEXTO DEL NEGOCIO:\n${params.businessContext}\n` : ''}
 
 BRIEF:
 - Ángulo: ${params.angle}

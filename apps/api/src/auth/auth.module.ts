@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module, Global, OnModuleInit } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -10,6 +10,7 @@ import { RolesGuard } from './roles.guard';
 import { PlanThrottleGuard } from './plan-throttle.guard';
 import { TenantMiddleware } from './tenant.middleware';
 
+@Global()
 @Module({
   imports: [
     PrismaModule,

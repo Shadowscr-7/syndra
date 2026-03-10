@@ -8,7 +8,7 @@ import { ScoringService } from './scoring.service';
 import { BenchmarkService } from './benchmark.service';
 import { PlanLimitsGuard, RequireFeature } from '../plans/plan-limits.guard';
 
-@Controller('api/analytics')
+@Controller('analytics')
 @UseGuards(PlanLimitsGuard)
 @RequireFeature('analytics')
 export class AnalyticsController {

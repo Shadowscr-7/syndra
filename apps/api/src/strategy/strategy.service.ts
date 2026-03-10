@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
 import { LearningService, StrategyLearningData } from '../learning/learning.service';
+import { BusinessProfileService } from '../business-profile/business-profile.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -36,6 +37,7 @@ export class StrategyService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    private readonly businessProfileService: BusinessProfileService,
     @Optional() @Inject(LearningService) private readonly learningService?: LearningService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
@@ -167,6 +169,9 @@ export class StrategyService {
       take: 10,
     });
 
+    // 4b. Obtener contexto de negocio
+    const businessCtx = await this.businessProfileService.buildPromptContext(workspaceId);
+
     // 5. Generar estrategia con LLM
     const llm = await this.getLlm(workspaceId);
 
@@ -205,6 +210,8 @@ export class StrategyService {
         ? `${run.campaign.name} (${run.campaign.objective})`
         : undefined,
       previousAngles: recentRuns.map((r) => r.angle).filter(Boolean),
+      industryContext: businessCtx.industryContext,
+      businessContext: businessCtx.businessContext,
       persona: activePersona
         ? {
             brandName: activePersona.brandName,
@@ -239,16 +246,17 @@ export class StrategyService {
       strategy = parseLLMJsonResponse<StrategyResult>(response);
     } catch (error) {
       this.logger.error('Strategy LLM failed, using fallback:', error);
+      const fallbackTopic = themes[0]?.name ?? businessCtx.industryContext ?? 'contenido';
       strategy = {
-        angle: run.researchSnapshots[0]?.suggestedAngle ?? 'General tech insight',
+        angle: run.researchSnapshots[0]?.suggestedAngle ?? `Insight sobre ${fallbackTopic}`,
         format: 'post',
         cta: brand?.baseCta ?? 'Síguenos para más contenido',
-        seedPrompt: `Create content about: ${run.researchSnapshots[0]?.title ?? 'AI trends'}`,
+        seedPrompt: `Create content about: ${run.researchSnapshots[0]?.title ?? fallbackTopic}`,
         tone: brand?.tone ?? 'didáctico',
         reasoning: 'Fallback strategy due to LLM error',
         references: run.researchSnapshots.map((s) => s.sourceUrl),
         estimatedEngagement: 'medium',
-        suggestedHashtags: ['#AI', '#tech', '#automation'],
+        suggestedHashtags: brand?.hashtags ?? [`#${fallbackTopic.replace(/\s/g, '')}`, '#contenido', '#digital'],
       };
     }
 

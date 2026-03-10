@@ -106,6 +106,8 @@ model Workspace {
   brandProfile    BrandProfile?
   contentThemes   ContentTheme[]
   campaigns       Campaign[]
+  businessProfile BusinessProfile?
+  businessBriefs  BusinessBrief[]
   apiCredentials  ApiCredential[]
   editorialRuns   EditorialRun[]
   researchSources ResearchSource[]
@@ -128,6 +130,9 @@ model Workspace {
   contentPlaybooks ContentPlaybook[]
   videoRenderJobs  VideoRenderJob[]
   videoCredits     VideoCredit[]
+  aiCredits        AICredit[]
+  creditBalance    CreditBalance?
+  avatarProfiles   AvatarProfile[]
 
   @@map("workspaces")
 }
@@ -174,6 +179,77 @@ model BrandProfile {
 }
 
 // ============================================================
+// BUSINESS PROFILE — Contexto del negocio del usuario
+// ============================================================
+
+model BusinessProfile {
+  id               String   @id @default(cuid())
+  workspaceId      String   @unique @map("workspace_id")
+  businessName     String   @default("") @map("business_name")      // "Zapatería El Paso"
+  businessType     String   @default("") @map("business_type")      // "ecommerce", "restaurant", "services"
+  description      String   @default("") @db.Text                    // Descripción completa del negocio
+  slogan           String?                                           // "Los mejores zapatos al mejor precio"
+  usp              String?  @db.Text                                 // Unique selling proposition
+  targetMarket     String   @default("") @map("target_market")      // "Jóvenes 18-35 que buscan moda accesible"
+  products         String[] @default([])                             // Lista de productos/servicios principales
+  priceRange       String?  @map("price_range")                     // "$15 - $200"
+  websiteUrl       String?  @map("website_url")
+  physicalAddress  String?  @map("physical_address")
+  phoneNumber      String?  @map("phone_number")
+  socialLinks      Json?    @map("social_links")                    // {instagram: "...", facebook: "...", tiktok: "..."}
+  brandColors      String[] @default([]) @map("brand_colors")       // ["#FF5733", "#333333"]
+  logoMediaId      String?  @map("logo_media_id")                   // ID of UserMedia marked as logo
+  promotionStyle   String   @default("balanced") @map("promotion_style") // "aggressive", "balanced", "subtle"
+  contentGoals     String[] @default([]) @map("content_goals")      // ["ventas", "branding", "engagement"]
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("business_profiles")
+}
+
+// ============================================================
+// BUSINESS BRIEF — Productos, ofertas y anuncios del negocio
+// ============================================================
+
+model BusinessBrief {
+  id              String    @id @default(cuid())
+  workspaceId     String    @map("workspace_id")
+  type            BriefType
+  title           String                          // "Oferta del mes: 30% en zapatillas"
+  content         String    @db.Text              // Descripción detallada
+  productName     String?   @map("product_name")
+  productPrice    String?   @map("product_price")
+  productUrl      String?   @map("product_url")
+  discountText    String?   @map("discount_text") // "30% OFF", "2x1"
+  validFrom       DateTime? @map("valid_from")
+  validUntil      DateTime? @map("valid_until")
+  mediaIds        String[]  @default([]) @map("media_ids")   // UserMedia IDs
+  isActive        Boolean   @default(true) @map("is_active")
+  priority        Int       @default(5)           // 1-10
+  usageCount      Int       @default(0) @map("usage_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, isActive])
+  @@map("business_briefs")
+}
+
+enum BriefType {
+  PRODUCT
+  SERVICE
+  OFFER
+  ANNOUNCEMENT
+  TESTIMONIAL
+  FAQ
+  SEASONAL
+  BRAND_STORY
+}
+
+// ============================================================
 // CONTENT THEMES & CAMPAIGNS
 // ============================================================
 
@@ -190,6 +266,16 @@ model ContentTheme {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  // Product/offer fields for business-driven themes
+  productName     String?  @map("product_name")
+  productDescription String? @map("product_description")
+  productPrice    String?  @map("product_price")
+  productUrl      String?  @map("product_url")
+  productMediaIds String[] @default([]) @map("product_media_ids")
+  promotionStart  DateTime? @map("promotion_start")
+  promotionEnd    DateTime? @map("promotion_end")
+  discountText    String?  @map("discount_text")
+
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contentBriefs ContentBrief[]
   campaignThemes CampaignTheme[]
@@ -200,6 +286,14 @@ model ContentTheme {
 enum ThemeType {
   TRENDING
   EVERGREEN
+  PRODUCT
+  SERVICE
+  OFFER
+  SEASONAL
+  TESTIMONIAL
+  BEHIND_SCENES
+  EDUCATIONAL
+  ANNOUNCEMENT
 }
 
 model Campaign {
@@ -249,6 +343,11 @@ enum CampaignObjective {
   SALE
   COMMUNITY
   ENGAGEMENT
+  PROMOTION
+  PRODUCT_LAUNCH
+  SEASONAL_SALE
+  BRAND_AWARENESS
+  CATALOG
 }
 
 // ============================================================
@@ -277,6 +376,11 @@ enum SourceType {
   SOCIAL
   CHANGELOG
   CUSTOM
+  PRODUCT_CATALOG
+  BUSINESS_BRIEF
+  OFFER_CALENDAR
+  FAQ
+  TESTIMONIALS_SOURCE
 }
 
 model ResearchSnapshot {
@@ -1005,6 +1109,10 @@ enum UserCredentialProvider {
   AWS_S3        // Bucket credentials
   HEYGEN        // Video generation
   TELEGRAM      // Bot token
+  REPLICATE     // Replicate API (images + video)
+  FAL_AI        // fal.ai API (video)
+  DID           // D-ID avatar video
+  HEDRA         // Hedra avatar video
 }
 
 // ============================================================
@@ -1153,21 +1261,33 @@ enum MediaCategory {
   BACKGROUND
   PERSONAL
   OTHER
+  PROMOTION
+  BANNER
+  OFFER_IMAGE
+  BRAND_ELEMENT
 }
 
 model UserMedia {
-  id            String        @id @default(cuid())
-  userId        String        @map("user_id")
-  folderId      String?       @map("folder_id")
-  filename      String
-  url           String
-  thumbnailUrl  String?       @map("thumbnail_url")
-  mimeType      String        @map("mime_type")
-  sizeBytes     Int           @map("size_bytes")
-  tags          String[]      @default([])
-  category      MediaCategory @default(OTHER)
-  metadata      Json          @default("{}")   // width, height, etc.
-  createdAt     DateTime      @default(now()) @map("created_at")
+  id                 String        @id @default(cuid())
+  userId             String        @map("user_id")
+  folderId           String?       @map("folder_id")
+  filename           String
+  url                String
+  thumbnailUrl       String?       @map("thumbnail_url")
+  mimeType           String        @map("mime_type")
+  sizeBytes          Int           @map("size_bytes")
+  tags               String[]      @default([])
+  category           MediaCategory @default(OTHER)
+  metadata           Json          @default("{}")   // width, height, etc.
+  // Product-related fields for business promotion
+  productName        String?       @map("product_name")
+  productSku         String?       @map("product_sku")
+  productPrice       String?       @map("product_price")
+  productUrl         String?       @map("product_url")
+  productDescription String?       @map("product_description")
+  useInPipeline      Boolean       @default(false) @map("use_in_pipeline") // Use in auto content generation
+  isLogo             Boolean       @default(false) @map("is_logo")         // Is this the main logo?
+  createdAt          DateTime      @default(now()) @map("created_at")
 
   user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
@@ -1175,6 +1295,7 @@ model UserMedia {
   @@index([userId])
   @@index([folderId])
   @@index([category])
+  @@index([userId, useInPipeline])
   @@map("user_media")
 }
 
@@ -1936,6 +2057,11 @@ enum VideoProvider {
   WAN_LOCAL
   HUNYUAN_LOCAL
   EDGE_TTS_COMPOSE
+  REPLICATE_WAN
+  FAL_WAN
+  LUMA_RAY
+  DID
+  HEDRA
   MOCK
 }
 
@@ -1961,4 +2087,86 @@ enum VideoJobStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+// ============================================================
+// AI CREDITS — Sistema de créditos para operaciones de IA premium
+// ============================================================
+
+enum CreditSource {
+  PLAN       // Créditos gratis del plan
+  PURCHASE   // Comprado via PayPal
+  ADDON      // Complemento del plan
+  PROMO      // Código promocional
+  REFUND     // Devolución por error de generación
+}
+
+enum CreditOperationType {
+  IMAGE_STANDARD      // 1 crédito  — Replicate Flux-schnell
+  IMAGE_TEXT           // 5 créditos — Ideogram/Recraft
+  IMAGE_HD             // 3 créditos — Flux-dev
+  ANIMATION_5S         // 10 créditos — Wan i2v 5s
+  ANIMATION_10S        // 15 créditos
+  VIDEO_REEL_10S       // 20 créditos — Wan t2v
+  VIDEO_REEL_15S       // 25 créditos
+  AVATAR_BASIC_30S     // 30 créditos — D-ID/Hedra
+  AVATAR_PREMIUM_30S   // 50 créditos — HeyGen
+  VOICE_PREMIUM        // 2 créditos  — ElevenLabs
+}
+
+model AICredit {
+  id              String               @id @default(cuid())
+  workspaceId     String               @map("workspace_id")
+  amount          Int                  // positivo = recarga, negativo = consumo
+  balance         Int                  // balance después de esta operación
+  source          CreditSource
+  operation       CreditOperationType? // null para recargas
+  description     String?
+  referenceId     String?              @map("reference_id")
+  paypalOrderId   String?              @map("paypal_order_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, source])
+  @@map("ai_credits")
+}
+
+model CreditBalance {
+  id               String   @id @default(cuid())
+  workspaceId      String   @unique @map("workspace_id")
+  totalPurchased   Int      @default(0) @map("total_purchased")
+  totalConsumed    Int      @default(0) @map("total_consumed")
+  totalRefunded    Int      @default(0) @map("total_refunded")
+  currentBalance   Int      @default(0) @map("current_balance")
+  isUnlimited      Boolean  @default(false) @map("is_unlimited")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("credit_balances")
+}
+
+// ============================================================
+// AVATAR PROFILE — Avatares IA persistentes
+// ============================================================
+
+model AvatarProfile {
+  id           String   @id @default(cuid())
+  workspaceId  String   @map("workspace_id")
+  name         String
+  photoUrl     String   @map("photo_url")
+  provider     String   // 'heygen' | 'did' | 'hedra'
+  externalId   String?  @map("external_id")
+  voiceId      String?  @map("voice_id")
+  isDefault    Boolean  @default(false) @map("is_default")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("avatar_profiles")
 }

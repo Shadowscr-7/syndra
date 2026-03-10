@@ -22,6 +22,12 @@ const STEP_META: Record<string, { label: string; icon: string; href: string; des
     href: '/dashboard/settings',
     description: 'Voz, tono y estilo visual',
   },
+  businessProfile: {
+    label: 'Perfil de negocio',
+    icon: '🏪',
+    href: '/dashboard/my-business',
+    description: '¿De qué se trata tu negocio?',
+  },
   llmConfigured: {
     label: 'LLM / IA conectado',
     icon: '🤖',

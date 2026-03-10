@@ -20,6 +20,7 @@ export function buildResearchExtractionPrompt(
     themeNames: string[];
     themeKeywords: string[];
   },
+  industryContext?: string,
 ): string {
   const articlesText = articles
     .map(
@@ -65,8 +66,8 @@ información útil para crear contenido sobre los temas de la campaña.
 - 0.3-0.4: Contenido de nicho o que requiere mucho contexto
 - 0.0-0.2: Poco relevante o repetido`;
 
-  return `Eres un analista de tendencias en tecnología e inteligencia artificial.
-Tu tarea es analizar los siguientes artículos y extraer información relevante para crear contenido en redes sociales (Instagram/Facebook) sobre IA y automatización.
+  return `Eres un analista de tendencias en ${industryContext || 'contenido digital'}.
+Tu tarea es analizar los siguientes artículos y extraer información relevante para crear contenido en redes sociales sobre ${industryContext || 'la marca'}.
 ${campaignBlock}
 ${articlesText}
 
@@ -108,6 +109,7 @@ export function buildResearchSummaryPrompt(
     themeNames: string[];
     themeKeywords: string[];
   },
+  industryContext?: string,
 ): string {
   const articlesText = topArticles
     .map(
@@ -142,7 +144,7 @@ temas de la campaña. Los ángulos deben ser relevantes para "${campaignContext.
 `;
   }
 
-  return `Eres el estratega editorial de una marca de tecnología e IA.
+  return `Eres el estratega editorial de ${persona?.brandName ? persona.brandName : 'una marca de ' + (industryContext || 'contenido digital')}.
 
 Voz de marca: ${brandContext.voice}
 Tono default: ${brandContext.tone}

@@ -61,6 +61,13 @@ export interface VideoGenOptions {
   language?: string;
   outputFormat?: 'mp4' | 'webm';
   aspectRatio?: '9:16' | '16:9' | '1:1';
+  /** Image URL for image-to-video generation */
+  imageUrl?: string;
+  /** Motion/animation prompt for i2v */
+  motionPrompt?: string;
+  /** Provider-specific model or endpoint override */
+  model?: string;
+  endpoint?: string;
 }
 
 export interface GeneratedVideo {
@@ -88,6 +95,9 @@ export {
   type CloudinaryTransformOptions,
 } from './adapters/cloudinary';
 
+// --- Adapters (Image — New providers) ---
+export { ReplicateImageAdapter, type ReplicateConfig, type ReplicateImageModel } from './adapters/replicate';
+
 // --- Adapters (Video) ---
 export { HeyGenVideoAdapter, type HeyGenConfig } from './adapters/heygen';
 export { MockVideoAdapter } from './adapters/mock-video';
@@ -95,6 +105,10 @@ export { PikaVideoAdapter, type PikaConfig } from './adapters/pika-video';
 export { LumaVideoAdapter, type LumaConfig } from './adapters/luma-video';
 export { LocalGPUVideoAdapter, type LocalGPUConfig } from './adapters/local-gpu-video';
 export { CompositeVideoAdapter, type CompositeVideoConfig } from './adapters/composite-video';
+export { ReplicateVideoAdapter, type ReplicateVideoConfig, type ReplicateVideoModel } from './adapters/replicate-video';
+export { FalVideoAdapter, type FalVideoConfig, type FalVideoEndpoint } from './adapters/fal-video';
+export { DIDVideoAdapter, type DIDConfig, type DIDVoice } from './adapters/did-video';
+export { HedraVideoAdapter, type HedraConfig } from './adapters/hedra-video';
 export {
   ElevenLabsVoiceAdapter,
   MockVoiceAdapter,
@@ -123,6 +137,18 @@ export {
 
 // --- Composers ---
 export { SvgCarouselComposer, type ComposedSlide } from './composers/carousel-composer';
+export {
+  ImageComposer,
+  type ComposeImageOptions,
+  type CompositionTemplate,
+  type ComposedImage,
+} from './composers/image-composer';
+export {
+  SharpRenderer,
+  type SharpComposeOptions,
+  type SharpRenderOptions,
+  type RenderedImage,
+} from './composers/sharp-renderer';
 
 // --- Pipeline ---
 export {

@@ -1,9 +1,13 @@
-import { Controller, Get, Param, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, HttpCode, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ContentService } from './content.service';
 import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
+import { UseCredits } from '../credits/credit.guard';
+import { CreditGuard } from '../credits/credit.guard';
+import { CreditInterceptor } from '../credits/credit.interceptor';
 
 @Controller('content')
-@UseGuards(PlanLimitsGuard)
+@UseGuards(PlanLimitsGuard, CreditGuard)
+@UseInterceptors(CreditInterceptor)
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
@@ -14,6 +18,7 @@ export class ContentController {
   @Post('generate')
   @HttpCode(200)
   @PlanCheck('PUBLICATIONS')
+  @UseCredits('AI_CONTENT')
   async generate(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {
@@ -30,6 +35,7 @@ export class ContentController {
    */
   @Post('correct')
   @HttpCode(200)
+  @UseCredits('AI_CONTENT')
   async correct(
     @Body()
     body: {
@@ -52,6 +58,7 @@ export class ContentController {
    */
   @Post('change-tone')
   @HttpCode(200)
+  @UseCredits('AI_CONTENT')
   async changeTone(
     @Body()
     body: {

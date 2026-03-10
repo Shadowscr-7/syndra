@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePlan } from '@/lib/plan-context';
 import { PlanBadge } from '@/components/plan/usage-badge';
+import { CreditWidget } from '@/components/layout/credit-widget';
 
 interface SidebarItem {
   name: string;
@@ -57,6 +58,7 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Biblioteca', href: '/dashboard/media', icon: '📂' },
       { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator' },
+      { name: 'Créditos IA', href: '/dashboard/credits', icon: '💎' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },
     ],
   },
@@ -81,6 +83,15 @@ const allSections: SidebarSection[] = [
     ],
   },
   // ── Ajustes ──
+  {
+    label: 'Mi Negocio',
+    items: [
+      { name: 'Perfil Negocio', href: '/dashboard/my-business', icon: '🏪', minPlan: 'pro' },
+      { name: 'Briefs', href: '/dashboard/my-business/briefs', icon: '📋', minPlan: 'pro' },
+      { name: 'Productos', href: '/dashboard/my-business/products', icon: '📦', minPlan: 'pro' },
+    ],
+  },
+  // ── Config ──
   {
     label: 'Config',
     items: [
@@ -326,6 +337,9 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
             </div>
             <div className="mt-1">
               <PlanBadge />
+            </div>
+            <div className="mt-1">
+              <CreditWidget />
             </div>
           </div>
         </div>

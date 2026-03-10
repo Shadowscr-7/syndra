@@ -16,10 +16,18 @@ import {
   LocalGPUVideoAdapter,
   CompositeVideoAdapter,
   MockVideoAdapter,
+  ReplicateVideoAdapter,
+  FalVideoAdapter,
+  DIDVideoAdapter,
+  HedraVideoAdapter,
 } from '@automatismos/media';
 
 export type VideoTier = 'MVP' | 'SELFHOST' | 'PREMIUM';
-export type VideoProviderKey = 'PIKA' | 'LUMA' | 'HEYGEN' | 'SVD_LOCAL' | 'WAN_LOCAL' | 'HUNYUAN_LOCAL' | 'MOCK';
+export type VideoProviderKey =
+  | 'PIKA' | 'LUMA' | 'HEYGEN'
+  | 'SVD_LOCAL' | 'WAN_LOCAL' | 'HUNYUAN_LOCAL'
+  | 'REPLICATE_WAN' | 'FAL_WAN' | 'DID' | 'HEDRA'
+  | 'MOCK';
 
 @Injectable()
 export class VideoTierRouterService {
@@ -83,6 +91,36 @@ export class VideoTierRouterService {
 
     // T2 — Composite video adapter (ffmpeg-based)
     this.adapters.set('EDGE_TTS_COMPOSE' as any, new CompositeVideoAdapter());
+
+    // --- New AI video providers (credit-based) ---
+
+    // Replicate WAN 2.1 video
+    const replicateToken = this.config.get<string>('REPLICATE_API_TOKEN', '');
+    if (replicateToken) {
+      this.adapters.set('REPLICATE_WAN', new ReplicateVideoAdapter({ apiToken: replicateToken }));
+      this.logger.log('✓ Replicate WAN video adapter registered');
+    }
+
+    // fal.ai WAN 2.5 video (cheaper alternative)
+    const falKey = this.config.get<string>('FAL_KEY', '');
+    if (falKey) {
+      this.adapters.set('FAL_WAN', new FalVideoAdapter({ apiKey: falKey }));
+      this.logger.log('✓ fal.ai WAN video adapter registered');
+    }
+
+    // D-ID Talking Head avatar
+    const didKey = this.config.get<string>('DID_API_KEY', '');
+    if (didKey) {
+      this.adapters.set('DID', new DIDVideoAdapter({ apiKey: didKey }));
+      this.logger.log('✓ D-ID avatar adapter registered');
+    }
+
+    // Hedra Audio-driven face animation
+    const hedraKey = this.config.get<string>('HEDRA_API_KEY', '');
+    if (hedraKey) {
+      this.adapters.set('HEDRA', new HedraVideoAdapter({ apiKey: hedraKey }));
+      this.logger.log('✓ Hedra avatar adapter registered');
+    }
   }
 
   /**
@@ -167,9 +205,20 @@ export class VideoTierRouterService {
         totalDuration: (params.inputPayload['duration'] as number) ?? 15,
       };
 
+      const imageUrl = params.inputPayload['imageUrl'] as string | undefined;
+      const motionPrompt = params.inputPayload['motionPrompt'] as string | undefined;
+      const isI2V = !!imageUrl;
+
       const result = await adapter.generate(script, {
         aspectRatio: (params.options?.['aspectRatio'] as any) ?? '9:16',
         language: 'es',
+        // Image-to-video options
+        imageUrl,
+        motionPrompt,
+        // Replicate: auto-select i2v model when imageUrl is provided
+        ...(isI2V && provider === 'REPLICATE_WAN' ? { model: 'wan-2.1-i2v-480p' as any } : {}),
+        // fal.ai: auto-select i2v endpoint when imageUrl is provided
+        ...(isI2V && provider === 'FAL_WAN' ? { endpoint: 'wan-i2v' as any } : {}),
       });
 
       await this.prisma.videoRenderJob.update({
@@ -241,6 +290,7 @@ export class VideoTierRouterService {
   private getTierForProvider(p: VideoProviderKey): VideoTier {
     if (p === 'PIKA' || p === 'LUMA' || p === 'MOCK') return 'MVP';
     if (p === 'SVD_LOCAL' || p === 'WAN_LOCAL' || p === 'HUNYUAN_LOCAL') return 'SELFHOST';
+    if (p === 'REPLICATE_WAN' || p === 'FAL_WAN' || p === 'DID' || p === 'HEDRA') return 'PREMIUM';
     return 'PREMIUM';
   }
 }

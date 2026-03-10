@@ -148,7 +148,18 @@ export class UserMediaService {
   async update(
     userId: string,
     id: string,
-    data: { tags?: string[]; category?: string; folderId?: string },
+    data: {
+      tags?: string[];
+      category?: string;
+      folderId?: string;
+      productName?: string;
+      productSku?: string;
+      productPrice?: string;
+      productUrl?: string;
+      productDescription?: string;
+      useInPipeline?: boolean;
+      isLogo?: boolean;
+    },
   ) {
     const existing = await this.prisma.userMedia.findUnique({
       where: { id },
@@ -174,6 +185,13 @@ export class UserMediaService {
     if (data.tags !== undefined) updateData.tags = data.tags;
     if (data.category !== undefined) updateData.category = data.category;
     if (data.folderId !== undefined) updateData.folderId = data.folderId;
+    if (data.productName !== undefined) updateData.productName = data.productName;
+    if (data.productSku !== undefined) updateData.productSku = data.productSku;
+    if (data.productPrice !== undefined) updateData.productPrice = data.productPrice;
+    if (data.productUrl !== undefined) updateData.productUrl = data.productUrl;
+    if (data.productDescription !== undefined) updateData.productDescription = data.productDescription;
+    if (data.useInPipeline !== undefined) updateData.useInPipeline = data.useInPipeline;
+    if (data.isLogo !== undefined) updateData.isLogo = data.isLogo;
 
     const updated = await this.prisma.userMedia.update({
       where: { id },

@@ -49,6 +49,8 @@ export function buildStrategyPrompt(params: {
     postingGoal: string;
   };
   learningData?: PromptLearningData;
+  industryContext?: string;
+  businessContext?: string;
 }): string {
   let personaBlock = '';
   if (params.persona) {
@@ -119,7 +121,8 @@ ${insightLines.join('\n\n')}
     }
   }
 
-  return `Eres un estratega de contenido para redes sociales especializado en tech/IA.
+  return `Eres un estratega de contenido para redes sociales${params.industryContext ? ' especializado en ' + params.industryContext : ''}.
+${params.businessContext ? `\nCONTEXTO DEL NEGOCIO:\n${params.businessContext}\n` : ''}
 
 CONTEXTO DE MARCA:
 - Voz: ${params.brandVoice}

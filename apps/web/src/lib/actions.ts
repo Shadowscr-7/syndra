@@ -136,6 +136,15 @@ export async function createTheme(formData: FormData) {
   const priority = parseInt(formData.get('priority') as string) || 5;
   const type = formData.get('type') as string || 'EVERGREEN';
 
+  // Promotional / product fields
+  const productName = formData.get('productName') as string || null;
+  const productDescription = formData.get('productDescription') as string || null;
+  const productPrice = formData.get('productPrice') as string || null;
+  const productUrl = formData.get('productUrl') as string || null;
+  const discountText = formData.get('discountText') as string || null;
+  const promotionStartRaw = formData.get('promotionStart') as string || null;
+  const promotionEndRaw = formData.get('promotionEnd') as string || null;
+
   if (!name?.trim()) throw new Error('Nombre requerido');
 
   const keywords = keywordsRaw.split(',').map((k) => k.trim()).filter(Boolean);
@@ -148,6 +157,13 @@ export async function createTheme(formData: FormData) {
       keywords,
       priority,
       type: type as any,
+      productName: productName || undefined,
+      productDescription: productDescription || undefined,
+      productPrice: productPrice || undefined,
+      productUrl: productUrl || undefined,
+      discountText: discountText || undefined,
+      promotionStart: promotionStartRaw ? new Date(promotionStartRaw) : undefined,
+      promotionEnd: promotionEndRaw ? new Date(promotionEndRaw) : undefined,
     },
   });
 

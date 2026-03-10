@@ -54,28 +54,30 @@ function Hero() {
           <div className="animate-slide-up mb-6">
             <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
               style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', color: 'var(--color-primary-light)' }}>
-              ✨ Diseñado para automatizar contenido en redes con IA
+              ✨ El motor de contenido y promoción con IA para tu negocio
             </span>
           </div>
 
           <h1 className="animate-slide-up-d1 text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1]">
-            Automatiza tu contenido para redes sociales{' '}
+            Promociona tu negocio y automatiza tu contenido{' '}
             <span style={{ background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               con IA.
             </span>
           </h1>
 
           <p className="animate-slide-up-d2 mt-6 text-lg md:text-xl leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-            Syndra investiga tendencias, genera contenido, crea imágenes o videos, envía un preview a Telegram y publica automáticamente en tus redes.
+            Syndra investiga tendencias, genera posts promocionales con tus productos y logo, crea imágenes y videos con IA, y publica automáticamente en tus redes sociales.
           </p>
 
           {/* Bullets */}
           <ul className="animate-slide-up-d3 mt-8 space-y-3">
             {[
-              'Encuentra temas relevantes automáticamente',
-              'Genera posts e imágenes con IA',
-              'Aprueba desde Telegram en segundos',
-              'Publica en Instagram, Facebook, Threads o Discord',
+              'Genera posts con tu logo, productos y precios reales',
+              'Crea ofertas, catálogos y contenido promocional automáticamente',
+              'Publica en Instagram, Facebook, Threads, Discord y más',
+              'Próximamente: Twitter/X, LinkedIn, TikTok, YouTube, Pinterest, WhatsApp Status, Meta Ads, Google Ads, Mercado Libre',
+              'Analytics con IA que optimizan tu contenido cada semana',
+              '12 industrias preconfiguradas: ecommerce, restaurantes, fitness y más',
             ].map((b) => (
               <li key={b} className="flex items-center gap-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
                 <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>
@@ -86,16 +88,15 @@ function Hero() {
 
           {/* CTAs */}
           <div className="animate-slide-up-d4 mt-10 flex flex-wrap gap-4">
-            <CTAButton href="/register" large>Empieza con Creator →</CTAButton>
-            <CTAButton href="#como-funciona" variant="ghost" large>Ver cómo funciona</CTAButton>
+            <CTAButton href="/register" large>Empieza gratis →</CTAButton>
+            <CTAButton href="#motor-promocion" variant="ghost" large>Ver motor de promoción</CTAButton>
           </div>
         </div>
 
-        {/* Right — mockup */}
+        {/* Right — promotional mockup */}
         <div className="animate-slide-up-d3 relative">
           <div className="glass-card p-1 rounded-2xl overflow-hidden">
             <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: '16/10', background: 'var(--color-bg-secondary)' }}>
-              {/* Dashboard mockup */}
               <div className="absolute inset-0 flex flex-col p-4 gap-3">
                 {/* Top bar */}
                 <div className="flex items-center gap-3">
@@ -104,22 +105,21 @@ function Hero() {
                   <div className="w-3 h-3 rounded-full" style={{ background: '#10b981' }} />
                   <div className="flex-1 h-6 rounded-md ml-2" style={{ background: 'rgba(124,58,237,0.08)' }} />
                 </div>
-                {/* Sidebar + content */}
+                {/* Business dashboard */}
                 <div className="flex-1 flex gap-3">
                   <div className="w-[140px] rounded-lg p-3 space-y-2" style={{ background: 'rgba(124,58,237,0.06)' }}>
-                    {['⚡ Dashboard', '📋 Cola Editorial', '🧠 Estratega IA', '📊 Analytics', '📂 Media'].map((item) => (
-                      <div key={item} className="text-[10px] px-2 py-1.5 rounded-md" style={{ color: 'var(--color-text-secondary)', background: item.includes('Dashboard') ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
+                    {['⚡ Dashboard', '🏪 Mi Negocio', '📦 Productos', '🚀 Promociones', '📊 Analytics'].map((item) => (
+                      <div key={item} className="text-[10px] px-2 py-1.5 rounded-md" style={{ color: 'var(--color-text-secondary)', background: item.includes('Negocio') ? 'rgba(124,58,237,0.15)' : 'transparent' }}>
                         {item}
                       </div>
                     ))}
                   </div>
                   <div className="flex-1 space-y-3">
-                    {/* Stats row */}
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { label: 'Publicaciones', value: '127', color: '#7c3aed' },
-                        { label: 'Engagement', value: '4.8%', color: '#06b6d4' },
-                        { label: 'Crecimiento', value: '+23%', color: '#10b981' },
+                        { label: 'Ventas generadas', value: '$12.4K', color: '#10b981' },
+                        { label: 'Engagement', value: '6.2%', color: '#7c3aed' },
+                        { label: 'Posts activos', value: '84', color: '#06b6d4' },
                       ].map((s) => (
                         <div key={s.label} className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
                           <div className="text-[9px] mb-1" style={{ color: 'var(--color-text-muted)' }}>{s.label}</div>
@@ -127,27 +127,28 @@ function Hero() {
                         </div>
                       ))}
                     </div>
-                    {/* Content preview */}
+                    {/* Product promo preview */}
                     <div className="rounded-lg p-3 flex gap-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                      <div className="w-16 h-16 rounded-md flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(6,182,212,0.2))' }} />
+                      <div className="w-16 h-16 rounded-md flex-shrink-0 flex items-center justify-center text-2xl" style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(6,182,212,0.2))' }}>
+                        👟
+                      </div>
                       <div className="flex-1 space-y-1.5">
-                        <div className="h-2 rounded-full w-3/4" style={{ background: 'rgba(255,255,255,0.1)' }} />
-                        <div className="h-2 rounded-full w-full" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                        <div className="h-2 rounded-full w-1/2" style={{ background: 'rgba(255,255,255,0.04)' }} />
+                        <div className="text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>Air Max 90 — $89.99</div>
+                        <div className="text-[9px] px-1.5 py-0.5 rounded-full inline-block" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>30% OFF</div>
+                        <div className="h-2 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,0.06)' }} />
                       </div>
                     </div>
-                    {/* Telegram approve */}
+                    {/* Auto-publish badge */}
                     <div className="flex items-center gap-2 rounded-lg p-2" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
-                      <span className="text-xs">📱</span>
-                      <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>Preview enviado a Telegram</span>
-                      <span className="ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓ Aprobado</span>
+                      <span className="text-xs">🚀</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>Promoción publicada en 4 canales</span>
+                      <span className="ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓ Live</span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          {/* Floating glow */}
           <div className="absolute -bottom-6 -right-6 w-40 h-40 rounded-full animate-pulse-glow"
             style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.2), transparent 70%)' }} />
         </div>
@@ -159,10 +160,10 @@ function Hero() {
 // ── 2. CÓMO FUNCIONA ────────────────────────────────────
 function HowItWorks() {
   const steps = [
-    { icon: '🎨', title: 'Configura tu marca', desc: 'Define tu estilo, tono y temas. Syndra aprende cómo debe comunicar tu marca.' },
-    { icon: '🔍', title: 'Syndra investiga y crea contenido', desc: 'Analiza fuentes, detecta tendencias y genera posts completos con IA. Incluye texto, imágenes o video.' },
-    { icon: '📱', title: 'Recibe el preview', desc: 'Syndra te envía el contenido a Telegram para revisarlo. Puedes aprobar, corregir o regenerar.' },
-    { icon: '🚀', title: 'Publicación automática', desc: 'Una vez aprobado, Syndra publica en tus redes. Instagram, Facebook, Threads, Discord.' },
+    { icon: '�', title: 'Configura tu negocio', desc: 'Sube tu logo, productos y precios. Syndra aprende tu marca, industria y estilo de comunicación.' },
+    { icon: '🧠', title: 'IA investiga y crea contenido', desc: 'Analiza tendencias o tus propios productos. Genera posts, ofertas, carruseles y videos automáticamente.' },
+    { icon: '📱', title: 'Aprueba o deja en automático', desc: 'Recibe previews en Telegram, corrige con un toque o activa el piloto automático total.' },
+    { icon: '🚀', title: 'Publica en todas tus redes', desc: 'Instagram, Facebook, Threads y Discord. Con tu logo, productos y precios reales.' },
   ];
 
   return (
@@ -192,12 +193,15 @@ function HowItWorks() {
 // ── 3. FEATURES ─────────────────────────────────────────
 function Features() {
   const features = [
-    { icon: '🔍', title: 'Investigación automática', desc: 'Syndra analiza fuentes, noticias y tendencias para encontrar temas relevantes para tu audiencia.' },
-    { icon: '✍️', title: 'Generación de contenido con IA', desc: 'Genera posts, captions, hashtags y guiones automáticamente con inteligencia artificial avanzada.' },
-    { icon: '🖼️', title: 'Generación de imágenes y video', desc: 'Crea visuales adaptados a tu estilo y marca. Imágenes, carruseles y videos cortos.' },
-    { icon: '🧠', title: 'Estrategia de contenido', desc: 'Syndra recomienda qué publicar, cuándo y con qué formato para maximizar engagement.' },
-    { icon: '📅', title: 'Automatización de publicación', desc: 'Programa contenido o activa el modo autopilot. Syndra publica por ti.' },
-    { icon: '📊', title: 'Analytics y optimización', desc: 'Analiza resultados y mejora futuras publicaciones automáticamente con IA.' },
+    { icon: '🏪', title: 'Motor de promoción', desc: 'Carga tus productos, precios y ofertas. Syndra genera contenido promocional con tus datos reales — no genérico.' },
+    { icon: '🖼️', title: 'Composición con Sharp', desc: 'Imágenes profesionales con tu logo, producto y precios superpuestos. 9 templates: showcase, oferta, testimonial y más.' },
+    { icon: '🎬', title: 'Videos con avatar IA', desc: 'Genera reels y videos con avatares que hablan de tu producto. HeyGen, Pika, Luma o Edge TTS.' },
+    { icon: '🔍', title: 'Investigación dual', desc: 'Usa tendencias RSS para contenido viral O tus propios briefs/productos para contenido promocional.' },
+    { icon: '🧠', title: 'Estrategia IA semanal', desc: 'Syndra analiza qué funciona y planifica tu semana: qué publicar, cuándo, en qué formato y con qué tono.' },
+    { icon: '📊', title: 'Analytics predictivos', desc: 'Predice engagement antes de publicar. Aprende patrones por formato, tono, horario y tipo de contenido.' },
+    { icon: '📦', title: 'Catálogo de productos', desc: 'Biblioteca de productos con fotos, precios y SKU. Se integra directamente al pipeline de contenido.' },
+    { icon: '🎯', title: 'Campañas con objetivo', desc: '11 objetivos: venta, lanzamiento, Black Friday, catálogo, awareness y más. Multicanal y multiformato.' },
+    { icon: '🤖', title: 'Piloto automático total', desc: 'Syndra investiga, crea, compone imágenes, genera video y publica — sin intervención humana.' },
   ];
 
   return (
@@ -225,61 +229,179 @@ function RealExample() {
   return (
     <section className="relative py-24 px-6">
       <div className="landing-grid-bg" />
-      <div className="relative z-10 max-w-5xl mx-auto">
-        <SectionHeading tag="Ejemplo real" title="Contenido generado en segundos"
-          subtitle="Así se ve un post creado completamente por Syndra." />
+      <div className="relative z-10 max-w-6xl mx-auto">
+        <SectionHeading tag="Ejemplo real" title="Dos tipos de contenido, una sola plataforma"
+          subtitle="Syndra genera posts listos para publicar tanto para negocios como para creadores de contenido." />
 
-        <div className="glass-card p-8 md:p-10 max-w-2xl mx-auto">
-          {/* Post preview */}
-          <div className="flex gap-3 items-center mb-6">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: 'var(--gradient-primary)' }}>S</div>
-            <div>
-              <div className="font-semibold text-sm">Tu Marca</div>
-              <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Generado por Syndra • hace 2 min</div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+          {/* ── LEFT: Business Promotion Post ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'rgba(124,58,237,0.15)', color: 'var(--color-primary-light)', border: '1px solid rgba(124,58,237,0.3)' }}>Plan Pro</span>
+              <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Promoción de negocio</span>
+            </div>
+            <div className="glass-card p-6 md:p-8">
+              {/* Post header */}
+              <div className="flex gap-3 items-center mb-5">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: 'var(--gradient-primary)' }}>👟</div>
+                <div>
+                  <div className="font-semibold text-sm">Zapatería El Paso</div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Generado por Syndra • hace 5 min</div>
+                </div>
+              </div>
+
+              {/* Copy */}
+              <div className="mb-4">
+                <p className="font-bold text-base mb-2">🔥 ¡OFERTA FLASH! Air Max 90 con 30% de descuento</p>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                  Solo por este fin de semana. De <span style={{ textDecoration: 'line-through', color: 'var(--color-text-muted)' }}>$129.99</span>{' '}
+                  a <span className="font-bold" style={{ color: '#10b981' }}>$89.99</span>. ¡Corre que se agotan! 🏃
+                </p>
+              </div>
+
+              {/* Product image with Sharp composition overlays */}
+              <div className="w-full rounded-xl mb-4 overflow-hidden relative" style={{ aspectRatio: '4/3' }}>
+                <Image
+                  src="/images/landing/sneakers-product.jpg"
+                  alt="Nike Air Max 90 — foto de producto promocional"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 500px"
+                />
+                {/* Dark gradient overlay for readability */}
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.65))' }} />
+
+                {/* Product name + brand bar */}
+                <div className="absolute left-0 right-0 bottom-0 px-4 py-3 flex items-end justify-between z-10">
+                  <div>
+                    <p className="text-white text-xs font-bold leading-tight">Nike Air Max 90</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Zapatería El Paso</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] line-through" style={{ color: 'rgba(255,255,255,0.4)' }}>$129.99</span>
+                    <span className="text-sm font-extrabold text-white">$89.99</span>
+                  </div>
+                </div>
+
+                {/* Discount badge */}
+                <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-extrabold shadow-lg z-10" style={{ background: '#EF4444', color: 'white' }}>
+                  30% OFF
+                </div>
+
+                {/* Sharp composition badge */}
+                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md text-[9px] font-semibold backdrop-blur-md flex items-center gap-1 z-10" style={{ background: 'rgba(124,58,237,0.7)', color: 'white' }}>
+                  <span>🖼️</span> Sharp + Logo
+                </div>
+
+                {/* Logo watermark */}
+                <div className="absolute z-10" style={{ bottom: '48px', right: '16px' }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.2)' }}>ZP</div>
+                </div>
+              </div>
+
+              {/* Hashtags */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {['#OfertaFlash', '#AirMax90', '#ZapateríaElPaso', '#30OFF', '#Sneakers'].map((h) => (
+                  <span key={h} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)' }}>{h}</span>
+                ))}
+              </div>
+
+              {/* Published to */}
+              <div className="flex items-center gap-2 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Publicado en:</span>
+                {['📸 Instagram', '📘 Facebook', '🧵 Threads', '💬 Discord'].map((p) => (
+                  <span key={p} className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)' }}>{p}</span>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Hook */}
-          <div className="mb-4">
-            <p className="font-bold text-base mb-2" style={{ color: 'var(--color-text)' }}>
-              🚀 ¿Sabías que el 80% del contenido viral sigue un patrón predecible?
-            </p>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-              Hoy te cuento los 3 elementos que toda publicación necesita para alcanzar más personas.
-              Tu audiencia quiere contenido que conecte, no que simplemente exista.
-              Aplica estas reglas y verás la diferencia.
-            </p>
-          </div>
+          {/* ── RIGHT: Creator / Influencer Post ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.3)' }}>Creator</span>
+              <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Contenido de creador</span>
+            </div>
+            <div className="glass-card p-6 md:p-8">
+              {/* Post header */}
+              <div className="flex gap-3 items-center mb-5">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background: 'linear-gradient(135deg, #06b6d4, #8b5cf6)' }}>🎙️</div>
+                <div>
+                  <div className="font-semibold text-sm">TechPulse by María</div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Generado por Syndra • hace 12 min</div>
+                </div>
+              </div>
 
-          {/* AI-generated image */}
-          <div className="w-full rounded-xl mb-4 overflow-hidden relative" style={{ aspectRatio: '1/1', background: 'linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.1))', border: '1px solid rgba(124,58,237,0.1)' }}>
-            <Image
-              src="https://image.pollinations.ai/prompt/Modern%20social%20media%20marketing%20infographic%20showing%20viral%20content%20patterns%2C%20growth%20charts%2C%20engagement%20metrics%2C%20purple%20and%20cyan%20neon%20gradient%2C%20dark%20background%2C%20professional%20minimal%20design%2C%20no%20text?width=1024&height=1024&seed=42&nologo=true"
-              alt="Contenido generado con IA por Syndra"
-              fill
-              className="object-cover rounded-xl"
-              sizes="(max-width: 768px) 100vw, 600px"
-            />
-            <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-md text-[10px] font-semibold backdrop-blur-sm"
-              style={{ background: 'rgba(124,58,237,0.6)', color: 'white' }}>
-              🤖 Generado con IA
+              {/* Copy */}
+              <div className="mb-4">
+                <p className="font-bold text-base mb-2">🚀 Apple acaba de lanzar su chip M4 Ultra y es una bestia</p>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                  El nuevo MacBook Pro con M4 Ultra alcanza 180B de parámetros en local.
+                  Esto cambia todo para los desarrolladores de IA. Te explico por qué esto importa 🧵👇
+                </p>
+              </div>
+
+              {/* Tech news cover with real photo */}
+              <div className="w-full rounded-xl mb-4 overflow-hidden relative" style={{ aspectRatio: '4/3' }}>
+                <Image
+                  src="/images/landing/macbook-tech.jpg"
+                  alt="MacBook Pro M4 Ultra — noticia tecnológica"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 500px"
+                />
+                {/* Dark tinted overlay for readability */}
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(transparent 20%, rgba(0,0,0,0.55))' }} />
+
+                {/* Headline over the image */}
+                <div className="absolute inset-0 flex flex-col items-center justify-end px-6 pb-14 z-10">
+                  <div className="text-center">
+                    <p className="text-white text-sm font-bold drop-shadow-lg">M4 Ultra — El chip que cambia las reglas</p>
+                    <div className="flex gap-2 mt-2 justify-center">
+                      {['180B params', '32-core GPU', '192GB RAM'].map((s) => (
+                        <span key={s} className="px-2 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: 'rgba(6,182,212,0.2)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)', backdropFilter: 'blur(4px)' }}>{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trending badge */}
+                <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-extrabold shadow-lg flex items-center gap-1 z-10" style={{ background: '#06b6d4', color: 'white' }}>
+                  📈 Trending
+                </div>
+
+                {/* Syndra generated badge */}
+                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md text-[9px] font-semibold backdrop-blur-md flex items-center gap-1 z-10" style={{ background: 'rgba(6,182,212,0.5)', color: 'white' }}>
+                  🤖 IA + Research
+                </div>
+
+                {/* Source attribution */}
+                <div className="absolute bottom-0 left-0 right-0 px-4 py-2.5 z-10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.5)' }}>Fuente: Tavily + SerpAPI</span>
+                    <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.5)' }}>Investigado hace 2h</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hashtags */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {['#M4Ultra', '#Apple', '#IA', '#MacBookPro', '#TechNews'].map((h) => (
+                  <span key={h} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(6,182,212,0.1)', color: '#22d3ee' }}>{h}</span>
+                ))}
+              </div>
+
+              {/* Published to */}
+              <div className="flex items-center gap-2 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Publicado en:</span>
+                {['📸 Instagram', '🧵 Threads', '💬 Discord'].map((p) => (
+                  <span key={p} className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)' }}>{p}</span>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Hashtags */}
-          <div className="flex flex-wrap gap-2 mb-6">
-            {['#ContentCreator', '#MarketingDigital', '#IA', '#Automatización', '#Redes'].map((h) => (
-              <span key={h} className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)' }}>{h}</span>
-            ))}
-          </div>
-
-          {/* Published to */}
-          <div className="flex items-center gap-2 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-            <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Publicado en:</span>
-            {['📸 Instagram', '📘 Facebook', '💬 Discord'].map((p) => (
-              <span key={p} className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)' }}>{p}</span>
-            ))}
-          </div>
         </div>
       </div>
     </section>
@@ -375,10 +497,10 @@ function AutomationModes() {
 // ── 7. PARA QUIÉN ES ────────────────────────────────────
 function TargetAudience() {
   const targets = [
-    { icon: '🎬', title: 'Creadores de contenido', desc: 'Publica constantemente sin dedicar horas cada semana.' },
-    { icon: '👤', title: 'Marcas personales', desc: 'Construye autoridad en tu nicho con contenido consistente.' },
-    { icon: '🏪', title: 'Negocios locales', desc: 'Mantén tus redes activas sin esfuerzo ni equipo de marketing.' },
-    { icon: '🏢', title: 'Agencias de marketing', desc: 'Gestiona múltiples cuentas desde un solo lugar con IA.' },
+    { icon: '�', title: 'Negocios y ecommerce', desc: 'Promociona tus productos con posts profesionales que incluyen tu logo, precios y ofertas reales.' },
+    { icon: '🎬', title: 'Creadores de contenido', desc: 'Publica constantemente sin dedicar horas. IA adapta el tono a tu audiencia.' },
+    { icon: '🍕', title: 'Restaurantes y comercios', desc: 'Publica tus platos, promociones del día y eventos sin necesitar diseñador.' },
+    { icon: '🏢', title: 'Agencias de marketing', desc: 'Gestiona múltiples negocios con perfiles separados y publicación automatizada.' },
   ];
 
   return (
@@ -395,6 +517,110 @@ function TargetAudience() {
               <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{t.desc}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── 7B. MOTOR DE PROMOCIÓN (Pro) ────────────────────────
+function PromotionEngine() {
+  const steps = [
+    { num: '01', title: 'Sube tu catálogo', desc: 'Agrega tus productos con fotos, precios, categorías y descripciones. Syndra los usa para crear promociones.', icon: '📦' },
+    { num: '02', title: 'Elige qué promocionar', desc: 'Selecciona producto, tipo de campaña (oferta, lanzamiento, flash sale) y canales de publicación.', icon: '🎯' },
+    { num: '03', title: 'IA compone la imagen', desc: 'Sharp superpone tu logo, producto, badge de descuento y precio sobre un fondo generado por IA. Sin Photoshop.', icon: '🖼️' },
+    { num: '04', title: 'Publica donde quieras', desc: 'El post con copy + imagen se envía a Instagram, Facebook, Threads y Discord. Con aprobación o en autopilot.', icon: '🚀' },
+  ];
+
+  const templates = [
+    { name: 'Showcase', desc: 'Presenta tu producto con estilo', color: '#7C3AED' },
+    { name: 'Oferta', desc: 'Badge de descuento + precio tachado', color: '#EF4444' },
+    { name: 'Flash Sale', desc: 'Urgencia con countdown visual', color: '#F59E0B' },
+    { name: 'Nuevo lanzamiento', desc: 'Anuncia novedades con impacto', color: '#06B6D4' },
+    { name: 'Comparación', desc: 'Antes vs después, tuyo vs competencia', color: '#10B981' },
+    { name: 'Testimonial', desc: 'Reseña de cliente destacada', color: '#8B5CF6' },
+  ];
+
+  return (
+    <section id="motor-promocion" className="relative py-28 px-6 overflow-hidden">
+      {/* Background orbs */}
+      <div className="hero-orb" style={{ width: 500, height: 500, top: '10%', right: '-5%', background: 'rgba(124,58,237,0.1)' }} />
+      <div className="hero-orb" style={{ width: 350, height: 350, bottom: '5%', left: '5%', background: 'rgba(6,182,212,0.08)', animationDelay: '3s' }} />
+
+      <div className="relative z-10 max-w-6xl mx-auto">
+        <div className="text-center mb-4">
+          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider" style={{ background: 'rgba(124,58,237,0.15)', color: 'var(--color-primary-light)', border: '1px solid rgba(124,58,237,0.3)' }}>
+            ⭐ Exclusivo Pro
+          </span>
+        </div>
+        <SectionHeading tag="Motor de Promoción" title="Promociona tu negocio como una agencia profesional"
+          subtitle="Sube tus productos → Elige la campaña → Syndra genera imágenes con tu logo y publica en todas tus redes. Sin diseñador." />
+
+        {/* Flow Steps */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
+          {steps.map((s) => (
+            <div key={s.num} className="glass-card p-6 text-center relative">
+              <div className="text-3xl mb-3">{s.icon}</div>
+              <span className="text-xs font-bold uppercase tracking-widest mb-2 block" style={{ color: 'var(--color-primary-light)' }}>{s.num}</span>
+              <h3 className="text-base font-bold mb-2">{s.title}</h3>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{s.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Mockup: Product → Composed Image */}
+        <div className="glass-card p-8 mb-16">
+          <h3 className="text-lg font-bold text-center mb-8">Así se ve una promoción creada por Syndra</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+            {/* Input: Product */}
+            <div className="glass-card p-5 text-center" style={{ border: '1px solid var(--color-border)' }}>
+              <div className="text-4xl mb-3">👟</div>
+              <p className="text-sm font-bold">Air Max 90</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>$120.00 → $84.00</p>
+              <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(239,68,68,0.2)', color: '#EF4444' }}>-30% OFF</span>
+            </div>
+            {/* Arrow */}
+            <div className="text-center">
+              <div className="text-4xl" style={{ color: 'var(--color-primary-light)' }}>→</div>
+              <p className="text-xs mt-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>Sharp compone logo + producto + badge + precio</p>
+            </div>
+            {/* Output: Composed Post */}
+            <div className="glass-card p-5 relative overflow-hidden" style={{ border: '1px solid var(--color-primary)', background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(6,182,212,0.05))' }}>
+              <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(239,68,68,0.9)', color: 'white' }}>-30%</div>
+              <div className="text-center">
+                <div className="text-3xl mb-2">🖼️</div>
+                <p className="text-sm font-bold">¡Oferta Especial!</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>Air Max 90 · <s>$120</s> $84</p>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <span className="w-5 h-5 rounded-full" style={{ background: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', color: 'white', fontWeight: 'bold' }}>S</span>
+                  <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>Tu logo aquí</span>
+                </div>
+                <div className="flex justify-center gap-1 mt-3">
+                  {['IG', 'FB', 'TH', 'DC'].map(p => (
+                    <span key={p} className="px-1.5 py-0.5 rounded text-[8px] font-bold" style={{ background: 'rgba(139,92,246,0.15)', color: 'var(--color-primary-light)' }}>{p}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Templates Grid */}
+        <h3 className="text-lg font-bold text-center mb-6">Templates de promoción disponibles</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {templates.map((t) => (
+            <div key={t.name} className="glass-card p-4 text-center group hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-lg mx-auto mb-3 flex items-center justify-center" style={{ background: `${t.color}20`, border: `1px solid ${t.color}40` }}>
+                <div className="w-4 h-4 rounded" style={{ background: t.color }} />
+              </div>
+              <p className="text-xs font-bold mb-1">{t.name}</p>
+              <p className="text-[10px] leading-tight" style={{ color: 'var(--color-text-muted)' }}>{t.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mt-10">
+          <CTAButton href="/register" large>Probar Motor de Promoción →</CTAButton>
         </div>
       </div>
     </section>
@@ -428,11 +654,11 @@ function Pricing() {
     },
     {
       name: 'Creator',
-      tag: 'Más popular',
+      tag: 'Para creadores',
       monthly: 39,
       yearly: 31,
       desc: 'Automatiza tu contenido con IA.',
-      micro: 'El plan que usan la mayoría de creadores.',
+      micro: 'Ideal para creadores activos y marcas personales.',
       features: [
         'Todo lo de Starter, más:',
         '150 publicaciones al mes',
@@ -443,37 +669,42 @@ function Pricing() {
         'Optimización de tono y formato',
         'Analytics completos',
         'Predicción de engagement',
-        'Generación de video',
+        'Generación de video (10/mes)',
         '3 personas IA',
         '5 perfiles de contenido',
         '2 usuarios por workspace',
         'Scheduler avanzado',
         '2GB de media',
       ],
-      featured: true,
+      featured: false,
     },
     {
       name: 'Pro',
-      tag: 'Para equipos y agencias',
+      tag: '🏪 Para negocios',
       monthly: 99,
       yearly: 79,
-      desc: 'El motor completo de crecimiento con IA.',
+      desc: 'Motor completo de promoción con IA para tu negocio.',
+      micro: 'Todo lo que necesitas para promocionar tu negocio a nivel global.',
       features: [
         'Todo lo de Creator, más:',
         'Publicaciones ilimitadas',
         'Redes sociales ilimitadas',
+        '🏪 Perfil de negocio completo',
+        '📦 Catálogo de productos con precios',
+        '📋 Briefs promocionales',
+        '🚀 Wizard "Crear Promoción"',
+        '🖼️ Composición de imágenes con Sharp',
+        '🎨 Logo + producto superpuesto en fotos',
+        'Templates: showcase, oferta, testimonial y más',
         'Autopilot completo',
-        'Detección avanzada de tendencias',
-        'Estrategia automática semanal',
-        'Optimización automática de contenido',
         'A/B testing ilimitado',
         'Memoria de marca',
+        'Video avanzado (50/mes)',
         '5 usuarios por workspace',
-        'Analytics avanzados',
-        'Alertas inteligentes',
         '10GB de media',
+        'API access + cola prioritaria',
       ],
-      featured: false,
+      featured: true,
     },
   ];
 
@@ -577,6 +808,7 @@ function Comparison() {
     ['Perfiles de contenido', '1', '5', 'Ilimitados'],
     ['Fuentes de investigación', '3', '10', 'Ilimitadas'],
     ['Generación de imágenes', '✔', '✔', '✔'],
+    ['Composición con Sharp', '✖', '✖', '✔'],
     ['Generación de video', '✖', '10/mes', '50/mes'],
     ['Aprobación Telegram', '✔', '✔', '✔'],
     ['Autopilot', '✖', 'Parcial', 'Completo'],
@@ -585,6 +817,15 @@ function Comparison() {
     ['Analytics', 'Básico', 'Completo', 'Avanzado'],
     ['A/B testing', '✖', 'Limitado', 'Ilimitado'],
     ['Media storage', '500MB', '2GB', '10GB'],
+    ['─── NEGOCIO (Solo Pro) ───', '', '', ''],
+    ['Perfil de negocio', '✖', '✖', '✔'],
+    ['Catálogo de productos', '✖', '✖', 'Ilimitado'],
+    ['Briefs promocionales', '✖', '✖', '✔'],
+    ['Wizard Crear Promoción', '✖', '✖', '✔'],
+    ['Templates promocionales', '✖', '✖', '9 templates'],
+    ['Logo en imágenes', '✖', '✖', '✔'],
+    ['Campañas con objetivo', '✖', '✖', '✔'],
+    ['API access', '✖', '✖', '✔'],
   ];
 
   return (
@@ -599,22 +840,28 @@ function Comparison() {
                 <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <th className="text-left p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Feature</th>
                   <th className="text-center p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Starter</th>
-                  <th className="text-center p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-primary-light)' }}>Creator</th>
-                  <th className="text-center p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Pro</th>
+                  <th className="text-center p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Creator</th>
+                  <th className="text-center p-4 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--color-primary-light)' }}>Pro ⭐</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(([feature, s, c, p]) => (
+                  feature.startsWith('───') ? (
+                    <tr key={feature} style={{ background: 'rgba(139,92,246,0.08)' }}>
+                      <td colSpan={4} className="p-3 text-xs font-bold uppercase tracking-widest text-center" style={{ color: 'var(--color-primary-light)' }}>{feature.replace(/─/g, '').trim()}</td>
+                    </tr>
+                  ) : (
                   <tr key={feature} style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <td className="p-4 font-medium" style={{ color: 'var(--color-text-secondary)' }}>{feature}</td>
                     {[s, c, p].map((val, i) => (
-                      <td key={i} className="p-4 text-center font-medium">
+                      <td key={i} className="p-4 text-center font-medium" style={i === 2 ? { background: 'rgba(139,92,246,0.04)' } : undefined}>
                         {val === '✔' ? <span className="comparison-check text-base">✓</span> :
                          val === '✖' ? <span className="comparison-cross text-base">✗</span> :
-                         <span style={{ color: i === 1 ? 'var(--color-primary-light)' : 'var(--color-text-secondary)' }}>{val}</span>}
+                         <span style={{ color: i === 2 ? 'var(--color-primary-light)' : 'var(--color-text-secondary)' }}>{val}</span>}
                       </td>
                     ))}
                   </tr>
+                  )
                 ))}
               </tbody>
             </table>
@@ -733,28 +980,77 @@ const logos: Record<string, React.ReactNode> = {
   SerpAPI: (
     <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="10" fill="none" stroke="#F59E0B" strokeWidth="1.5"/><text x="12" y="15.5" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#F59E0B" fontFamily="Arial">S</text></svg>
   ),
+  // — Nuevos proveedores IA —
+  Replicate: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><rect x="2" y="2" width="20" height="20" rx="4" fill="#1A1A2E"/><text x="12" y="15.5" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#E0D4FF" fontFamily="Arial">R</text></svg>
+  ),
+  'fal.ai': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><rect x="2" y="2" width="20" height="20" rx="4" fill="#6366F1"/><text x="12" y="16" textAnchor="middle" fontSize="10" fontWeight="bold" fill="white" fontFamily="Arial">fal</text></svg>
+  ),
+  'D-ID': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="10" fill="#1E40AF"/><circle cx="12" cy="10" r="4" fill="none" stroke="white" strokeWidth="1.5"/><path d="M6 19c0-3.314 2.686-6 6-6s6 2.686 6 6" fill="none" stroke="white" strokeWidth="1.5"/></svg>
+  ),
+  Hedra: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><rect x="2" y="2" width="20" height="20" rx="4" fill="#0D9488"/><text x="12" y="16" textAnchor="middle" fontSize="10" fontWeight="bold" fill="white" fontFamily="Arial">H</text></svg>
+  ),
+  // — Social Networks (Próximamente) —
+  'Twitter / X': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="white"/></svg>
+  ),
+  LinkedIn: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" fill="#0A66C2"/></svg>
+  ),
+  TikTok: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" fill="white"/></svg>
+  ),
+  YouTube: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FF0000"/></svg>
+  ),
+  Pinterest: (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12 0C5.373 0 0 5.372 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12 0-6.628-5.373-12-12-12z" fill="#E60023"/></svg>
+  ),
+  // — Business Channels (Próximamente) —
+  'WhatsApp Status': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="#25D366"/><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="white"/></svg>
+  ),
+  'Meta Ads': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" fill="#0081FB"/><path d="M6.39 12c0-1.248.273-2.23.71-2.87.517-.757 1.22-1.13 1.9-1.13.518 0 1.084.22 1.7.87.53.56 1.085 1.41 1.7 2.44.43.72.81 1.33 1.21 1.83.54.68 1.05 1.05 1.59 1.05.66 0 1.18-.42 1.56-1.15.35-.67.54-1.53.54-2.55 0-1.49-.36-2.66-.98-3.46-.63-.81-1.58-1.27-2.77-1.27-.37 0-.74.04-1.12.12l.65-1.85c.27-.03.5-.04.72-.04 1.7 0 3.14.66 4.1 1.82.91 1.1 1.4 2.63 1.4 4.55 0 1.57-.34 2.91-.98 3.87-.68 1.01-1.63 1.55-2.72 1.55-.68 0-1.31-.24-1.91-.76-.53-.46-1.04-1.11-1.56-2l-.89-1.52c-.45-.77-.85-1.33-1.2-1.71-.4-.43-.78-.62-1.2-.62-.49 0-.89.33-1.17.88-.25.5-.38 1.19-.38 2.05 0 .9.11 1.62.32 2.18l-1.55.63C6.55 14.24 6.39 13.15 6.39 12z" fill="white"/></svg>
+  ),
+  'Google Ads': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M15.58 12l-5.04 8.73c-.74 1.29-2.39 1.73-3.68.99s-1.73-2.39-.99-3.68L10.91 12l4.67 0z" fill="#FBBC04"/><path d="M8.42 12l5.04-8.73c.74-1.29 2.39-1.73 3.68-.99s1.73 2.39.99 3.68L13.09 12l-4.67 0z" fill="#4285F4"/><circle cx="6.21" cy="17.79" r="2.57" fill="#34A853"/></svg>
+  ),
+  'Mercado Libre': (
+    <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="10" fill="#FFE600"/><path d="M7 11c0 0 2-3 5-3s5 3 5 3" stroke="#333" strokeWidth="1.5" fill="none" strokeLinecap="round"/><path d="M7 14c0 0 2 3 5 3s5-3 5-3" stroke="#333" strokeWidth="1.5" fill="none" strokeLinecap="round"/><circle cx="9.5" cy="10" r="1" fill="#333"/><circle cx="14.5" cy="10" r="1" fill="#333"/></svg>
+  ),
 
 };
 
-function IntegrationCard({ name }: { name: string }) {
+function IntegrationCard({ name, comingSoon }: { name: string; comingSoon?: boolean }) {
   return (
-    <div className="glass-card px-6 py-5 flex flex-col items-center gap-3 min-w-[110px] max-w-[130px] transition-transform hover:scale-105">
+    <div className={`glass-card px-6 py-5 flex flex-col items-center gap-3 min-w-[110px] max-w-[130px] transition-transform hover:scale-105 relative ${comingSoon ? 'opacity-60' : ''}`}>
+      {comingSoon && (
+        <span className="absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider"
+          style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)', color: '#fff' }}>
+          Pronto
+        </span>
+      )}
       <div className="w-10 h-10 flex items-center justify-center">{logos[name]}</div>
       <span className="text-xs font-semibold text-center leading-tight" style={{ color: 'var(--color-text-secondary)' }}>{name}</span>
     </div>
   );
 }
 
-function IntegrationCategory({ label, names }: { label: string; names: string[] }) {
+function IntegrationCategory({ label, names, comingSoon }: { label: string; names: string[]; comingSoon?: boolean }) {
   return (
     <div className="mb-10 last:mb-0">
       <div className="flex items-center gap-3 mb-5 justify-center">
         <div className="h-px flex-1 max-w-[80px]" style={{ background: 'var(--color-border-subtle)' }} />
         <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+        {comingSoon && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>Próximamente</span>}
         <div className="h-px flex-1 max-w-[80px]" style={{ background: 'var(--color-border-subtle)' }} />
       </div>
       <div className="flex flex-wrap justify-center gap-4">
-        {names.map((n) => <IntegrationCard key={n} name={n} />)}
+        {names.map((n) => <IntegrationCard key={n} name={n} comingSoon={comingSoon} />)}
       </div>
     </div>
   );
@@ -769,9 +1065,11 @@ function Integrations() {
 
         <IntegrationCategory label="Publicación en redes" names={['Instagram', 'Facebook', 'Threads', 'Discord', 'Telegram']} />
         <IntegrationCategory label="Modelos de lenguaje (LLM)" names={['OpenAI', 'Anthropic', 'OpenRouter']} />
-        <IntegrationCategory label="Generación de imágenes" names={['DALL·E', 'HuggingFace', 'Stability AI', 'Pollinations']} />
-        <IntegrationCategory label="Video & Voz" names={['HeyGen', 'ElevenLabs']} />
+        <IntegrationCategory label="Generación de imágenes" names={['DALL·E', 'HuggingFace', 'Stability AI', 'Pollinations', 'Replicate']} />
+        <IntegrationCategory label="Video & Voz" names={['HeyGen', 'ElevenLabs', 'D-ID', 'Hedra', 'fal.ai']} />
         <IntegrationCategory label="Investigación" names={['Tavily', 'SerpAPI']} />
+        <IntegrationCategory label="Redes sociales" names={['Twitter / X', 'LinkedIn', 'TikTok', 'YouTube', 'Pinterest']} comingSoon />
+        <IntegrationCategory label="Canales para negocios" names={['WhatsApp Status', 'Meta Ads', 'Google Ads', 'Mercado Libre']} comingSoon />
       </div>
     </section>
   );
@@ -781,11 +1079,13 @@ function Integrations() {
 function FAQ() {
   const faqs = [
     { q: '¿Necesito experiencia en marketing?', a: 'No. Syndra genera contenido listo para publicar. Solo necesitas definir tu marca y dejar que la IA trabaje por ti.' },
-    { q: '¿Puedo usar mis propias API keys?', a: 'Sí. Puedes conectar tus propias claves de OpenAI, generadores de imagen o servicios externos si lo deseas.' },
+    { q: '¿Puedo subir mis productos y crear promociones?', a: 'Sí, con el plan Pro. Puedes cargar tu catálogo completo con fotos, precios y descripciones. Luego usas el wizard "Crear Promoción" para generar imágenes y copys listos para publicar con ofertas, descuentos y más.' },
+    { q: '¿Syndra pone mi logo en las imágenes?', a: 'Sí. Con la composición Sharp del plan Pro, tu logo se superpone automáticamente sobre las imágenes generadas, junto con badges de descuento, precios y la foto de tu producto.' },
+    { q: '¿Qué plantillas de promoción hay?', a: 'Hay 9 templates: showcase de producto, oferta con descuento, antes/después, testimonial, grid, comparación, nuevo lanzamiento, banner y flash sale. Todas se componen con Sharp en alta calidad.' },
+    { q: '¿Syndra publica automáticamente?', a: 'Sí. Puedes elegir entre aprobación manual vía Telegram, modo asistido o piloto automático completo que investiga, crea y publica sin intervención.' },
     { q: '¿Puedo cancelar cuando quiera?', a: 'Sí. Puedes cancelar tu suscripción en cualquier momento desde tu panel. No hay contratos ni permanencia.' },
-    { q: '¿Syndra publica automáticamente?', a: 'Sí. Puedes elegir entre aprobación manual, modo asistido o piloto automático completo.' },
-    { q: '¿Hay prueba gratuita?', a: 'No. Syndra está diseñado para generar contenido desde el primer día. Si quieres probarlo antes, puedes solicitar acceso como colaborador.' },
-    { q: '¿Necesito conectar mis cuentas de redes sociales?', a: 'Sí. Syndra se conecta a Instagram, Facebook, Threads o Discord para publicar automáticamente.' },
+    { q: '¿Puedo usar mis propias API keys?', a: 'Sí. Puedes conectar tus propias claves de OpenAI, generadores de imagen o servicios externos si lo deseas.' },
+    { q: '¿Cuál es la diferencia entre Creator y Pro?', a: 'Creator es ideal para creadores de contenido: genera posts, optimiza tono y publica. Pro añade todo el motor de negocio: catálogo de productos, briefs, composición de imágenes con Sharp, templates promocionales y el wizard de promociones.' },
   ];
 
   return (
@@ -820,15 +1120,16 @@ function FinalCTA() {
 
       <div className="relative z-10 max-w-3xl mx-auto text-center">
         <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight">
-          Empieza a automatizar tu contenido{' '}
-          <span style={{ background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>hoy.</span>
+          Tu negocio merece{' '}
+          <span style={{ background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>crecer con IA.</span>
         </h2>
         <p className="mt-6 text-lg" style={{ color: 'var(--color-text-secondary)' }}>
-          Miles de creadores pasan horas cada semana creando contenido.
-          <br />Syndra lo hace por ti.
+          Sube tus productos, crea promociones y publica en todas tus redes.
+          <br />Syndra automatiza tu marketing de principio a fin.
         </p>
-        <div className="mt-10 flex justify-center gap-4">
-          <CTAButton href="/register" large>Empieza con Creator →</CTAButton>
+        <div className="mt-10 flex flex-col sm:flex-row justify-center gap-4">
+          <CTAButton href="/register" large>Empieza con Pro →</CTAButton>
+          <CTAButton href="#pricing" large variant="ghost">Ver planes</CTAButton>
         </div>
       </div>
     </section>
@@ -892,6 +1193,7 @@ export default function Home() {
         <AIGrowthEngine />
         <AutomationModes />
         <TargetAudience />
+        <PromotionEngine />
         <Pricing />
         <Comparison />
         <TimeSavings />

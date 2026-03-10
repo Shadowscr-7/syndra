@@ -7,6 +7,7 @@ module.exports = function (options) {
     '@prisma/client',
     '.prisma/client',
     '.prisma/client/default',
+    'sharp',
   ];
 
   return {

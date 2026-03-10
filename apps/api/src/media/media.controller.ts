@@ -2,9 +2,11 @@
 // Media Controller — Endpoints REST para gestión de media assets
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards, UseInterceptors } from '@nestjs/common';
 import { MediaEngineService } from './media-engine.service';
 import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
+import { UseCredits, CreditGuard } from '../credits/credit.guard';
+import { CreditInterceptor } from '../credits/credit.interceptor';
 
 @Controller('media')
 @UseGuards(PlanLimitsGuard)
@@ -42,6 +44,9 @@ export class MediaController {
    */
   @Post('generate')
   @PlanCheck('STORAGE_MB')
+  @UseCredits('IMAGE_STANDARD')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
   async generateMedia(
     @Body() body: { editorialRunId: string; workspaceId: string },
   ) {
@@ -63,6 +68,9 @@ export class MediaController {
    * Regenera la imagen de una version de contenido
    */
   @Post('regenerate/:contentVersionId')
+  @UseCredits('IMAGE_STANDARD')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
   async regenerateImage(
     @Param('contentVersionId') contentVersionId: string,
     @Body() body: { customPrompt?: string },
@@ -86,6 +94,9 @@ export class MediaController {
    * Body: { instruction: string }
    */
   @Post('asset/:id/ai-edit')
+  @UseCredits('IMAGE_TEXT')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
   async aiEditAsset(
     @Param('id') assetId: string,
     @Body() body: { instruction: string },

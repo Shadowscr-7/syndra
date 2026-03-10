@@ -6,6 +6,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
+import { BusinessProfileService } from '../business-profile/business-profile.service';
+import { BusinessBriefsService } from '../business-briefs/business-briefs.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -13,6 +15,9 @@ import {
   parseLLMJsonResponse,
   buildResearchExtractionPrompt,
   buildResearchSummaryPrompt,
+  buildBusinessResearchPrompt,
+  type BusinessBriefInput,
+  type BusinessProfileInput,
 } from '@automatismos/ai';
 import type { LLMAdapter } from '@automatismos/ai';
 import type { RSSItem } from '@automatismos/ai';
@@ -47,6 +52,8 @@ export class ResearchService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    private readonly businessProfileService: BusinessProfileService,
+    private readonly businessBriefsService: BusinessBriefsService,
   ) {
     // Env-var fallback adapter (used when no DB credentials are configured)
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
@@ -176,6 +183,9 @@ export class ResearchService {
     // Resolve LLM adapter for this workspace
     const llm = await this.getLlm(workspaceId);
 
+    // Resolve business context for industry-aware prompts
+    const businessCtx = await this.businessProfileService.buildPromptContext(workspaceId);
+
     // 3. Filtrar artículos recientes (últimas 48 horas)
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const recentItems = allItems.filter((item) => {
@@ -196,6 +206,7 @@ export class ResearchService {
         url: i.link,
       })),
       campaignContext,
+      businessCtx.industryContext,
     );
 
     let extracted: ExtractedArticle[] = [];
@@ -271,6 +282,7 @@ export class ResearchService {
       },
       undefined, // persona — not loaded here
       campaignContext,
+      businessCtx.industryContext,
     );
 
     let summaryText = '';
@@ -319,5 +331,216 @@ export class ResearchService {
       where: { editorialRunId },
       orderBy: { relevanceScore: 'desc' },
     });
+  }
+
+  // ============================================================
+  // Theme type helpers
+  // ============================================================
+
+  /** ThemeTypes that should use internal business research instead of RSS */
+  private static readonly PROMOTIONAL_THEME_TYPES = new Set([
+    'PRODUCT', 'SERVICE', 'OFFER', 'SEASONAL', 'TESTIMONIAL',
+    'BEHIND_SCENES', 'EDUCATIONAL', 'ANNOUNCEMENT',
+  ]);
+
+  /**
+   * Check if a theme type is promotional (should use internal research)
+   */
+  isPromotionalThemeType(themeType: string): boolean {
+    return ResearchService.PROMOTIONAL_THEME_TYPES.has(themeType);
+  }
+
+  // ============================================================
+  // Internal Research — Uses BusinessBriefs instead of RSS
+  // ============================================================
+
+  /**
+   * Execute research from internal business data (no RSS).
+   * Used when the editorial theme is promotional (PRODUCT, OFFER, etc).
+   */
+  async executeInternalResearch(
+    editorialRunId: string,
+    workspaceId: string,
+    themeType?: string,
+  ): Promise<{
+    snapshotCount: number;
+    summary: string;
+    topArticles: ExtractedArticle[];
+  }> {
+    this.logger.log(`Starting INTERNAL research for run ${editorialRunId} (themeType: ${themeType ?? 'any'})`);
+
+    // 1. Load active BusinessBriefs for this workspace + theme type
+    const briefs = await this.businessBriefsService.getActiveBriefsForResearch(
+      workspaceId,
+      themeType,
+    );
+
+    if (briefs.length === 0) {
+      this.logger.warn(`No active business briefs for workspace ${workspaceId}, falling back to RSS`);
+      // Fallback to normal RSS research if no briefs found
+      return this.executeResearch(editorialRunId, workspaceId);
+    }
+
+    this.logger.log(`Found ${briefs.length} active business briefs for internal research`);
+
+    // 2. Load business profile for prompt context
+    const profile = await this.businessProfileService.get(workspaceId);
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { industry: true, name: true },
+    });
+
+    const profileInput: BusinessProfileInput = {
+      businessName: profile?.businessName || workspace?.name || 'Mi Negocio',
+      businessType: profile?.businessType || workspace?.industry || 'general',
+      description: profile?.description || '',
+      slogan: profile?.slogan || undefined,
+      usp: profile?.usp || undefined,
+      targetMarket: profile?.targetMarket || undefined,
+      products: profile?.products || [],
+      priceRange: profile?.priceRange || undefined,
+      promotionStyle: profile?.promotionStyle || undefined,
+      contentGoals: profile?.contentGoals || [],
+    };
+
+    const briefInputs: BusinessBriefInput[] = briefs.map((b) => ({
+      type: b.type as BusinessBriefInput['type'],
+      title: b.title,
+      content: b.content,
+      productName: b.productName || undefined,
+      productPrice: b.productPrice || undefined,
+      productUrl: b.productUrl || undefined,
+      discountText: b.discountText || undefined,
+      validFrom: b.validFrom?.toISOString(),
+      validUntil: b.validUntil?.toISOString(),
+    }));
+
+    // 3. Load campaign context (if any)
+    const run = await this.prisma.editorialRun.findUniqueOrThrow({
+      where: { id: editorialRunId },
+      include: { campaign: true },
+    });
+
+    const campaignObjective = run.campaign?.objective || undefined;
+
+    // 4. Resolve LLM adapter
+    const llm = await this.getLlm(workspaceId);
+
+    // 5. Generate editorial angles using business research prompt
+    const researchPrompt = buildBusinessResearchPrompt(
+      briefInputs,
+      profileInput,
+      campaignObjective,
+    );
+
+    interface ResearchAngle {
+      briefTitle: string;
+      angle: string;
+      format: string;
+      reasoning: string;
+      hooks?: string[];
+      urgency?: string;
+      suggestedVisual?: string;
+    }
+
+    let angles: ResearchAngle[] = [];
+    try {
+      const response = await llm.complete(researchPrompt, {
+        temperature: 0.5,
+        maxTokens: 4096,
+      });
+      const parsed = parseLLMJsonResponse<{ angles: ResearchAngle[] }>(response);
+      angles = parsed.angles ?? [];
+    } catch (error) {
+      this.logger.error('LLM business research failed:', error);
+      // Fallback: create basic angles from briefs directly
+      angles = briefs.map((b) => ({
+        briefTitle: b.title,
+        angle: `Promocionar: ${b.title}${b.discountText ? ` con ${b.discountText}` : ''}`,
+        format: 'post',
+        reasoning: 'Contenido directo del brief de negocio',
+        urgency: b.discountText ? 'high' : 'medium',
+      }));
+    }
+
+    // 6. Create ResearchSnapshots from angles + briefs
+    const snapshots = await Promise.all(
+      angles.map((angle, idx) => {
+        const matchedBrief = briefs.find((b) => b.title === angle.briefTitle) || briefs[0];
+        return this.prisma.researchSnapshot.create({
+          data: {
+            editorialRunId,
+            title: angle.angle,
+            source: `BusinessBrief: ${matchedBrief?.title || 'Internal'}`,
+            sourceUrl: matchedBrief?.productUrl || '',
+            keyPoints: [
+              matchedBrief?.content || '',
+              matchedBrief?.productName ? `Producto: ${matchedBrief.productName}` : '',
+              matchedBrief?.discountText ? `Oferta: ${matchedBrief.discountText}` : '',
+              matchedBrief?.productPrice ? `Precio: ${matchedBrief.productPrice}` : '',
+              angle.reasoning,
+              ...(angle.hooks || []),
+            ].filter(Boolean),
+            suggestedAngle: angle.suggestedVisual || angle.angle,
+            relevanceScore: angle.urgency === 'high' ? 0.95 : angle.urgency === 'medium' ? 0.8 : 0.65,
+          },
+        });
+      }),
+    );
+
+    // 7. Increment usage count on used briefs
+    const usedBriefIds = new Set(
+      angles
+        .map((a) => briefs.find((b) => b.title === a.briefTitle)?.id)
+        .filter(Boolean) as string[],
+    );
+    await Promise.all(
+      [...usedBriefIds].map((id) => this.businessBriefsService.incrementUsage(id)),
+    );
+
+    // 8. Build summary
+    const summaryText = JSON.stringify({
+      dominantTheme: `${profileInput.businessName} — ${themeType || 'Promocional'}`,
+      summary: `${angles.length} ángulos editoriales generados desde ${briefs.length} briefs internos del negocio.`,
+      angles: angles.map((a) => ({
+        angle: a.angle,
+        format: a.format,
+        reasoning: a.reasoning,
+      })),
+      engagementOpportunities: angles
+        .filter((a) => a.urgency === 'high')
+        .map((a) => a.angle),
+      source: 'internal_business',
+    });
+
+    // 9. Update editorial run
+    await this.prisma.editorialRun.update({
+      where: { id: editorialRunId },
+      data: {
+        researchSummary: summaryText,
+        status: 'STRATEGY',
+      },
+    });
+
+    // Convert to ExtractedArticle format for compatibility
+    const topArticles: ExtractedArticle[] = angles.map((a) => ({
+      title: a.angle,
+      source: `BusinessBrief: ${a.briefTitle}`,
+      sourceUrl: '',
+      keyPoints: [a.reasoning, ...(a.hooks || [])],
+      suggestedAngle: a.suggestedVisual || a.angle,
+      relevanceScore: a.urgency === 'high' ? 0.95 : 0.8,
+      trending: false,
+    }));
+
+    this.logger.log(
+      `Internal research complete: ${snapshots.length} snapshots from ${briefs.length} briefs, moving to STRATEGY`,
+    );
+
+    return {
+      snapshotCount: snapshots.length,
+      summary: summaryText,
+      topArticles,
+    };
   }
 }

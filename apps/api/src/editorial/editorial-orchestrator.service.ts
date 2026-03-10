@@ -244,7 +244,23 @@ export class EditorialOrchestratorService {
             where: { id: editorialRunId },
             data: { status: 'RESEARCH' },
           });
-          await this.researchService.executeResearch(editorialRunId, workspaceId);
+
+          // Detect if the current theme is promotional → use internal research
+          const activeTheme = await this.resolveActiveTheme(editorialRunId, workspaceId);
+          const themeType = activeTheme?.type ?? null;
+
+          if (themeType && this.researchService.isPromotionalThemeType(themeType)) {
+            this.logger.log(
+              `Theme type "${themeType}" is promotional → using internal business research`,
+            );
+            await this.researchService.executeInternalResearch(
+              editorialRunId,
+              workspaceId,
+              themeType,
+            );
+          } else {
+            await this.researchService.executeResearch(editorialRunId, workspaceId);
+          }
           // Research service ya actualiza el status a STRATEGY
           return await this.enqueueNextStage(editorialRunId, workspaceId, 'strategy');
         }
@@ -480,6 +496,52 @@ export class EditorialOrchestratorService {
   // ============================================================
   // Private
   // ============================================================
+
+  /**
+   * Resolve the active ContentTheme for a given editorial run.
+   * Checks campaign themes first, then picks the workspace's highest-priority active theme.
+   */
+  private async resolveActiveTheme(
+    editorialRunId: string,
+    workspaceId: string,
+  ): Promise<{ id: string; type: string; name: string } | null> {
+    const run = await this.prisma.editorialRun.findUnique({
+      where: { id: editorialRunId },
+      select: { campaignId: true },
+    });
+
+    // If campaign run, get theme from campaign themes
+    if (run?.campaignId) {
+      const campaignTheme = await this.prisma.campaignTheme.findFirst({
+        where: { campaignId: run.campaignId, theme: { isActive: true } },
+        include: { theme: { select: { id: true, type: true, name: true } } },
+      });
+      if (campaignTheme?.theme) {
+        return {
+          id: campaignTheme.theme.id,
+          type: campaignTheme.theme.type ?? 'TRENDING',
+          name: campaignTheme.theme.name,
+        };
+      }
+    }
+
+    // Fallback: get highest-priority active theme from workspace
+    const theme = await this.prisma.contentTheme.findFirst({
+      where: { workspaceId, isActive: true },
+      select: { id: true, type: true, name: true },
+      orderBy: { priority: 'desc' },
+    });
+
+    if (theme) {
+      return {
+        id: theme.id,
+        type: theme.type ?? 'TRENDING',
+        name: theme.name,
+      };
+    }
+
+    return null;
+  }
 
   private async enqueueNextStage(
     editorialRunId: string,

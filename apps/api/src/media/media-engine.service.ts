@@ -17,10 +17,15 @@ import {
   MockImageAdapter,
   PollinationsImageAdapter,
   HuggingFaceImageAdapter,
+  ReplicateImageAdapter,
   CloudinaryAdapter,
   MockCloudinaryAdapter,
   SvgCarouselComposer,
   getTemplateForCategory,
+  ImageComposer,
+  SharpRenderer,
+  type ComposeImageOptions,
+  type CompositionTemplate,
   type ImagePipelineResult,
   type CarouselPipelineResult,
   type BrandingConfig,
@@ -61,6 +66,9 @@ export class MediaEngineService {
     } else if (imageProvider === 'pollinations' || (!imageApiKey && imageProvider !== 'dalle')) {
       imageGen = new PollinationsImageAdapter();
       this.logger.log('Fallback: PollinationsImageAdapter from env vars');
+    } else if (imageProvider === 'replicate' && imageApiKey) {
+      imageGen = new ReplicateImageAdapter({ apiToken: imageApiKey });
+      this.logger.log('Fallback: ReplicateImageAdapter from env vars');
     } else {
       imageGen = new MockImageAdapter();
       this.logger.warn('Fallback: MockImageAdapter — set IMAGE_GEN_PROVIDER');
@@ -133,6 +141,7 @@ export class MediaEngineService {
         if (provider === 'dalle') return new DallEImageAdapter({ apiKey: payload.apiKey });
         if (provider === 'huggingface') return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
         if (provider === 'pollinations') return new PollinationsImageAdapter();
+        if (provider === 'replicate') return new ReplicateImageAdapter({ apiToken: payload.apiKey });
         // Default: huggingface if we have a key
         return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
       }
@@ -216,6 +225,36 @@ export class MediaEngineService {
 
     const branding = this.extractBranding(brand);
 
+    // 2b. Cargar BusinessProfile + UserMedia para contenido promocional
+    const businessProfile = await this.prisma.businessProfile.findUnique({
+      where: { workspaceId },
+    }).catch(() => null);
+
+    // Resolve owner userId for UserMedia queries
+    const ownerId = await this.resolveUserId(workspaceId);
+
+    // Cargar logo del workspace (UserMedia con isLogo=true)
+    const logoMedia = ownerId ? await this.prisma.userMedia.findFirst({
+      where: { userId: ownerId, isLogo: true },
+    }).catch(() => null) : null;
+
+    // Cargar productos/media marcados para pipeline
+    const pipelineMedia = ownerId ? await this.prisma.userMedia.findMany({
+      where: { userId: ownerId, useInPipeline: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }).catch(() => []) : [];
+
+    // Detectar si el tema es promocional
+    const theme = brief.themeId
+      ? await this.prisma.contentTheme.findUnique({ where: { id: brief.themeId } })
+      : null;
+    const isPromotional = theme && [
+      'PRODUCT', 'SERVICE', 'OFFER', 'SEASONAL', 'ANNOUNCEMENT',
+    ].includes(theme.type);
+
+    const logoUrl = logoMedia?.url ?? branding.logoUrl ?? null;
+
     // Build per-request pipeline from DB credentials (fallback to env)
     const pipeline = await this.getPipeline(workspaceId);
     const llm = await this.getLlm(workspaceId);
@@ -268,9 +307,58 @@ export class MediaEngineService {
         });
         mediaAssetIds.push(asset.id);
       }
+    } else if (isPromotional && pipelineMedia.length > 0) {
+      // === PROMOTIONAL PATH: Use user's own product images + ImageComposer ===
+      try {
+        const composedAsset = await this.generatePromotionalImage(
+          mainVersion, brief, theme, pipelineMedia, logoUrl, businessProfile, branding,
+        );
+        const asset = await this.prisma.mediaAsset.create({
+          data: {
+            contentVersionId: mainVersion.id,
+            type: 'IMAGE',
+            provider: 'image-composer',
+            originalUrl: composedAsset.url,
+            optimizedUrl: composedAsset.url,
+            status: 'READY',
+            metadata: { template: composedAsset.template, promotional: true } as any,
+          },
+        });
+        mediaAssetIds.push(asset.id);
+      } catch (promoErr) {
+        this.logger.warn(`Promotional composition failed, falling back to AI image: ${promoErr}`);
+        const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
+        const asset = await this.prisma.mediaAsset.create({
+          data: {
+            contentVersionId: mainVersion.id,
+            type: 'IMAGE',
+            prompt: result.prompt,
+            provider: result.provider,
+            originalUrl: result.originalUrl,
+            optimizedUrl: result.optimizedUrl,
+            thumbnailUrl: result.thumbnailUrl,
+            status: 'READY',
+            metadata: (result.metadata ?? {}) as any,
+          },
+        });
+        mediaAssetIds.push(asset.id);
+      }
     } else {
-      // Imagen simple para posts
+      // Standard AI image generation path
       const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
+
+      // If logo available, compose logo overlay on top of the AI image
+      let finalUrl = result.optimizedUrl;
+      if (logoUrl) {
+        try {
+          const composer = new ImageComposer();
+          const composed = composer.composeLogoOverlay(result.optimizedUrl, logoUrl);
+          finalUrl = composed.svgDataUri;
+        } catch {
+          this.logger.warn('Logo overlay failed, using original image');
+        }
+      }
+
       const asset = await this.prisma.mediaAsset.create({
         data: {
           contentVersionId: mainVersion.id,
@@ -278,10 +366,13 @@ export class MediaEngineService {
           prompt: result.prompt,
           provider: result.provider,
           originalUrl: result.originalUrl,
-          optimizedUrl: result.optimizedUrl,
+          optimizedUrl: finalUrl,
           thumbnailUrl: result.thumbnailUrl,
           status: 'READY',
-          metadata: (result.metadata ?? {}) as any,
+          metadata: {
+            ...(result.metadata ?? {}),
+            ...(logoUrl ? { logoOverlay: true } : {}),
+          } as any,
         },
       });
       mediaAssetIds.push(asset.id);
@@ -596,6 +687,132 @@ Máximo 200 palabras.`;
   }
 
   // --- Private helpers ---
+
+  /**
+   * Genera una imagen promocional usando SharpRenderer (raster real) con fallback a SVG.
+   * 1. Intenta composición Sharp (background + product + logo + text → PNG)
+   * 2. Sube el PNG a Cloudinary si disponible
+   * 3. Cae a SVG data URI si Sharp falla o no hay imágenes reales
+   */
+  private async generatePromotionalImage(
+    version: { copy: string; caption: string; hook: string; title: string },
+    brief: { angle: string; tone: string; format: string; cta: string },
+    theme: { type: string; productName?: string | null; productPrice?: string | null; discountText?: string | null } | null,
+    pipelineMedia: Array<{ url: string; productName?: string | null; productPrice?: string | null }>,
+    logoUrl: string | null,
+    businessProfile: { brandColors?: string[]; promotionStyle?: string | null; businessName?: string } | null,
+    branding: Partial<BrandingConfig>,
+  ): Promise<{ url: string; template: string }> {
+    // Select template based on theme type
+    let template: CompositionTemplate = 'product-showcase';
+    const themeType = theme?.type ?? 'PRODUCT';
+    if (themeType === 'OFFER' || themeType === 'SEASONAL') {
+      template = theme?.discountText ? 'offer-banner' : 'price-tag';
+    } else if (themeType === 'ANNOUNCEMENT') {
+      template = 'announcement';
+    } else if (themeType === 'TESTIMONIAL') {
+      template = 'testimonial-card';
+    } else if (themeType === 'SERVICE') {
+      template = 'minimal-product';
+    }
+
+    // Pick the best product image
+    const productMedia = pipelineMedia[0];
+    const productImageUrl = productMedia?.url ?? undefined;
+
+    // Build colors
+    const colors = businessProfile?.brandColors ?? [];
+    const primaryColor = colors[0] ?? branding.primaryColor ?? '#6C63FF';
+    const secondaryColor = colors[1] ?? branding.secondaryColor ?? '#F4F4FF';
+    const accentColor = colors[2] ?? '#FF6B35';
+
+    // Build overlay text
+    const productName = theme?.productName ?? productMedia?.productName ?? version.title;
+    const productPrice = theme?.productPrice ?? productMedia?.productPrice ?? undefined;
+
+    const overlayText = {
+      headline: version.hook || productName || brief.angle,
+      subtitle: version.copy.substring(0, 80),
+      price: productPrice ?? undefined,
+      discount: theme?.discountText ?? undefined,
+      cta: brief.cta || 'Ver más',
+    };
+
+    const brandColors = {
+      primaryColor,
+      secondaryColor,
+      accentColor,
+      textColor: '#FFFFFF',
+      font: 'Arial, Helvetica, sans-serif',
+    };
+
+    // --- Try Sharp-based composition (real pixel compositing) ---
+    if (productImageUrl && !productImageUrl.startsWith('data:')) {
+      try {
+        const sharpRenderer = new SharpRenderer();
+        const rendered = await sharpRenderer.compose({
+          width: 1080,
+          height: 1080,
+          background: primaryColor, // Solid brand color as background
+          productImage: productImageUrl,
+          logoImage: logoUrl ?? undefined,
+          logoPosition: 'top-right',
+          logoSizePercent: 12,
+          productSizePercent: 55,
+          overlayText,
+          branding: brandColors,
+          format: 'png',
+        });
+
+        // Upload to Cloudinary if available
+        const cloudinary = await this.getCloudinaryAdapter();
+        if (cloudinary) {
+          const base64 = `data:image/png;base64,${rendered.buffer.toString('base64')}`;
+          const uploaded = await cloudinary.upload(base64, 'syndra/promotional');
+          this.logger.log(`Sharp composition uploaded to Cloudinary: ${uploaded.secureUrl}`);
+          return { url: uploaded.secureUrl, template: `sharp-${template}` };
+        }
+
+        // No Cloudinary — return as data URI
+        const base64Uri = `data:image/png;base64,${rendered.buffer.toString('base64')}`;
+        return { url: base64Uri, template: `sharp-${template}` };
+      } catch (sharpErr) {
+        this.logger.warn(`Sharp composition failed, falling back to SVG: ${sharpErr}`);
+      }
+    }
+
+    // --- Fallback: SVG composition ---
+    const composer = new ImageComposer();
+    const options: ComposeImageOptions = {
+      template,
+      productImageUrl,
+      logoUrl: logoUrl ?? undefined,
+      overlayText,
+      branding: brandColors,
+      logoPosition: 'top-right',
+    };
+
+    const composed = composer.compose(options);
+
+    return {
+      url: composed.svgDataUri,
+      template,
+    };
+  }
+
+  /**
+   * Get Cloudinary adapter for the current workspace or from env fallback.
+   */
+  private async getCloudinaryAdapter(): Promise<CloudinaryAdapter | null> {
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME', '');
+    const cloudKey = this.config.get<string>('CLOUDINARY_API_KEY', '');
+    const cloudSecret = this.config.get<string>('CLOUDINARY_API_SECRET', '');
+
+    if (cloudName && cloudKey && cloudSecret) {
+      return new CloudinaryAdapter({ cloudName, apiKey: cloudKey, apiSecret: cloudSecret });
+    }
+    return null;
+  }
 
   /**
    * Genera una imagen para un post usando LLM para crear un prompt rico y contextual.

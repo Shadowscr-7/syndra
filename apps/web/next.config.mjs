@@ -15,6 +15,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'res.cloudinary.com' },
       { protocol: 'https', hostname: 'placehold.co' },
       { protocol: 'https', hostname: 'image.pollinations.ai' },
+      { protocol: 'https', hostname: 'images.unsplash.com' },
     ],
   },
 };

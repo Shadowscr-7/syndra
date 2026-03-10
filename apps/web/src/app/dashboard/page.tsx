@@ -54,11 +54,19 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="page-header animate-fade-in">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">
-          Resumen del pipeline editorial y métricas clave.
-        </p>
+      <div className="page-header animate-fade-in flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">
+            Resumen del pipeline editorial y métricas clave.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/create-promotion"
+          className="btn-primary text-sm flex items-center gap-2 shrink-0"
+        >
+          🚀 Crear Promoción
+        </Link>
       </div>
 
       {!dbOk && (

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -27,7 +27,7 @@ export class CampaignsService {
   }
 
   async findById(id: string) {
-    return this.prisma.campaign.findUnique({
+    const campaign = await this.prisma.campaign.findUnique({
       where: { id },
       include: {
         editorialRuns: {
@@ -35,6 +35,87 @@ export class CampaignsService {
           take: 10,
         },
       },
+    });
+    if (!campaign) throw new NotFoundException(`Campaign ${id} not found`);
+    return campaign;
+  }
+
+  async create(data: {
+    workspaceId: string;
+    name: string;
+    objective: string;
+    offer?: string;
+    landingUrl?: string;
+    startDate: string;
+    endDate?: string;
+    kpiTarget?: string;
+    contentProfileId?: string;
+    userPersonaId?: string;
+    targetChannels?: string[];
+    operationMode?: string;
+  }) {
+    return this.prisma.campaign.create({
+      data: {
+        workspaceId: data.workspaceId,
+        name: data.name,
+        objective: data.objective as any,
+        offer: data.offer,
+        landingUrl: data.landingUrl,
+        startDate: new Date(data.startDate),
+        endDate: data.endDate ? new Date(data.endDate) : null,
+        kpiTarget: data.kpiTarget,
+        contentProfileId: data.contentProfileId,
+        userPersonaId: data.userPersonaId,
+        targetChannels: data.targetChannels ?? ['instagram'],
+        operationMode: data.operationMode as any ?? null,
+      },
+    });
+  }
+
+  async update(id: string, data: {
+    name?: string;
+    objective?: string;
+    offer?: string;
+    landingUrl?: string;
+    startDate?: string;
+    endDate?: string | null;
+    kpiTarget?: string;
+    contentProfileId?: string | null;
+    userPersonaId?: string | null;
+    targetChannels?: string[];
+    operationMode?: string | null;
+    isActive?: boolean;
+  }) {
+    await this.findById(id); // throws if not found
+    return this.prisma.campaign.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.objective !== undefined && { objective: data.objective as any }),
+        ...(data.offer !== undefined && { offer: data.offer }),
+        ...(data.landingUrl !== undefined && { landingUrl: data.landingUrl }),
+        ...(data.startDate !== undefined && { startDate: new Date(data.startDate) }),
+        ...(data.endDate !== undefined && { endDate: data.endDate ? new Date(data.endDate) : null }),
+        ...(data.kpiTarget !== undefined && { kpiTarget: data.kpiTarget }),
+        ...(data.contentProfileId !== undefined && { contentProfileId: data.contentProfileId }),
+        ...(data.userPersonaId !== undefined && { userPersonaId: data.userPersonaId }),
+        ...(data.targetChannels !== undefined && { targetChannels: data.targetChannels }),
+        ...(data.operationMode !== undefined && { operationMode: data.operationMode as any }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+      },
+    });
+  }
+
+  async remove(id: string) {
+    await this.findById(id); // throws if not found
+    return this.prisma.campaign.delete({ where: { id } });
+  }
+
+  async toggleActive(id: string) {
+    const campaign = await this.findById(id);
+    return this.prisma.campaign.update({
+      where: { id },
+      data: { isActive: !campaign.isActive },
     });
   }
 

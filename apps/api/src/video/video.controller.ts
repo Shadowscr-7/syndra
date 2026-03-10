@@ -2,13 +2,15 @@
 // Video Controller — REST endpoints para gestión de videos
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards, UseInterceptors } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
 import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
+import { UseCredits, CreditGuard } from '../credits/credit.guard';
+import { CreditInterceptor } from '../credits/credit.interceptor';
 
-@Controller('api/videos')
+@Controller('videos')
 @UseGuards(PlanLimitsGuard)
 @RequireFeature('video')
 export class VideoController {
@@ -19,6 +21,8 @@ export class VideoController {
     private readonly tierRouter: VideoTierRouterService,
     private readonly credits: VideoCreditService,
   ) {}
+
+  // ── Rutas estáticas (ANTES de :id para evitar colisiones) ──
 
   /**
    * GET /api/videos — Lista video assets de un workspace
@@ -45,52 +49,46 @@ export class VideoController {
   }
 
   /**
-   * GET /api/videos/:id — Detalle de un video asset
+   * GET /api/videos/providers — Proveedores disponibles
    */
-  @Get(':id')
-  async getVideo(@Param('id') id: string) {
-    return this.videoService.getVideoAsset(id);
+  @Get('providers')
+  async getProviders() {
+    return this.tierRouter.getAvailableProviders();
   }
 
   /**
-   * POST /api/videos/generate — Genera video desde un editorial run
+   * GET /api/videos/credits — Créditos de video del workspace
    */
-  @Post('generate')
-  @PlanCheck('VIDEOS')
-  async generateVideo(
-    @Body() body: {
-      editorialRunId: string;
-      workspaceId: string;
-      mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion';
-      avatarId?: string;
-      voiceId?: string;
-    },
-  ) {
-    this.logger.log(`Generate video for run ${body.editorialRunId}`);
-    return this.videoService.generateVideoFromRun(
-      body.editorialRunId,
-      body.workspaceId,
-      {
-        mode: body.mode,
-        avatarId: body.avatarId,
-        voiceId: body.voiceId,
-      },
-    );
+  @Get('credits')
+  async getCredits(@Query('workspaceId') workspaceId = 'default') {
+    return this.credits.getCurrentCredits(workspaceId);
   }
 
   /**
-   * POST /api/videos/convert/:editorialRunId — Convierte contenido a video
+   * GET /api/videos/credits/history — Historial de créditos
    */
-  @Post('convert/:editorialRunId')
-  @PlanCheck('VIDEOS')
-  async convertToVideo(
-    @Param('editorialRunId') editorialRunId: string,
-    @Body() body?: { mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion' },
+  @Get('credits/history')
+  async getCreditHistory(@Query('workspaceId') workspaceId = 'default') {
+    return this.credits.getCreditHistory(workspaceId);
+  }
+
+  /**
+   * GET /api/videos/render — Lista render jobs
+   */
+  @Get('render')
+  async listRenderJobs(
+    @Query('workspaceId') workspaceId = 'default',
+    @Query('limit') limit?: string,
   ) {
-    this.logger.log(`Convert to video: run ${editorialRunId}`);
-    return this.videoService.convertToVideo(editorialRunId, {
-      mode: body?.mode,
-    });
+    return this.credits.getRenderJobs(workspaceId, limit ? Number(limit) : undefined);
+  }
+
+  /**
+   * GET /api/videos/render/:jobId — Poll render status
+   */
+  @Get('render/:jobId')
+  async pollRender(@Param('jobId') jobId: string) {
+    return this.tierRouter.pollRenderJob(jobId);
   }
 
   /**
@@ -123,13 +121,68 @@ export class VideoController {
     return this.videoService.exportScriptAsPost(editorialRunId, mode);
   }
 
-  // ── Tier Router endpoints (#21) ────────────────────────
+  // ── Rutas con parámetro dinámico (al final) ────────────
 
-  @Get('providers')
-  async getProviders() {
-    return this.tierRouter.getAvailableProviders();
+  /**
+   * GET /api/videos/:id — Detalle de un video asset
+   */
+  @Get(':id')
+  async getVideo(@Param('id') id: string) {
+    return this.videoService.getVideoAsset(id);
   }
 
+  // ── POST endpoints ─────────────────────────────────────
+
+  /**
+   * POST /api/videos/generate — Genera video desde un editorial run
+   */
+  @Post('generate')
+  @PlanCheck('VIDEOS')
+  @UseCredits('VIDEO_REEL_15S')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
+  async generateVideo(
+    @Body() body: {
+      editorialRunId: string;
+      workspaceId: string;
+      mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion';
+      avatarId?: string;
+      voiceId?: string;
+    },
+  ) {
+    this.logger.log(`Generate video for run ${body.editorialRunId}`);
+    return this.videoService.generateVideoFromRun(
+      body.editorialRunId,
+      body.workspaceId,
+      {
+        mode: body.mode,
+        avatarId: body.avatarId,
+        voiceId: body.voiceId,
+      },
+    );
+  }
+
+  /**
+   * POST /api/videos/convert/:editorialRunId — Convierte contenido a video
+   */
+  @Post('convert/:editorialRunId')
+  @PlanCheck('VIDEOS')
+  @UseCredits('VIDEO_REEL_10S')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
+  async convertToVideo(
+    @Param('editorialRunId') editorialRunId: string,
+    @Body() body?: { mode?: 'news' | 'educational' | 'cta' | 'hybrid_motion' },
+  ) {
+    this.logger.log(`Convert to video: run ${editorialRunId}`);
+    return this.videoService.convertToVideo(editorialRunId, {
+      mode: body?.mode,
+    });
+  }
+
+  /**
+   * POST /api/videos/render — Crear render job
+   */
   @Post('render')
   @PlanCheck('VIDEOS')
   async createRenderJob(
@@ -142,9 +195,10 @@ export class VideoController {
       script?: string;
       duration?: number;
       aspectRatio?: string;
+      imageUrl?: string;
+      motionPrompt?: string;
     },
   ) {
-    // Consume credits first
     const tier = (body.tier ?? 'MVP') as any;
     await this.credits.consumeCredits(body.workspaceId, tier);
 
@@ -153,37 +207,20 @@ export class VideoController {
       editorialRunId: body.editorialRunId,
       tier,
       provider: body.provider as any,
-      inputType: body.inputType ?? 'SCRIPT',
-      inputPayload: { script: body.script, duration: body.duration },
+      inputType: body.imageUrl ? 'IMAGE_TO_VIDEO' : (body.inputType ?? 'SCRIPT'),
+      inputPayload: {
+        script: body.script,
+        duration: body.duration,
+        imageUrl: body.imageUrl,
+        motionPrompt: body.motionPrompt,
+      },
       options: { aspectRatio: body.aspectRatio ?? '9:16' },
     });
   }
 
-  @Get('render/:jobId')
-  async pollRender(@Param('jobId') jobId: string) {
-    return this.tierRouter.pollRenderJob(jobId);
-  }
-
-  @Get('render')
-  async listRenderJobs(
-    @Query('workspaceId') workspaceId = 'default',
-    @Query('limit') limit?: string,
-  ) {
-    return this.credits.getRenderJobs(workspaceId, limit ? Number(limit) : undefined);
-  }
-
-  // ── Credit endpoints ───────────────────────────────────
-
-  @Get('credits')
-  async getCredits(@Query('workspaceId') workspaceId = 'default') {
-    return this.credits.getCurrentCredits(workspaceId);
-  }
-
-  @Get('credits/history')
-  async getCreditHistory(@Query('workspaceId') workspaceId = 'default') {
-    return this.credits.getCreditHistory(workspaceId);
-  }
-
+  /**
+   * POST /api/videos/credits/add — Agregar créditos manualmente
+   */
   @Post('credits/add')
   async addCredits(@Body() body: { workspaceId: string; amount: number }) {
     return this.credits.addCredits(body.workspaceId, body.amount);

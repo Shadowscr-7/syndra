@@ -6,6 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
+import { BusinessProfileService } from '../business-profile/business-profile.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -50,6 +51,7 @@ export class ContentService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    private readonly businessProfileService: BusinessProfileService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
@@ -172,13 +174,19 @@ export class ContentService {
 
     // 3. Generar copy según formato
     const llm = await this.getLlm(workspaceId);
+    const businessCtx = await this.businessProfileService.buildPromptContext(workspaceId);
+    const businessCtxForCopy = {
+      industryContext: businessCtx.industryContext,
+      businessContext: businessCtx.businessContext,
+      logoUrl: businessCtx.logoUrl ?? null,
+    };
     let mainCopy: GeneratedCopy;
     const formatLower = brief.format.toLowerCase();
 
     if (formatLower === 'carousel') {
-      mainCopy = await this.generateCarouselCopy(brief, brand, personaCtx, profileCtx, llm);
+      mainCopy = await this.generateCarouselCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy);
     } else {
-      mainCopy = await this.generatePostCopy(brief, brand, personaCtx, profileCtx, llm);
+      mainCopy = await this.generatePostCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy);
     }
 
     // 4. Crear ContentVersion principal (v1)
@@ -389,6 +397,7 @@ export class ContentService {
     persona?: any,
     contentProfile?: any,
     llm?: LLMAdapter,
+    businessCtx?: { industryContext: string; businessContext: string; logoUrl: string | null },
   ): Promise<GeneratedCopy> {
     const adapter = llm ?? this.fallbackLlm;
     const prompt = buildPostCopyPrompt({
@@ -402,6 +411,8 @@ export class ContentService {
       hashtagLimit: INSTAGRAM_LIMITS.HASHTAGS_MAX,
       persona,
       contentProfile,
+      industryContext: businessCtx?.industryContext,
+      businessContext: businessCtx?.businessContext,
     });
 
     const response = await adapter.complete(prompt, {
@@ -418,6 +429,7 @@ export class ContentService {
     persona?: any,
     contentProfile?: any,
     llm?: LLMAdapter,
+    businessCtx?: { industryContext: string; businessContext: string; logoUrl: string | null },
   ): Promise<GeneratedCopy> {
     const adapter = llm ?? this.fallbackLlm;
     const prompt = buildCarouselCopyPrompt({
@@ -430,6 +442,8 @@ export class ContentService {
       slideCount: 8,
       persona,
       contentProfile,
+      industryContext: businessCtx?.industryContext,
+      businessContext: businessCtx?.businessContext,
     });
 
     const response = await adapter.complete(prompt, {
