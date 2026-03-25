@@ -28,8 +28,8 @@ export function ProductMediaList() {
 
   const loadMedia = useCallback(async () => {
     try {
-      const data = await apiFetch<ProductMedia[]>('/user-media');
-      setMedia(data ?? []);
+      const res = await apiFetch<{ data: ProductMedia[] }>('/user-media');
+      setMedia(Array.isArray(res) ? res : res?.data ?? []);
     } catch {
       setMedia([]);
     } finally {
