@@ -331,7 +331,8 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
       setProfiles((profData.data ?? []).map((p: any) => ({ id: p.id, name: p.name })));
       if (campRes.ok) {
         const campData = await campRes.json();
-        setCampaigns(campData.data ?? []);
+        const campList = campData.data ?? campData;
+        setCampaigns(Array.isArray(campList) ? campList : []);
       }
     } catch {
       toast('err', 'Error al cargar horarios');
@@ -641,7 +642,8 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
       setBatches(batchData.data ?? []);
       if (campRes.ok) {
         const campData = await campRes.json();
-        setCampaigns(campData.data ?? []);
+        const campList = campData.data ?? campData;
+        setCampaigns(Array.isArray(campList) ? campList : []);
       }
     } catch {
       toast('err', 'Error al cargar planificador');
