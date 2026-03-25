@@ -118,29 +118,23 @@ export class SchedulerService {
   }
 
   /**
-   * Cron cada 15 minutos: verifica slots de PublishSchedule próximos.
-   * Si un slot coincide en los próximos 30 min con el día/hora actual,
-   * lanza un editorial run automático para ese workspace.
+   * Cron cada 5 minutos: verifica slots de PublishSchedule próximos.
+   * Para cada slot que coincide con el día/hora actual (en la timezone del schedule),
+   * lanza un editorial run automático con el perfil y campaña configurados.
    */
-  @Cron('*/15 * * * *', { name: 'publish-schedule-check' })
+  @Cron('*/5 * * * *', { name: 'publish-schedule-check' })
   async checkPublishScheduleSlots() {
     this.logger.log('⏰ Checking publish schedule slots...');
 
     try {
-      // Get current time info
       const now = new Date();
-      const currentDay = now.getDay(); // 0=Sunday
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
 
-      // Convert current day to enum name
+      // Get all days of the week (some timezones might be in a different day)
       const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-      const todayEnum = dayNames[currentDay];
 
-      // Find active schedule slots for today
+      // Find all active schedule slots
       const slots = await this.prisma.scheduleSlot.findMany({
         where: {
-          dayOfWeek: todayEnum as any,
           schedule: {
             isActive: true,
           },
@@ -153,21 +147,13 @@ export class SchedulerService {
                   workspaces: {
                     where: { isDefault: true },
                     include: {
-                      workspace: {
-                        include: {
-                          campaigns: {
-                            where: {
-                              isActive: true,
-                              startDate: { lte: now },
-                              OR: [{ endDate: null }, { endDate: { gte: now } }],
-                            },
-                            take: 1,
-                          },
-                        },
-                      },
+                      workspace: true,
                     },
                   },
                 },
+              },
+              campaign: {
+                select: { id: true, name: true, targetChannels: true },
               },
             },
           },
@@ -177,60 +163,88 @@ export class SchedulerService {
       let triggered = 0;
 
       for (const slot of slots) {
+        const workspace = slot.schedule?.user?.workspaces?.[0]?.workspace;
+        if (!workspace) continue;
+
+        // Use the schedule's timezone (or default to America/Mexico_City)
+        const tz = slot.schedule.timezone || 'America/Mexico_City';
+
+        // Get current time in the user's timezone
+        let userNow: Date;
+        try {
+          const nowStr = now.toLocaleString('en-US', { timeZone: tz });
+          userNow = new Date(nowStr);
+        } catch {
+          userNow = now; // fallback if timezone is invalid
+        }
+
+        const currentDay = dayNames[userNow.getDay()];
+        const currentHour = userNow.getHours();
+        const currentMinute = userNow.getMinutes();
+
+        // Check if slot is for today (in user's timezone)
+        if (slot.dayOfWeek !== currentDay) continue;
+
         // Parse slot time "HH:MM"
         const parts = slot.time.split(':').map(Number);
         const slotHour = parts[0] ?? 0;
         const slotMinute = parts[1] ?? 0;
 
-        // Check if slot is within the next 15 minutes (matches this cron interval)
+        // Check if slot is within the current 5-minute window
         const slotTotalMin = slotHour * 60 + slotMinute;
         const nowTotalMin = currentHour * 60 + currentMinute;
         const diff = slotTotalMin - nowTotalMin;
 
-        // Trigger if slot is 0-15 minutes from now (this cron window)
-        if (diff >= 0 && diff < 15) {
-          const workspace = slot.schedule?.user?.workspaces?.[0]?.workspace;
-          if (!workspace) continue;
+        if (diff < 0 || diff >= 5) continue;
 
-          // Check if we already have a run today for this workspace
-          const todayStart = new Date(now);
-          todayStart.setHours(0, 0, 0, 0);
+        // Check if we already triggered THIS specific slot today
+        // Use origin format "schedule:slotId" to allow multiple runs per day per workspace
+        const slotOrigin = `schedule:${slot.id}`;
 
-          const existingRun = await this.prisma.editorialRun.findFirst({
-            where: {
-              workspaceId: workspace.id,
-              origin: 'schedule',
-              createdAt: { gte: todayStart },
-            },
+        const todayStartUTC = new Date(now);
+        todayStartUTC.setUTCHours(0, 0, 0, 0);
+
+        const existingRun = await this.prisma.editorialRun.findFirst({
+          where: {
+            workspaceId: workspace.id,
+            origin: slotOrigin,
+            createdAt: { gte: todayStartUTC },
+          },
+        });
+
+        if (existingRun) {
+          this.logger.debug(
+            `Skipping slot ${slot.id} (${slot.time}) — already triggered today`,
+          );
+          continue;
+        }
+
+        try {
+          // Use the schedule's campaign, or fall back to channels from slot
+          const campaignId = slot.schedule.campaignId || undefined;
+          const targetChannels = slot.socialAccountIds?.length
+            ? slot.socialAccountIds
+            : slot.schedule.campaign?.targetChannels?.length
+              ? slot.schedule.campaign.targetChannels
+              : workspace.activeChannels;
+
+          const { editorialRunId } = await this.orchestrator.createRun({
+            workspaceId: workspace.id,
+            campaignId,
+            contentProfileId: slot.schedule.contentProfileId || undefined,
+            origin: slotOrigin,
+            targetChannels,
           });
 
-          if (existingRun) {
-            this.logger.debug(
-              `Skipping scheduled run for ${workspace.name} — already has run today`,
-            );
-            continue;
-          }
-
-          try {
-            const { editorialRunId } = await this.orchestrator.createRun({
-              workspaceId: workspace.id,
-              campaignId: workspace.campaigns?.[0]?.id,
-              origin: 'schedule',
-              targetChannels: slot.socialAccountIds?.length
-                ? slot.socialAccountIds
-                : workspace.activeChannels,
-            });
-
-            this.logger.log(
-              `📅 Scheduled run ${editorialRunId} for ${workspace.name} (slot ${slot.time})`,
-            );
-            triggered++;
-          } catch (error) {
-            this.logger.error(
-              `Failed to create scheduled run for ${workspace.name}:`,
-              error,
-            );
-          }
+          this.logger.log(
+            `📅 Scheduled run ${editorialRunId} for ${workspace.name} (slot ${slot.dayOfWeek} ${slot.time}, tz: ${tz})`,
+          );
+          triggered++;
+        } catch (error) {
+          this.logger.error(
+            `Failed to create scheduled run for ${workspace.name} (slot ${slot.time}):`,
+            error,
+          );
         }
       }
 
