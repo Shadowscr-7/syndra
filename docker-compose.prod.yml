@@ -120,6 +120,7 @@ services:
       API_URL: http://api:3001
       INTERNAL_API_URL: http://api:3001
       NEXT_PUBLIC_API_URL: https://syndra.aivanguardlabs.com/api
+      NEXT_PUBLIC_URL: https://syndra.aivanguardlabs.com
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-syndra}
 
       # Supabase
@@ -137,6 +138,12 @@ services:
       - "traefik.http.routers.syndra-web.tls.certresolver=letsencrypt"
       - "traefik.http.routers.syndra-web.priority=10"
       - "traefik.http.services.syndra-web.loadbalancer.server.port=3002"
+      # Router para Next.js API routes (Meta OAuth) — prioridad mayor que NestJS API
+      - "traefik.http.routers.syndra-web-api.rule=Host(`syndra.aivanguardlabs.com`) && PathPrefix(`/api/auth/meta`)"
+      - "traefik.http.routers.syndra-web-api.entrypoints=websecure"
+      - "traefik.http.routers.syndra-web-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.syndra-web-api.priority=30"
+      - "traefik.http.routers.syndra-web-api.service=syndra-web"
 
 volumes:
   pgdata:
