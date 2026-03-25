@@ -39,6 +39,8 @@ interface WeeklyPlanConfig {
   musicEnabled?: boolean;
   musicStyle?: string;
   musicPrompt?: string;
+  campaignId?: string;
+  campaign?: { id: string; name: string; targetChannels: string[]; musicEnabled?: boolean; musicStyle?: string; musicPrompt?: string };
 }
 
 interface CostEstimate {
@@ -594,6 +596,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const { addTask, runningCount } = useBackgroundTasks();
   const [configs, setConfigs] = useState<WeeklyPlanConfig[]>([]);
   const [batches, setBatches] = useState<WeeklyBatch[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; targetChannels: string[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editingConfig, setEditingConfig] = useState<WeeklyPlanConfig | null>(null);
@@ -612,9 +615,10 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const fetchAll = useCallback(async () => {
     try {
-      const [cfgRes, batchRes] = await Promise.all([
+      const [cfgRes, batchRes, campRes] = await Promise.all([
         fetch('/api/weekly-planner/configs'),
         fetch('/api/weekly-planner/batches'),
+        fetch('/api/campaigns'),
       ]);
       if (cfgRes.status === 403 || batchRes.status === 403) {
         setProBlocked(true);
@@ -624,6 +628,10 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
       const batchData = await batchRes.json();
       setConfigs(cfgData.data ?? []);
       setBatches(batchData.data ?? []);
+      if (campRes.ok) {
+        const campData = await campRes.json();
+        setCampaigns(campData.data ?? []);
+      }
     } catch {
       toast('err', 'Error al cargar planificador');
     } finally {
@@ -918,7 +926,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
       </div>
 
       {showCreate && (
-        <PlannerConfigForm onSave={handleCreateConfig} onCancel={() => setShowCreate(false)} />
+        <PlannerConfigForm campaigns={campaigns} onSave={handleCreateConfig} onCancel={() => setShowCreate(false)} />
       )}
 
       {loading ? (
@@ -968,6 +976,11 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
                       🎵 {config.musicStyle ?? 'upbeat'}
                     </span>
                   )}
+                  {config.campaign && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                      🎯 {config.campaign.name}
+                    </span>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -996,7 +1009,8 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
                 </div>
                 <div>
                   <span className="font-medium">Canales:</span>{' '}
-                  {config.targetChannels.map(c => CHANNELS.find(ch => ch.value === c)?.icon ?? c).join(' ')}
+                  {(config.campaign?.targetChannels ?? config.targetChannels).map(c => CHANNELS.find(ch => ch.value === c)?.icon ?? c).join(' ')}
+                  {config.campaign && <span className="text-[10px] ml-1" style={{ color: 'var(--color-text-muted)' }}>(campaña)</span>}
                 </div>
                 <div>
                   <span className="font-medium">Zona:</span> {config.timezone}
@@ -1026,6 +1040,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
               <div className="w-full max-w-lg">
                 <PlannerConfigForm
                   initial={editingConfig}
+                  campaigns={campaigns}
                   onSave={(data) => handleUpdateConfig(editingConfig.id, data)}
                   onCancel={() => setEditingConfig(null)}
                 />
@@ -1767,10 +1782,12 @@ function SlotForm({
 
 function PlannerConfigForm({
   initial,
+  campaigns,
   onSave,
   onCancel,
 }: {
   initial?: WeeklyPlanConfig;
+  campaigns?: { id: string; name: string; targetChannels: string[] }[];
   onSave: (data: any) => void;
   onCancel: () => void;
 }) {
@@ -1786,6 +1803,10 @@ function PlannerConfigForm({
   const [musicEnabled, setMusicEnabled] = useState(initial?.musicEnabled ?? false);
   const [musicStyle, setMusicStyle] = useState(initial?.musicStyle ?? 'upbeat');
   const [musicPrompt, setMusicPrompt] = useState(initial?.musicPrompt ?? '');
+  const [campaignId, setCampaignId] = useState(initial?.campaignId ?? '');
+
+  const selectedCampaign = campaigns?.find((c) => c.id === campaignId);
+  const hasCampaign = !!selectedCampaign;
 
   const toggleDay = (list: string[], day: string) =>
     list.includes(day) ? list.filter((d) => d !== day) : [...list, day];
@@ -1801,6 +1822,39 @@ function PlannerConfigForm({
         <label className="input-label">Nombre</label>
         <input className="input-field" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
+
+      {/* Campaign selection */}
+      {campaigns && campaigns.length > 0 && (
+        <div>
+          <label className="input-label">Campaña (opcional)</label>
+          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            Si vinculas una campaña, se heredan canales, persona, perfil de contenido, temas y música automáticamente.
+          </p>
+          <select
+            className="input-field"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+          >
+            <option value="">Sin campaña</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {hasCampaign && (
+            <div className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Canales de campaña:</span>
+              <div className="flex gap-2">
+                {selectedCampaign!.targetChannels.map((ch) => (
+                  <span key={ch} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                    {CHANNELS.find((c) => c.value === ch)?.icon ?? '📡'} {ch}
+                  </span>
+                ))}
+              </div>
+              <span className="text-[10px] ml-auto" style={{ color: 'var(--color-text-muted)' }}>Heredado</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content Mode */}
       <div>
@@ -1938,25 +1992,28 @@ function PlannerConfigForm({
         <input type="time" className="input-field w-32" value={publishTime} onChange={(e) => setPublishTime(e.target.value)} />
       </div>
 
-      <div>
-        <label className="input-label">Canales</label>
-        <div className="flex flex-wrap gap-2">
-          {CHANNELS.map((ch) => (
-            <button
-              key={ch.value}
-              onClick={() => toggleChannel(ch.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                channels.includes(ch.value)
-                  ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
-                  : 'bg-white/5 border border-transparent hover:bg-white/10'
-              }`}
-              style={{ color: channels.includes(ch.value) ? undefined : 'var(--color-text-muted)' }}
-            >
-              {ch.icon} {ch.label}
-            </button>
-          ))}
+      {/* Channels — hidden when campaign is selected (uses campaign's channels) */}
+      {!hasCampaign && (
+        <div>
+          <label className="input-label">Canales</label>
+          <div className="flex flex-wrap gap-2">
+            {CHANNELS.map((ch) => (
+              <button
+                key={ch.value}
+                onClick={() => toggleChannel(ch.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                  channels.includes(ch.value)
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                    : 'bg-white/5 border border-transparent hover:bg-white/10'
+                }`}
+                style={{ color: channels.includes(ch.value) ? undefined : 'var(--color-text-muted)' }}
+              >
+                {ch.icon} {ch.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="input-label">Zona horaria</label>
@@ -1965,7 +2022,8 @@ function PlannerConfigForm({
         </select>
       </div>
 
-      {/* Music Generation */}
+      {/* Music Generation — hidden when campaign is selected (music comes from campaign) */}
+      {!hasCampaign && (
       <div>
         <label className="input-label">🎵 Música de fondo</label>
         <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
@@ -2026,12 +2084,13 @@ function PlannerConfigForm({
           </div>
         )}
       </div>
+      )}
 
       <div className="flex gap-3 pt-2">
         <button
-          onClick={() => onSave({ name, contentMode, approvalMode, plannerRunDays, plannerRunTime, publishDays, publishTime, targetChannels: channels, timezone, musicEnabled, musicStyle: musicEnabled ? musicStyle : undefined, musicPrompt: musicEnabled ? musicPrompt : undefined })}
+          onClick={() => onSave({ name, contentMode, approvalMode, plannerRunDays, plannerRunTime, publishDays, publishTime, targetChannels: channels, timezone, musicEnabled, musicStyle: musicEnabled ? musicStyle : undefined, musicPrompt: musicEnabled ? musicPrompt : undefined, campaignId: campaignId || undefined })}
           className="btn-primary text-sm"
-          disabled={publishDays.length === 0 || plannerRunDays.length === 0 || channels.length === 0}
+          disabled={publishDays.length === 0 || plannerRunDays.length === 0 || (!hasCampaign && channels.length === 0)}
         >
           {initial ? 'Guardar cambios' : 'Crear planificador'}
         </button>

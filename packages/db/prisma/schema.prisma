@@ -327,8 +327,9 @@ model Campaign {
   workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contentProfile ContentProfile? @relation(fields: [contentProfileId], references: [id], onDelete: SetNull)
   userPersona    UserPersona?    @relation(fields: [userPersonaId], references: [id], onDelete: SetNull)
-  editorialRuns  EditorialRun[]
-  campaignThemes CampaignTheme[]
+  editorialRuns      EditorialRun[]
+  campaignThemes     CampaignTheme[]
+  weeklyPlanConfigs  WeeklyPlanConfig[]
 
   @@map("campaigns")
 }
@@ -2243,6 +2244,9 @@ model WeeklyPlanConfig {
   targetChannels   String[] @default(["instagram"]) @map("target_channels")
   timezone         String   @default("America/Mexico_City")
 
+  // Campaña asociada (opcional) — si se define, hereda canales, persona, perfil, temas y música de la campaña
+  campaignId       String?  @map("campaign_id")
+
   // Música de fondo para publicaciones (Reels/Stories/Shorts)
   musicEnabled     Boolean  @default(false) @map("music_enabled")
   musicStyle       String?  @map("music_style") // upbeat | calm | corporate | energetic | cinematic | custom
@@ -2252,9 +2256,11 @@ model WeeklyPlanConfig {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign         Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   batches          WeeklyPlanBatch[]
 
   @@index([workspaceId])
+  @@index([campaignId])
   @@map("weekly_plan_configs")
 }
 

@@ -44,10 +44,7 @@ export async function GET(req: NextRequest) {
     'instagram_content_publish',
     'instagram_manage_insights',
     'instagram_manage_comments',
-    'threads_basic',
-    'threads_content_publish',
     'ads_management',
-    'ads_read',
   ].join(',');
 
   // CSRF protection: use a simple state token (include returnTo for redirect)

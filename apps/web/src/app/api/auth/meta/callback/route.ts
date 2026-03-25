@@ -276,7 +276,7 @@ export async function GET(req: NextRequest) {
       update: {
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish', 'ads_management', 'ads_read'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'ads_management'],
         expiresAt,
       },
       create: {
@@ -284,7 +284,7 @@ export async function GET(req: NextRequest) {
         provider: 'META',
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish', 'ads_management', 'ads_read'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'ads_management'],
         expiresAt,
       },
     });

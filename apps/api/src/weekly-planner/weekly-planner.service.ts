@@ -38,6 +38,7 @@ interface CreateConfigDto {
   musicEnabled?: boolean;
   musicStyle?: string;  // upbeat | calm | corporate | energetic | cinematic
   musicPrompt?: string; // Custom description for music generation
+  campaignId?: string;  // Optional campaign — inherits channels, persona, profile, themes, music
 }
 
 interface UpdateConfigDto extends Partial<CreateConfigDto> {
@@ -83,6 +84,7 @@ export class WeeklyPlannerService {
         musicEnabled: dto.musicEnabled ?? false,
         musicStyle: dto.musicStyle ?? null,
         musicPrompt: dto.musicPrompt ?? null,
+        campaignId: dto.campaignId ?? null,
       },
     });
   }
@@ -109,6 +111,7 @@ export class WeeklyPlannerService {
         ...(dto.musicEnabled !== undefined && { musicEnabled: dto.musicEnabled }),
         ...(dto.musicStyle !== undefined && { musicStyle: dto.musicStyle || null }),
         ...(dto.musicPrompt !== undefined && { musicPrompt: dto.musicPrompt || null }),
+        ...(dto.campaignId !== undefined && { campaignId: dto.campaignId || null }),
       },
     });
   }
@@ -126,6 +129,7 @@ export class WeeklyPlannerService {
     return this.prisma.weeklyPlanConfig.findMany({
       where: { workspaceId },
       include: {
+        campaign: { select: { id: true, name: true, targetChannels: true, musicEnabled: true, musicStyle: true, musicPrompt: true } },
         batches: {
           orderBy: { createdAt: 'desc' },
           take: 3,
@@ -552,13 +556,17 @@ export class WeeklyPlannerService {
   async estimateBatchCost(configId: string) {
     const config = await this.prisma.weeklyPlanConfig.findUniqueOrThrow({
       where: { id: configId },
-      include: { workspace: true },
+      include: { workspace: true, campaign: true },
     });
 
     const publishDates = this.getNextPublishDates(config.publishDays as string[], new Date());
     const totalItems = publishDates.length;
 
-    const musicCostPerItem = config.musicEnabled ? (CREDIT_COSTS['MUSIC_BACKGROUND'] ?? 3) : 0;
+    // Use campaign music settings if linked, otherwise config-level
+    const effectiveMusicEnabled = config.campaign?.musicEnabled ?? config.musicEnabled;
+    const effectiveMusicStyle = config.campaign?.musicStyle ?? config.musicStyle;
+
+    const musicCostPerItem = effectiveMusicEnabled ? (CREDIT_COSTS['MUSIC_BACKGROUND'] ?? 3) : 0;
     // Music is only generated for audio-supporting formats (Reels, Stories, etc.)
     // Since formats aren't determined until strategy runs, we estimate the max cost
     const musicCost = musicCostPerItem * totalItems;
@@ -568,8 +576,8 @@ export class WeeklyPlannerService {
 
     return {
       totalItems,
-      musicEnabled: config.musicEnabled,
-      musicStyle: config.musicStyle,
+      musicEnabled: effectiveMusicEnabled,
+      musicStyle: effectiveMusicStyle,
       musicCostPerItem,
       musicCost,
       totalCost,
@@ -588,7 +596,7 @@ export class WeeklyPlannerService {
   async generateBatch(configId: string, skipMusic?: boolean): Promise<string> {
     const config = await this.prisma.weeklyPlanConfig.findUniqueOrThrow({
       where: { id: configId },
-      include: { workspace: true },
+      include: { workspace: true, campaign: true },
     });
 
     // Determine week label (ISO week)
@@ -643,14 +651,17 @@ export class WeeklyPlannerService {
       const { date, dayOfWeek } = publishDates[i]!;
 
       try {
-        // Create editorial run
+        // Create editorial run — if campaign is linked, pass campaignId so orchestrator
+        // inherits channels, persona, profile, and themes from the campaign
         const origin = config.contentMode === 'business'
           ? 'weekly-planner-business'
           : 'weekly-planner';
+        const channels = config.campaign?.targetChannels ?? config.targetChannels;
         const { editorialRunId } = await this.orchestrator.createRun({
           workspaceId: config.workspaceId,
           origin,
-          targetChannels: config.targetChannels,
+          targetChannels: channels,
+          ...(config.campaignId && { campaignId: config.campaignId }),
         });
 
         // Create planned publication
@@ -713,7 +724,7 @@ export class WeeklyPlannerService {
           },
           orderBy: { sortOrder: 'asc' },
         },
-        config: true,
+        config: { include: { campaign: true } },
       },
     });
 
@@ -737,7 +748,12 @@ export class WeeklyPlannerService {
 
     // Auto-generate music for items that are ready (PENDING_REVIEW) and haven't had music triggered yet
     // Only for formats that actually support audio playback
-    if (batch.config?.musicEnabled && !this.skipMusicBatches.has(batchId)) {
+    // Use campaign music settings if linked, otherwise config-level
+    const cfgMusicEnabled = batch.config?.campaign?.musicEnabled ?? batch.config?.musicEnabled;
+    const cfgMusicStyle = batch.config?.campaign?.musicStyle ?? batch.config?.musicStyle;
+    const cfgMusicPrompt = batch.config?.campaign?.musicPrompt ?? batch.config?.musicPrompt;
+
+    if (cfgMusicEnabled && !this.skipMusicBatches.has(batchId)) {
       const readyItems = batch.items.filter(
         (i) => (i.status === 'PENDING_REVIEW' || (i.status === 'GENERATING' && i.editorialRun?.status === 'REVIEW'))
                && !this.musicTriggeredItems.has(i.id)
@@ -745,8 +761,8 @@ export class WeeklyPlannerService {
       );
 
       if (readyItems.length > 0) {
-        const style = batch.config.musicStyle ?? 'upbeat';
-        const prompt = batch.config.musicPrompt ?? undefined;
+        const style = cfgMusicStyle ?? 'upbeat';
+        const prompt = cfgMusicPrompt ?? undefined;
         const musicCost = CREDIT_COSTS['MUSIC_BACKGROUND'] ?? 3;
 
         for (const item of readyItems) {
