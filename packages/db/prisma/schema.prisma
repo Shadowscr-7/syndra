@@ -330,6 +330,7 @@ model Campaign {
   editorialRuns      EditorialRun[]
   campaignThemes     CampaignTheme[]
   weeklyPlanConfigs  WeeklyPlanConfig[]
+  publishSchedules   PublishSchedule[]
 
   @@map("campaigns")
 }
@@ -1347,6 +1348,7 @@ model PublishSchedule {
   id               String   @id @default(cuid())
   userId           String   @map("user_id")
   contentProfileId String?  @map("content_profile_id")
+  campaignId       String?  @map("campaign_id")
   name             String   @default("Mi horario")
   timezone         String   @default("America/Mexico_City")
   operationMode    OperationMode? @map("operation_mode") // Override, null = hereda workspace
@@ -1356,9 +1358,11 @@ model PublishSchedule {
 
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   contentProfile ContentProfile?  @relation(fields: [contentProfileId], references: [id], onDelete: SetNull)
+  campaign       Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   slots          ScheduleSlot[]
 
   @@index([userId])
+  @@index([campaignId])
   @@map("publish_schedules")
 }
 

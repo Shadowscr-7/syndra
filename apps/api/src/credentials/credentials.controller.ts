@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { CredentialsService } from './credentials.service';
 import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
+import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('credentials')
 export class CredentialsController {
@@ -92,16 +93,18 @@ export class CredentialsController {
 
   /** GET /credentials/meta/oauth-status — Check Meta connection */
   @Get('meta/oauth-status')
+  @UseGuards(AuthGuard)
   async metaOAuthStatus(@Req() req: any) {
-    const wsId = req.headers['x-workspace-id'] || 'ws_default';
+    const wsId = req.workspaceId || req.headers['x-workspace-id'] || 'ws_default';
     return this.credentialsService.getMetaOAuthStatus(wsId);
   }
 
   /** DELETE /credentials/meta/oauth — Disconnect Meta */
   @Delete('meta/oauth')
+  @UseGuards(AuthGuard)
   @HttpCode(200)
   async metaDisconnect(@Req() req: any) {
-    const wsId = req.headers['x-workspace-id'] || 'ws_default';
+    const wsId = req.workspaceId || req.headers['x-workspace-id'] || 'ws_default';
     return this.credentialsService.disconnectMeta(wsId);
   }
 

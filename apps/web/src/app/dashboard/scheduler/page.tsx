@@ -20,6 +20,8 @@ interface Schedule {
   isActive: boolean;
   contentProfileId?: string;
   contentProfile?: { id: string; name: string };
+  campaignId?: string;
+  campaign?: { id: string; name: string; targetChannels: string[] };
   slots: ScheduleSlot[];
   createdAt: string;
 }
@@ -310,6 +312,7 @@ export default function SchedulerPage() {
 function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => void }) {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; targetChannels: string[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
@@ -317,14 +320,19 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const fetchAll = useCallback(async () => {
     try {
-      const [schedRes, profRes] = await Promise.all([
+      const [schedRes, profRes, campRes] = await Promise.all([
         fetch('/api/schedules'),
         fetch('/api/profiles'),
+        fetch('/api/campaigns'),
       ]);
       const schedData = await schedRes.json();
       const profData = await profRes.json();
       setSchedules(schedData.data ?? []);
       setProfiles((profData.data ?? []).map((p: any) => ({ id: p.id, name: p.name })));
+      if (campRes.ok) {
+        const campData = await campRes.json();
+        setCampaigns(campData.data ?? []);
+      }
     } catch {
       toast('err', 'Error al cargar horarios');
     } finally {
@@ -439,6 +447,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
       {showCreate && (
         <ScheduleForm
           profiles={profiles}
+          campaigns={campaigns}
           onSave={handleCreate}
           onCancel={() => setShowCreate(false)}
         />
@@ -514,6 +523,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
                       <div className="flex items-center gap-3">
                         <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>{sched.name}</h3>
                         {sched.contentProfile && <span className="chip text-xs">{sched.contentProfile.name}</span>}
+                        {sched.campaign && <span className="chip text-xs" style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981' }}>🎯 {sched.campaign.name}</span>}
                         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>🌍 {sched.timezone}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -578,6 +588,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
             <ScheduleForm
               initial={editingSchedule}
               profiles={profiles}
+              campaigns={campaigns}
               onSave={(data) => handleUpdate(editingSchedule.id, data)}
               onCancel={() => setEditingSchedule(null)}
             />
@@ -1676,17 +1687,20 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 function ScheduleForm({
   initial,
   profiles,
+  campaigns,
   onSave,
   onCancel,
 }: {
   initial?: Schedule;
   profiles: { id: string; name: string }[];
+  campaigns?: { id: string; name: string; targetChannels: string[] }[];
   onSave: (data: any) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [timezone, setTimezone] = useState(initial?.timezone ?? 'America/Mexico_City');
   const [contentProfileId, setContentProfileId] = useState(initial?.contentProfileId ?? '');
+  const [campaignId, setCampaignId] = useState(initial?.campaignId ?? '');
 
   return (
     <div className="glass-card p-5 animate-fade-in">
@@ -1704,17 +1718,27 @@ function ScheduleForm({
             {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
           </select>
         </div>
-        <div className="md:col-span-2">
+        <div>
           <label className="input-label">Perfil de contenido (opcional)</label>
           <select value={contentProfileId} onChange={e => setContentProfileId(e.target.value)} className="input-field text-sm">
             <option value="">— Sin perfil —</option>
             {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+        <div>
+          <label className="input-label">Campaña (opcional)</label>
+          <select value={campaignId} onChange={e => setCampaignId(e.target.value)} className="input-field text-sm">
+            <option value="">— Sin campaña —</option>
+            {campaigns && campaigns.length > 0
+              ? campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+              : <option disabled>No hay campañas creadas</option>
+            }
+          </select>
+        </div>
       </div>
       <div className="flex gap-2 mt-4">
         <button
-          onClick={() => onSave({ name: name || 'Mi horario', timezone, contentProfileId: contentProfileId || undefined })}
+          onClick={() => onSave({ name: name || 'Mi horario', timezone, contentProfileId: contentProfileId || undefined, campaignId: campaignId || undefined })}
           className="btn-primary text-sm"
         >💾 {initial ? 'Guardar' : 'Crear'}</button>
         <button onClick={onCancel} className="btn-ghost text-sm">Cancelar</button>
@@ -1823,39 +1847,6 @@ function PlannerConfigForm({
         <input className="input-field" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
-      {/* Campaign selection */}
-      {campaigns && campaigns.length > 0 && (
-        <div>
-          <label className="input-label">Campaña (opcional)</label>
-          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            Si vinculas una campaña, se heredan canales, persona, perfil de contenido, temas y música automáticamente.
-          </p>
-          <select
-            className="input-field"
-            value={campaignId}
-            onChange={(e) => setCampaignId(e.target.value)}
-          >
-            <option value="">Sin campaña</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          {hasCampaign && (
-            <div className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
-              <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Canales de campaña:</span>
-              <div className="flex gap-2">
-                {selectedCampaign!.targetChannels.map((ch) => (
-                  <span key={ch} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                    {CHANNELS.find((c) => c.value === ch)?.icon ?? '📡'} {ch}
-                  </span>
-                ))}
-              </div>
-              <span className="text-[10px] ml-auto" style={{ color: 'var(--color-text-muted)' }}>Heredado</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Content Mode */}
       <div>
         <label className="input-label">Modo de contenido</label>
@@ -1897,6 +1888,42 @@ function PlannerConfigForm({
           </button>
         </div>
       </div>
+
+      {/* Campaign selection — only for editorial mode */}
+      {contentMode === 'editorial' && (
+        <div>
+          <label className="input-label">🎯 Campaña (opcional)</label>
+          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            Si vinculas una campaña, se heredan canales, persona, perfil de contenido, temas y música automáticamente.
+          </p>
+          <select
+            className="input-field"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+          >
+            <option value="">Sin campaña</option>
+            {campaigns && campaigns.length > 0
+              ? campaigns.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))
+              : <option disabled>No hay campañas creadas</option>
+            }
+          </select>
+          {hasCampaign && (
+            <div className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Canales de campaña:</span>
+              <div className="flex gap-2">
+                {selectedCampaign!.targetChannels.map((ch) => (
+                  <span key={ch} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                    {CHANNELS.find((c) => c.value === ch)?.icon ?? '📡'} {ch}
+                  </span>
+                ))}
+              </div>
+              <span className="text-[10px] ml-auto" style={{ color: 'var(--color-text-muted)' }}>Heredado</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Approval Mode */}
       <div>

@@ -48,6 +48,7 @@ export class SchedulesController {
       name?: string;
       timezone?: string;
       contentProfileId?: string;
+      campaignId?: string;
       isActive?: boolean;
       slots?: Array<{
         dayOfWeek: string;
@@ -73,6 +74,7 @@ export class SchedulesController {
       name?: string;
       timezone?: string;
       contentProfileId?: string;
+      campaignId?: string | null;
       isActive?: boolean;
     },
   ) {

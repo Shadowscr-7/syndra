@@ -1,20 +1,23 @@
-import { Controller, Get, Post, Put, Delete, Param, Patch, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Patch, Body, Query, Req, UseGuards } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { PlanLimitsGuard } from '../plans/plan-limits.guard';
+import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('campaigns')
-@UseGuards(PlanLimitsGuard)
+@UseGuards(AuthGuard, PlanLimitsGuard)
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
 
   @Get()
-  findByWorkspace(@Query('workspaceId') workspaceId: string) {
-    return this.campaignsService.findByWorkspace(workspaceId);
+  findByWorkspace(@Req() req: any, @Query('workspaceId') workspaceId?: string) {
+    const wsId = workspaceId || req.workspaceId;
+    return this.campaignsService.findByWorkspace(wsId);
   }
 
   @Get('active')
-  findActive(@Query('workspaceId') workspaceId: string) {
-    return this.campaignsService.findActive(workspaceId);
+  findActive(@Req() req: any, @Query('workspaceId') workspaceId?: string) {
+    const wsId = workspaceId || req.workspaceId;
+    return this.campaignsService.findActive(wsId);
   }
 
   @Get(':id')

@@ -26,6 +26,7 @@ export class SchedulesService {
       include: {
         slots: { orderBy: [{ dayOfWeek: 'asc' }, { time: 'asc' }] },
         contentProfile: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, targetChannels: true } },
       },
     });
 
@@ -40,6 +41,7 @@ export class SchedulesService {
       include: {
         slots: { orderBy: [{ dayOfWeek: 'asc' }, { time: 'asc' }] },
         contentProfile: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, targetChannels: true } },
       },
     });
 
@@ -61,6 +63,7 @@ export class SchedulesService {
       name?: string;
       timezone?: string;
       contentProfileId?: string;
+      campaignId?: string;
       isActive?: boolean;
       slots?: Array<{
         dayOfWeek: string;
@@ -82,6 +85,7 @@ export class SchedulesService {
         name: data.name ?? 'Mi horario',
         timezone: data.timezone ?? 'America/Mexico_City',
         contentProfileId: data.contentProfileId,
+        campaignId: data.campaignId || null,
         isActive: data.isActive ?? true,
         slots: {
           create: slotsToCreate.map((s) => ({
@@ -95,6 +99,7 @@ export class SchedulesService {
       include: {
         slots: { orderBy: [{ dayOfWeek: 'asc' }, { time: 'asc' }] },
         contentProfile: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, targetChannels: true } },
       },
     });
 
@@ -114,6 +119,7 @@ export class SchedulesService {
       name?: string;
       timezone?: string;
       contentProfileId?: string;
+      campaignId?: string | null;
       isActive?: boolean;
     },
   ) {
@@ -133,6 +139,8 @@ export class SchedulesService {
     if (data.timezone !== undefined) updateData.timezone = data.timezone;
     if (data.contentProfileId !== undefined)
       updateData.contentProfileId = data.contentProfileId;
+    if (data.campaignId !== undefined)
+      updateData.campaignId = data.campaignId || null;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
     const updated = await this.prisma.publishSchedule.update({
@@ -141,6 +149,7 @@ export class SchedulesService {
       include: {
         slots: { orderBy: [{ dayOfWeek: 'asc' }, { time: 'asc' }] },
         contentProfile: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, targetChannels: true } },
       },
     });
 
@@ -299,6 +308,7 @@ export class SchedulesService {
       include: {
         slots: { orderBy: [{ dayOfWeek: 'asc' }, { time: 'asc' }] },
         contentProfile: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, targetChannels: true } },
       },
     });
 
