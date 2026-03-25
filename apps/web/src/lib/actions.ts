@@ -45,47 +45,40 @@ export async function createEditorialRun(formData: FormData) {
 }
 
 export async function approveEditorialRun(formData: FormData) {
-  const session = await requireSession();
   const runId = formData.get('runId') as string;
-
-  await prisma.$transaction([
-    prisma.editorialRun.update({
-      where: { id: runId },
-      data: { status: 'APPROVED' },
-    }),
-    prisma.approvalEvent.create({
-      data: {
-        editorialRunId: runId,
-        action: 'APPROVED',
-        approvedBy: session.email,
-        comment: 'Aprobado desde panel web',
-      },
-    }),
-  ]);
+  const apiUrl = process.env.API_URL || 'http://localhost:3001';
+  try {
+    const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      console.error('[approveEditorialRun] API error:', await res.text().catch(() => ''));
+    }
+  } catch (e) {
+    console.error('[approveEditorialRun] API unreachable:', e);
+  }
 
   revalidatePath(`/dashboard/editorial/${runId}`);
   revalidatePath('/dashboard/editorial');
 }
 
 export async function rejectEditorialRun(formData: FormData) {
-  const session = await requireSession();
   const runId = formData.get('runId') as string;
   const reason = formData.get('reason') as string || 'Rechazado desde panel web';
-
-  await prisma.$transaction([
-    prisma.editorialRun.update({
-      where: { id: runId },
-      data: { status: 'REJECTED' },
-    }),
-    prisma.approvalEvent.create({
-      data: {
-        editorialRunId: runId,
-        action: 'REJECTED',
-        approvedBy: session.email,
-        comment: reason,
-      },
-    }),
-  ]);
+  const apiUrl = process.env.API_URL || 'http://localhost:3001';
+  try {
+    const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      console.error('[rejectEditorialRun] API error:', await res.text().catch(() => ''));
+    }
+  } catch (e) {
+    console.error('[rejectEditorialRun] API unreachable:', e);
+  }
 
   revalidatePath(`/dashboard/editorial/${runId}`);
   revalidatePath('/dashboard/editorial');
