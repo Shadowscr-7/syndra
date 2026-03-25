@@ -44,6 +44,7 @@ import { PlaybookModule } from './playbooks/playbook.module';
 import { BusinessProfileModule } from './business-profile/business-profile.module';
 import { BusinessBriefsModule } from './business-briefs/business-briefs.module';
 import { CreditsModule } from './credits/credits.module';
+import { WeeklyPlannerModule } from './weekly-planner/weekly-planner.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { CreditsModule } from './credits/credits.module';
     BusinessProfileModule,
     BusinessBriefsModule,
     CreditsModule,
+    WeeklyPlannerModule,
   ],
 })
 export class AppModule implements NestModule {

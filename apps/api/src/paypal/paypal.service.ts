@@ -23,6 +23,8 @@ interface PayPalPlanMapping {
   planName: string;
   monthlyPlanId: string;
   yearlyPlanId: string;
+  monthlyDiscountPlanId: string;
+  yearlyDiscountPlanId: string;
 }
 
 export interface CreateSubscriptionDto {
@@ -53,7 +55,7 @@ export class PaypalService {
   private tokenExpiry = 0;
 
   // PayPal plan IDs mapped from our plan names
-  // Set these via env: PAYPAL_PLAN_PRO_MONTHLY, PAYPAL_PLAN_PRO_YEARLY, etc.
+  // Set these via env: PAYPAL_PLAN_STARTER_MONTHLY, PAYPAL_PLAN_PRO_YEARLY, etc.
   private readonly planMappings: PayPalPlanMapping[];
 
   constructor(
@@ -72,14 +74,25 @@ export class PaypalService {
 
     this.planMappings = [
       {
-        planName: 'PRO',
-        monthlyPlanId: process.env.PAYPAL_PLAN_PRO_MONTHLY || '',
-        yearlyPlanId: process.env.PAYPAL_PLAN_PRO_YEARLY || '',
+        planName: 'starter',
+        monthlyPlanId: process.env.PAYPAL_PLAN_STARTER_MONTHLY || '',
+        yearlyPlanId: process.env.PAYPAL_PLAN_STARTER_YEARLY || '',
+        monthlyDiscountPlanId: process.env.PAYPAL_PLAN_STARTER_MONTHLY_DISCOUNT || '',
+        yearlyDiscountPlanId: process.env.PAYPAL_PLAN_STARTER_YEARLY_DISCOUNT || '',
       },
       {
-        planName: 'ENTERPRISE',
-        monthlyPlanId: process.env.PAYPAL_PLAN_ENTERPRISE_MONTHLY || '',
-        yearlyPlanId: process.env.PAYPAL_PLAN_ENTERPRISE_YEARLY || '',
+        planName: 'creator',
+        monthlyPlanId: process.env.PAYPAL_PLAN_CREATOR_MONTHLY || '',
+        yearlyPlanId: process.env.PAYPAL_PLAN_CREATOR_YEARLY || '',
+        monthlyDiscountPlanId: process.env.PAYPAL_PLAN_CREATOR_MONTHLY_DISCOUNT || '',
+        yearlyDiscountPlanId: process.env.PAYPAL_PLAN_CREATOR_YEARLY_DISCOUNT || '',
+      },
+      {
+        planName: 'pro',
+        monthlyPlanId: process.env.PAYPAL_PLAN_PRO_MONTHLY || '',
+        yearlyPlanId: process.env.PAYPAL_PLAN_PRO_YEARLY || '',
+        monthlyDiscountPlanId: process.env.PAYPAL_PLAN_PRO_MONTHLY_DISCOUNT || '',
+        yearlyDiscountPlanId: process.env.PAYPAL_PLAN_PRO_YEARLY_DISCOUNT || '',
       },
     ];
 
@@ -176,8 +189,20 @@ export class PaypalService {
       throw new BadRequestException(`No hay plan de PayPal configurado para ${plan.name}`);
     }
 
-    const paypalPlanId =
-      dto.billingCycle === 'YEARLY' ? mapping.yearlyPlanId : mapping.monthlyPlanId;
+    // Check if workspace has a referral discount → use discount plan ID
+    const sub = await this.prisma.subscription.findUnique({ where: { workspaceId } });
+    const hasDiscount = (sub?.discountPercent ?? 0) > 0;
+
+    let paypalPlanId: string;
+    if (hasDiscount) {
+      paypalPlanId = dto.billingCycle === 'YEARLY'
+        ? mapping.yearlyDiscountPlanId
+        : mapping.monthlyDiscountPlanId;
+    } else {
+      paypalPlanId = dto.billingCycle === 'YEARLY'
+        ? mapping.yearlyPlanId
+        : mapping.monthlyPlanId;
+    }
 
     if (!paypalPlanId) {
       throw new BadRequestException(
@@ -283,8 +308,8 @@ export class PaypalService {
 
   async verifyWebhookSignature(headers: Record<string, string>, body: string): Promise<boolean> {
     if (!this.isConfigured() || !this.webhookId) {
-      this.logger.warn('Webhook verification skipped — not configured');
-      return true; // Allow in dev
+      this.logger.warn('Webhook verification failed — PayPal not configured');
+      return false;
     }
 
     try {
@@ -446,13 +471,13 @@ export class PaypalService {
     });
 
     if (sub) {
-      // Downgrade to FREE plan
-      const freePlan = await this.prisma.plan.findUnique({ where: { name: 'FREE' } });
-      if (freePlan) {
+      // Downgrade to starter plan (lowest tier)
+      const starterPlan = await this.prisma.plan.findUnique({ where: { name: 'starter' } });
+      if (starterPlan) {
         await this.prisma.subscription.update({
           where: { id: sub.id },
           data: {
-            planId: freePlan.id,
+            planId: starterPlan.id,
             status: 'ACTIVE',
             paypalSubscriptionId: null,
             paypalCustomerId: null,
@@ -461,7 +486,7 @@ export class PaypalService {
         });
       }
     }
-    this.logger.log(`Subscription expired, downgraded to FREE: ${paypalSubId}`);
+    this.logger.log(`Subscription expired, downgraded to Starter: ${paypalSubId}`);
   }
 
   private async onPaymentCompleted(resource: any) {
@@ -578,6 +603,43 @@ export class PaypalService {
       currentPeriodEnd: sub.currentPeriodEnd,
       paypalSubscriptionId: sub.paypalSubscriptionId,
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+    };
+  }
+
+  // ── Get billing history ───────────────────────────────
+
+  async getBillingHistory(workspaceId: string) {
+    const payments = await this.prisma.paymentLog.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const sub = await this.prisma.subscription.findUnique({
+      where: { workspaceId },
+      include: { plan: true },
+    });
+
+    return {
+      payments: payments.map((p: any) => ({
+        id: p.id,
+        amount: p.amount,
+        currency: p.currency,
+        method: p.method,
+        reference: p.reference,
+        description: p.description,
+        createdAt: p.createdAt,
+      })),
+      subscription: sub ? {
+        planName: sub.plan?.displayName,
+        status: sub.status,
+        billingCycle: sub.billingCycle,
+        currentPeriodStart: sub.currentPeriodStart,
+        currentPeriodEnd: sub.currentPeriodEnd,
+        paypalSubscriptionId: sub.paypalSubscriptionId,
+        cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        discountPercent: sub.discountPercent,
+      } : null,
     };
   }
 }

@@ -72,14 +72,14 @@ export class ContentService {
     return wsUser?.userId ?? null;
   }
 
-  /** Build LLM adapter: DB credentials first, env-var fallback */
+  /** Build LLM adapter: respects workspace credential preference */
   private async getLlm(workspaceId: string): Promise<LLMAdapter> {
     const userId = await this.resolveUserId(workspaceId);
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
-        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        this.logger.debug(`Using ${provider} LLM credential for workspace ${workspaceId}`);
         return provider === 'anthropic'
           ? new AnthropicAdapter({ apiKey: payload.apiKey })
           : new OpenAIAdapter({ apiKey: payload.apiKey });
@@ -246,13 +246,8 @@ export class ContentService {
       brand?.topicBlacklist ?? [],
     );
 
-    // 7. Determinar siguiente status
-    // Si es post simple → REVIEW (no necesita media generada)
-    // Si es carousel/reel/video → MEDIA
-    const nextStatus =
-      formatLower === 'post' || formatLower === 'story'
-        ? 'REVIEW'
-        : 'MEDIA';
+    // 7. Todos los formatos pasan por MEDIA para generar imagen
+    const nextStatus = 'MEDIA';
 
     await this.prisma.editorialRun.update({
       where: { id: editorialRunId },

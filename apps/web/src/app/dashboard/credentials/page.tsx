@@ -223,6 +223,9 @@ export default function CredentialsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [useOwnCredentials, setUseOwnCredentials] = useState(false);
+  const [loadingPreference, setLoadingPreference] = useState(true);
+  const [togglingPreference, setTogglingPreference] = useState(false);
 
   // ── Fetch credentials ──
   const fetchCredentials = useCallback(async () => {
@@ -237,7 +240,50 @@ export default function CredentialsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchCredentials(); }, [fetchCredentials]);
+  // ── Fetch credential preference ──
+  const fetchPreference = useCallback(async () => {
+    try {
+      const wsId = document.cookie.match(/(?:^|; )workspace-id=([^;]*)/)?.[1] ?? '';
+      const res = await fetch('/api/credentials/preference', {
+        headers: wsId ? { 'x-workspace-id': wsId } : {},
+      });
+      const json = await res.json();
+      setUseOwnCredentials(json.useOwnCredentials ?? false);
+    } catch {
+      setUseOwnCredentials(false);
+    } finally {
+      setLoadingPreference(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchCredentials(); fetchPreference(); }, [fetchCredentials, fetchPreference]);
+
+  // ── Toggle credential preference ──
+  const handleTogglePreference = async () => {
+    setTogglingPreference(true);
+    const newValue = !useOwnCredentials;
+    const wsId = document.cookie.match(/(?:^|; )workspace-id=([^;]*)/)?.[1] ?? '';
+    try {
+      const res = await fetch('/api/credentials/preference', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(wsId ? { 'x-workspace-id': wsId } : {}),
+        },
+        body: JSON.stringify({ useOwnCredentials: newValue }),
+      });
+      if (!res.ok) throw new Error('Error al cambiar preferencia');
+      setUseOwnCredentials(newValue);
+      toast('ok', newValue
+        ? 'Usando tus propias credenciales — no se gastarán créditos'
+        : 'Usando credenciales de la plataforma — se consumirán créditos por operación',
+      );
+    } catch (e: any) {
+      toast('err', e.message);
+    } finally {
+      setTogglingPreference(false);
+    }
+  };
 
   // ── Toast helper ──
   const toast = (type: 'ok' | 'err', text: string) => {
@@ -364,6 +410,62 @@ export default function CredentialsPage() {
         </div>
       </div>
 
+      {/* Credential Source Switch */}
+      {!loadingPreference && (
+        <div className="glass-card p-5 animate-fade-in-delay-1">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">{useOwnCredentials ? '🔑' : '🏢'}</span>
+                <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                  Fuente de credenciales de IA
+                </h3>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {useOwnCredentials
+                  ? 'Usando tus propias API keys — las operaciones de IA no consumen créditos. Asegurate de tener configuradas las credenciales necesarias.'
+                  : 'Usando las credenciales de la plataforma — cada operación de IA consume créditos de tu balance.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 ml-4">
+              <span className="text-xs font-medium" style={{ color: useOwnCredentials ? 'var(--color-text-muted)' : 'var(--color-primary)' }}>
+                Plataforma
+              </span>
+              <button
+                onClick={handleTogglePreference}
+                disabled={togglingPreference}
+                className="relative inline-flex h-7 w-13 items-center rounded-full transition-colors duration-300 focus:outline-none"
+                style={{
+                  backgroundColor: useOwnCredentials ? 'rgba(16,185,129,0.4)' : 'rgba(100,116,139,0.3)',
+                  width: '52px',
+                  opacity: togglingPreference ? 0.6 : 1,
+                }}
+              >
+                <span
+                  className="inline-block h-5 w-5 rounded-full transition-transform duration-300 shadow-md"
+                  style={{
+                    backgroundColor: useOwnCredentials ? '#10b981' : '#94a3b8',
+                    transform: useOwnCredentials ? 'translateX(28px)' : 'translateX(4px)',
+                  }}
+                />
+              </button>
+              <span className="text-xs font-medium" style={{ color: useOwnCredentials ? '#10b981' : 'var(--color-text-muted)' }}>
+                Propias
+              </span>
+            </div>
+          </div>
+          {useOwnCredentials && (
+            <div
+              className="mt-3 flex items-start gap-2 p-3 rounded-lg text-xs"
+              style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)', color: 'var(--color-text-muted)' }}
+            >
+              <span>💡</span>
+              <span>Con credenciales propias no se gastan créditos, pero debés tener configuradas las API keys de cada servicio que uses (LLM, Generación de Imágenes, etc.). Si falta alguna, se te avisará antes de ejecutar la acción.</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-t-transparent" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
@@ -405,6 +507,15 @@ export default function CredentialsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {/* Meta — OAuth Card */}
               <MetaOAuthCard onToast={toast} />
+
+              {/* OAuth social platforms */}
+              <OAuthConnectCard provider="twitter" icon="🐦" label="Twitter / X" gradient="from-sky-500/20 to-blue-500/20" authUrl="/api/auth/twitter" statusUrl="/api/credentials/TWITTER/test" onToast={toast} />
+              <OAuthConnectCard provider="linkedin" icon="💼" label="LinkedIn" gradient="from-blue-600/20 to-cyan-500/20" authUrl="/api/auth/linkedin" statusUrl="/api/credentials/LINKEDIN/test" onToast={toast} />
+              <OAuthConnectCard provider="tiktok" icon="🎵" label="TikTok" gradient="from-pink-500/20 to-fuchsia-500/20" authUrl="/api/auth/tiktok" statusUrl="/api/credentials/TIKTOK/test" onToast={toast} />
+              <OAuthConnectCard provider="google" icon="▶️" label="Google (YouTube + Ads)" gradient="from-red-500/20 to-orange-500/20" authUrl="/api/auth/google" statusUrl="/api/credentials/GOOGLE/test" onToast={toast} />
+              <OAuthConnectCard provider="pinterest" icon="📌" label="Pinterest" gradient="from-red-600/20 to-rose-500/20" authUrl="/api/auth/pinterest" statusUrl="/api/credentials/PINTEREST/test" onToast={toast} />
+              <OAuthConnectCard provider="whatsapp" icon="💬" label="WhatsApp" gradient="from-green-500/20 to-emerald-500/20" authUrl="/api/auth/whatsapp" statusUrl="/api/credentials/WHATSAPP/test" onToast={toast} />
+              <OAuthConnectCard provider="mercadolibre" icon="🛒" label="Mercado Libre" gradient="from-yellow-500/20 to-amber-500/20" authUrl="/api/auth/mercadolibre" statusUrl="/api/credentials/MERCADOLIBRE/test" onToast={toast} />
 
               {/* Discord — Manual Webhook */}
               {(() => {
@@ -1069,6 +1180,144 @@ function TelegramPairCard({ onToast }: { onToast: (t: 'ok' | 'err', msg: string)
               <span>💡</span>
               <span>Se generará un código QR para vincular tu cuenta al bot compartido. No necesitás crear un bot propio.</span>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── Generic OAuth Connect Card ───────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function OAuthConnectCard({
+  provider,
+  icon,
+  label,
+  gradient,
+  authUrl,
+  statusUrl,
+  onToast,
+}: {
+  provider: string;
+  icon: string;
+  label: string;
+  gradient: string;
+  authUrl: string;
+  statusUrl: string;
+  onToast: (t: 'ok' | 'err', msg: string) => void;
+}) {
+  const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch(statusUrl, { method: 'POST' });
+      const json = await res.json();
+      setConnected(json.ok === true);
+    } catch {
+      setConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusUrl]);
+
+  useEffect(() => { checkStatus(); }, [checkStatus]);
+
+  const handleConnect = () => {
+    setConnecting(true);
+    const w = 600, h = 700;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    const popup = window.open(
+      `${authUrl}?from=credentials&popup=1`,
+      `${provider}_oauth_popup`,
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+    );
+    const pollTimer = setInterval(async () => {
+      if (!popup || popup.closed) {
+        clearInterval(pollTimer);
+        setConnecting(false);
+        await checkStatus();
+      }
+    }, 1000);
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch(`/api/credentials/${provider.toUpperCase()}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Error al desconectar');
+      onToast('ok', `${label} desconectado`);
+      setShowConfirm(false);
+      setConnected(false);
+    } catch (e: any) {
+      onToast('err', e.message);
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  return (
+    <div className="glass-card p-5 relative overflow-hidden">
+      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} rounded-2xl opacity-40 pointer-events-none`} />
+      <div className="relative">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{icon}</span>
+            <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>{label}</h3>
+          </div>
+          {loading ? (
+            <span className="badge" style={{ backgroundColor: 'rgba(100,116,139,0.15)', color: 'var(--color-text-muted)' }}>Cargando...</span>
+          ) : connected ? (
+            <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
+              <span className="badge-dot" style={{ backgroundColor: '#10b981' }} />Conectado
+            </span>
+          ) : (
+            <span className="badge" style={{ backgroundColor: 'rgba(100,116,139,0.15)', color: 'var(--color-text-muted)' }}>Sin configurar</span>
+          )}
+        </div>
+
+        {connected ? (
+          <div className="space-y-3">
+            <div className="rounded-xl p-3" style={{ backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Cuenta conectada via OAuth</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleConnect} disabled={connecting} className="text-xs px-3 py-1.5 rounded-lg transition-all hover:opacity-90" style={{ backgroundColor: 'rgba(124,58,237,0.1)', color: 'var(--color-primary)', border: '1px solid rgba(124,58,237,0.2)' }}>
+                {connecting ? '⏳ Conectando...' : '🔄 Reconectar'}
+              </button>
+              {!showConfirm ? (
+                <button onClick={() => setShowConfirm(true)} className="text-xs px-3 py-1.5 rounded-lg transition-all hover:opacity-90" style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  🔌 Desconectar
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 animate-fade-in">
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>¿Seguro?</span>
+                  <button onClick={handleDisconnect} disabled={disconnecting} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                    {disconnecting ? '...' : 'Sí'}
+                  </button>
+                  <button onClick={() => setShowConfirm(false)} className="text-xs px-3 py-1.5 rounded-lg" style={{ color: 'var(--color-text-muted)' }}>No</button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Conectá tu cuenta de {label} para publicar automáticamente.
+            </p>
+            <button onClick={handleConnect} disabled={connecting} className="inline-flex items-center gap-2.5 px-5 py-3 rounded-xl font-medium text-sm transition-all hover:scale-[1.02] active:scale-[0.98]" style={{ background: 'var(--color-primary)', color: '#fff', boxShadow: '0 4px 15px rgba(124,58,237,0.3)', opacity: connecting ? 0.7 : 1 }}>
+              {connecting ? (
+                <><div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent border-white" />Conectando...</>
+              ) : (
+                <>{icon} Conectar {label}</>
+              )}
+            </button>
           </div>
         )}
       </div>

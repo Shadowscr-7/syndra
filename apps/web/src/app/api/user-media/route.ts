@@ -8,6 +8,10 @@ async function getHeaders(req: NextRequest) {
   const token =
     req.headers.get('authorization') ||
     cookieStore.get('access_token')?.value;
+  const wsId =
+    req.headers.get('x-workspace-id') ||
+    cookieStore.get('workspace-id')?.value ||
+    '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -16,6 +20,7 @@ async function getHeaders(req: NextRequest) {
       ? token
       : `Bearer ${token}`;
   }
+  if (wsId) headers['x-workspace-id'] = wsId;
   return headers;
 }
 

@@ -4,7 +4,8 @@
 # ============================================================
 
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl netcat-openbsd
+RUN apk add --no-cache libc6-compat openssl netcat-openbsd ffmpeg python3 py3-pip
+RUN pip3 install --break-system-packages edge-tts
 
 # ---- Stage 1: Install dependencies ----
 FROM base AS deps
@@ -32,7 +33,8 @@ RUN npx --workspace=packages/db prisma generate
 FROM prisma AS builder
 WORKDIR /app
 
-# Copy all source code
+# Copy root tsconfig and all source code
+COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
@@ -48,7 +50,6 @@ ENV NODE_ENV=production
 
 # Copy node_modules from deps (includes all workspace deps)
 COPY --from=prisma /app/node_modules ./node_modules
-COPY --from=prisma /app/packages/db/node_modules ./packages/db/node_modules
 
 # Copy built API
 COPY --from=builder /app/apps/api/dist ./apps/api/dist

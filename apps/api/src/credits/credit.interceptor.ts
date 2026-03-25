@@ -30,6 +30,11 @@ export class CreditInterceptor implements NestInterceptor {
       return next.handle();
     }
 
+    // Si usa credenciales propias, no deducir créditos
+    if (request._usesOwnCredentials) {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       tap(async (result) => {
         try {

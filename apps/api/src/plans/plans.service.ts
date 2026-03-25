@@ -31,7 +31,8 @@ export type PlanFeatureKey =
   | 'priorityQueue'
   | 'apiAccess'
   | 'prioritySupport'
-  | 'customBranding';
+  | 'customBranding'
+  | 'weeklyPlanner';
 
 /** Plan order for "requiredPlan" responses */
 const PLAN_ORDER: Record<string, number> = { starter: 0, creator: 1, pro: 2 };
@@ -49,6 +50,7 @@ const FEATURE_MIN_PLAN: Record<PlanFeatureKey, string> = {
   apiAccess: 'pro',
   prioritySupport: 'pro',
   customBranding: 'pro',
+  weeklyPlanner: 'pro',
 };
 
 /** Human-readable labels */
@@ -64,6 +66,7 @@ const FEATURE_LABELS: Record<PlanFeatureKey, string> = {
   apiAccess: 'Acceso API',
   prioritySupport: 'Soporte prioritario',
   customBranding: 'Branding personalizado',
+  weeklyPlanner: 'Planificador semanal',
 };
 
 const METRIC_LABELS: Record<PlanMetric, string> = {
@@ -335,6 +338,7 @@ export class PlansService {
       apiAccess: plan.apiAccess,
       prioritySupport: plan.prioritySupport,
       customBranding: plan.customBranding,
+      weeklyPlanner: plan.weeklyPlannerEnabled,
     };
 
     const allowed = featureMap[feature] ?? false;
@@ -430,6 +434,9 @@ export class PlansService {
         team: plan.teamEnabled,
         priorityQueue: plan.priorityQueue,
         apiAccess: plan.apiAccess,
+        prioritySupport: plan.prioritySupport,
+        customBranding: plan.customBranding,
+        weeklyPlanner: plan.weeklyPlannerEnabled,
         analyticsLevel: plan.analyticsLevel,
         learningLoopLevel: plan.learningLoopLevel,
         autopilotLevel: plan.autopilotLevel,

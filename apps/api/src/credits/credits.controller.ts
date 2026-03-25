@@ -239,14 +239,16 @@ export class CreditController {
   ) {
     this.logger.log(`Credits webhook: ${body?.event_type}`);
 
-    // Verify signature
-    if (this.paypalWebhookId && this.paypalClientId) {
-      const rawBody = req.rawBody?.toString() || JSON.stringify(body);
-      const valid = await this.verifyWebhookSignature(headers, rawBody);
-      if (!valid) {
-        this.logger.warn('Invalid webhook signature');
-        return { error: 'Invalid signature' };
-      }
+    // Verify signature — always required
+    if (!this.paypalWebhookId || !this.paypalClientId) {
+      this.logger.error('Credits webhook rejected — PayPal credentials not configured');
+      return { error: 'Webhook not configured' };
+    }
+    const rawBody = req.rawBody?.toString() || JSON.stringify(body);
+    const valid = await this.verifyWebhookSignature(headers, rawBody);
+    if (!valid) {
+      this.logger.warn('Invalid webhook signature');
+      return { error: 'Invalid signature' };
     }
 
     if (body.event_type === 'CHECKOUT.ORDER.APPROVED') {

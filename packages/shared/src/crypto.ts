@@ -26,7 +26,13 @@ function deriveKey(secret: string): Buffer {
 }
 
 function getSecret(): string {
-  const secret = process.env.CREDENTIALS_SECRET || process.env.JWT_SECRET || 'dev-credentials-secret-change-in-production';
+  const secret = process.env.CREDENTIALS_SECRET || process.env.JWT_SECRET || '';
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL: CREDENTIALS_SECRET is required in production for encrypting user credentials.');
+    }
+    return 'dev-only-insecure-secret-do-not-use-in-production';
+  }
   return secret;
 }
 

@@ -1,0 +1,1 @@
+﻿unable to get image 'automatismos-web': error during connect: Get "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.51/images/automatismos-web/json": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.

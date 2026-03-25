@@ -74,7 +74,7 @@ function Hero() {
             {[
               'Genera posts con tu logo, productos y precios reales',
               'Crea ofertas, catálogos y contenido promocional automáticamente',
-              'Publica en Instagram, Facebook, Threads, Discord y más',
+              'Publica en Instagram, Facebook, Twitter, LinkedIn, TikTok, YouTube y más',
               'Próximamente: Twitter/X, LinkedIn, TikTok, YouTube, Pinterest, WhatsApp Status, Meta Ads, Google Ads, Mercado Libre',
               'Analytics con IA que optimizan tu contenido cada semana',
               '12 industrias preconfiguradas: ecommerce, restaurantes, fitness y más',
@@ -163,7 +163,7 @@ function HowItWorks() {
     { icon: '�', title: 'Configura tu negocio', desc: 'Sube tu logo, productos y precios. Syndra aprende tu marca, industria y estilo de comunicación.' },
     { icon: '🧠', title: 'IA investiga y crea contenido', desc: 'Analiza tendencias o tus propios productos. Genera posts, ofertas, carruseles y videos automáticamente.' },
     { icon: '📱', title: 'Aprueba o deja en automático', desc: 'Recibe previews en Telegram, corrige con un toque o activa el piloto automático total.' },
-    { icon: '🚀', title: 'Publica en todas tus redes', desc: 'Instagram, Facebook, Threads y Discord. Con tu logo, productos y precios reales.' },
+    { icon: '🚀', title: 'Publica en todas tus redes', desc: 'Instagram, Facebook, Twitter, LinkedIn, TikTok, YouTube, Pinterest y más. Con tu logo, productos y precios reales.' },
   ];
 
   return (
@@ -310,7 +310,7 @@ function RealExample() {
               {/* Published to */}
               <div className="flex items-center gap-2 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                 <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Publicado en:</span>
-                {['📸 Instagram', '📘 Facebook', '🧵 Threads', '💬 Discord'].map((p) => (
+                {['📸 Instagram', '📘 Facebook', '🧵 Threads', '� Twitter', '💼 LinkedIn', '🎵 TikTok', '▶️ YouTube', '📌 Pinterest', '�💬 Discord'].map((p) => (
                   <span key={p} className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)' }}>{p}</span>
                 ))}
               </div>
@@ -529,7 +529,7 @@ function PromotionEngine() {
     { num: '01', title: 'Sube tu catálogo', desc: 'Agrega tus productos con fotos, precios, categorías y descripciones. Syndra los usa para crear promociones.', icon: '📦' },
     { num: '02', title: 'Elige qué promocionar', desc: 'Selecciona producto, tipo de campaña (oferta, lanzamiento, flash sale) y canales de publicación.', icon: '🎯' },
     { num: '03', title: 'IA compone la imagen', desc: 'Sharp superpone tu logo, producto, badge de descuento y precio sobre un fondo generado por IA. Sin Photoshop.', icon: '🖼️' },
-    { num: '04', title: 'Publica donde quieras', desc: 'El post con copy + imagen se envía a Instagram, Facebook, Threads y Discord. Con aprobación o en autopilot.', icon: '🚀' },
+    { num: '04', title: 'Publica donde quieras', desc: 'El post con copy + imagen se envía a Instagram, Facebook, Twitter, LinkedIn, TikTok, YouTube, Pinterest y más. Con aprobación o en autopilot.', icon: '🚀' },
   ];
 
   const templates = [
@@ -1063,13 +1063,12 @@ function Integrations() {
         <SectionHeading tag="Integraciones" title="Conecta con +20 plataformas y servicios"
           subtitle="Syndra integra los mejores modelos de IA, redes sociales y herramientas para tu contenido." />
 
-        <IntegrationCategory label="Publicación en redes" names={['Instagram', 'Facebook', 'Threads', 'Discord', 'Telegram']} />
+        <IntegrationCategory label="Publicación en redes" names={['Instagram', 'Facebook', 'Threads', 'Twitter / X', 'LinkedIn', 'TikTok', 'YouTube', 'Pinterest', 'Discord', 'Telegram']} />
+        <IntegrationCategory label="Canales para negocios" names={['WhatsApp Status', 'Meta Ads', 'Google Ads', 'Mercado Libre']} />
         <IntegrationCategory label="Modelos de lenguaje (LLM)" names={['OpenAI', 'Anthropic', 'OpenRouter']} />
         <IntegrationCategory label="Generación de imágenes" names={['DALL·E', 'HuggingFace', 'Stability AI', 'Pollinations', 'Replicate']} />
         <IntegrationCategory label="Video & Voz" names={['HeyGen', 'ElevenLabs', 'D-ID', 'Hedra', 'fal.ai']} />
         <IntegrationCategory label="Investigación" names={['Tavily', 'SerpAPI']} />
-        <IntegrationCategory label="Redes sociales" names={['Twitter / X', 'LinkedIn', 'TikTok', 'YouTube', 'Pinterest']} comingSoon />
-        <IntegrationCategory label="Canales para negocios" names={['WhatsApp Status', 'Meta Ads', 'Google Ads', 'Mercado Libre']} comingSoon />
       </div>
     </section>
   );
@@ -1174,6 +1173,9 @@ function Footer() {
           <Link href="/login" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Iniciar sesión</Link>
           <Link href="/register" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Registro</Link>
           <a href="#pricing" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Planes</a>
+          <Link href="/legal/terms" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Términos</Link>
+          <Link href="/legal/privacy" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Privacidad</Link>
+          <Link href="/legal/refund" className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Reembolsos</Link>
         </div>
       </div>
     </footer>

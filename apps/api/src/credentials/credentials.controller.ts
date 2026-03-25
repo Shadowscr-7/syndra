@@ -22,6 +22,20 @@ import { PlanLimitsGuard, PlanCheck } from '../plans/plan-limits.guard';
 export class CredentialsController {
   constructor(private readonly credentialsService: CredentialsService) {}
 
+  /** GET /credentials/preference — Get credential source preference */
+  @Get('preference')
+  async getPreference(@Req() req: any) {
+    const wsId = req.headers['x-workspace-id'] || req.user?.workspaceId;
+    return this.credentialsService.getCredentialPreference(wsId);
+  }
+
+  /** PUT /credentials/preference — Set credential source preference */
+  @Put('preference')
+  async setPreference(@Req() req: any, @Body() body: { useOwnCredentials: boolean }) {
+    const wsId = req.headers['x-workspace-id'] || req.user?.workspaceId;
+    return this.credentialsService.setCredentialPreference(wsId, body.useOwnCredentials);
+  }
+
   /** GET /credentials — List all user credentials (masked) */
   @Get()
   async list(@Req() req: any) {

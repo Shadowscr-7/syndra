@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@automatismos/db';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -38,23 +39,52 @@ export async function POST(req: NextRequest) {
     };
 
     if (data.accessToken) {
-      response.cookies.set('access-token', data.accessToken, {
+      response.cookies.set('access_token', data.accessToken, {
         ...cookieOptions,
-        maxAge: 15 * 60,
+        maxAge: 60 * 60 * 24, // 24 hours
+      });
+    }
+
+    if (data.refreshToken) {
+      response.cookies.set('refresh-token', data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 60 * 60 * 24 * 7, // 7 days
       });
     }
 
     if (data.user?.id) {
       response.cookies.set('auth-user-id', data.user.id, {
         ...cookieOptions,
+        httpOnly: false,
         maxAge: 60 * 60 * 24 * 30,
       });
     }
     if (data.user?.email) {
       response.cookies.set('auth-email', data.user.email, {
         ...cookieOptions,
+        httpOnly: false,
         maxAge: 60 * 60 * 24 * 30,
       });
+    }
+
+    // Resolve and set workspace-id cookie so PlanContext works immediately
+    if (data.user?.id) {
+      try {
+        const wu = await prisma.workspaceUser.findFirst({
+          where: { userId: data.user.id },
+          orderBy: { isDefault: 'desc' },
+          select: { workspaceId: true },
+        });
+        if (wu) {
+          response.cookies.set('workspace-id', wu.workspaceId, {
+            ...cookieOptions,
+            httpOnly: false,
+            maxAge: 60 * 60 * 24 * 30,
+          });
+        }
+      } catch (e) {
+        console.error('[Register] Failed to resolve workspace:', e);
+      }
     }
 
     return response;

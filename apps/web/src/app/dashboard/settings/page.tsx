@@ -1,55 +1,103 @@
 import { prisma } from '@automatismos/db';
 import { getSession } from '@/lib/session';
-import { updateWorkspaceSettings, saveApiCredential, disconnectCredential, testCloudinaryConnection } from '@/lib/actions';
-import { MetaConnect } from './meta-connect';
-import { CloudinaryConnect } from './cloudinary-connect';
+import { updateWorkspaceSettings } from '@/lib/actions';
 import { OperationModeSelector } from './operation-mode';
 import { LearningConfigSection } from './learning-config';
-import { PlaybookResetSection } from './playbook-reset';
+
+const TIMEZONES = [
+  { value: 'Pacific/Midway', label: '(UTC-11:00) Midway, Samoa' },
+  { value: 'Pacific/Honolulu', label: '(UTC-10:00) Honolulu, Hawái' },
+  { value: 'America/Anchorage', label: '(UTC-09:00) Anchorage, Alaska' },
+  { value: 'America/Los_Angeles', label: '(UTC-08:00) Los Ángeles, Tijuana' },
+  { value: 'America/Vancouver', label: '(UTC-08:00) Vancouver, Canadá' },
+  { value: 'America/Denver', label: '(UTC-07:00) Denver, Phoenix' },
+  { value: 'America/Chihuahua', label: '(UTC-07:00) Chihuahua, Mazatlán' },
+  { value: 'America/Chicago', label: '(UTC-06:00) Chicago, Dallas' },
+  { value: 'America/Mexico_City', label: '(UTC-06:00) Ciudad de México' },
+  { value: 'America/Guatemala', label: '(UTC-06:00) Guatemala, San Salvador' },
+  { value: 'America/Costa_Rica', label: '(UTC-06:00) Costa Rica' },
+  { value: 'America/Tegucigalpa', label: '(UTC-06:00) Tegucigalpa, Honduras' },
+  { value: 'America/Managua', label: '(UTC-06:00) Managua, Nicaragua' },
+  { value: 'America/New_York', label: '(UTC-05:00) Nueva York, Miami' },
+  { value: 'America/Toronto', label: '(UTC-05:00) Toronto, Canadá' },
+  { value: 'America/Bogota', label: '(UTC-05:00) Bogotá, Colombia' },
+  { value: 'America/Lima', label: '(UTC-05:00) Lima, Perú' },
+  { value: 'America/Guayaquil', label: '(UTC-05:00) Quito, Ecuador' },
+  { value: 'America/Panama', label: '(UTC-05:00) Panamá' },
+  { value: 'America/Havana', label: '(UTC-05:00) La Habana, Cuba' },
+  { value: 'America/Jamaica', label: '(UTC-05:00) Kingston, Jamaica' },
+  { value: 'America/Caracas', label: '(UTC-04:00) Caracas, Venezuela' },
+  { value: 'America/La_Paz', label: '(UTC-04:00) La Paz, Bolivia' },
+  { value: 'America/Santo_Domingo', label: '(UTC-04:00) Santo Domingo, Rep. Dom.' },
+  { value: 'America/Puerto_Rico', label: '(UTC-04:00) Puerto Rico' },
+  { value: 'America/Santiago', label: '(UTC-04:00) Santiago, Chile' },
+  { value: 'America/Asuncion', label: '(UTC-04:00) Asunción, Paraguay' },
+  { value: 'America/Argentina/Buenos_Aires', label: '(UTC-03:00) Buenos Aires, Argentina' },
+  { value: 'America/Montevideo', label: '(UTC-03:00) Montevideo, Uruguay' },
+  { value: 'America/Sao_Paulo', label: '(UTC-03:00) São Paulo, Brasil' },
+  { value: 'Atlantic/Azores', label: '(UTC-01:00) Azores, Portugal' },
+  { value: 'Atlantic/Cape_Verde', label: '(UTC-01:00) Cabo Verde' },
+  { value: 'UTC', label: '(UTC+00:00) UTC' },
+  { value: 'Europe/London', label: '(UTC+00:00) Londres, Reino Unido' },
+  { value: 'Europe/Dublin', label: '(UTC+00:00) Dublín, Irlanda' },
+  { value: 'Europe/Lisbon', label: '(UTC+00:00) Lisboa, Portugal' },
+  { value: 'Africa/Casablanca', label: '(UTC+00:00) Casablanca, Marruecos' },
+  { value: 'Europe/Madrid', label: '(UTC+01:00) Madrid, España' },
+  { value: 'Europe/Paris', label: '(UTC+01:00) París, Francia' },
+  { value: 'Europe/Berlin', label: '(UTC+01:00) Berlín, Alemania' },
+  { value: 'Europe/Rome', label: '(UTC+01:00) Roma, Italia' },
+  { value: 'Europe/Amsterdam', label: '(UTC+01:00) Ámsterdam, Países Bajos' },
+  { value: 'Europe/Brussels', label: '(UTC+01:00) Bruselas, Bélgica' },
+  { value: 'Europe/Zurich', label: '(UTC+01:00) Zúrich, Suiza' },
+  { value: 'Europe/Vienna', label: '(UTC+01:00) Viena, Austria' },
+  { value: 'Europe/Warsaw', label: '(UTC+01:00) Varsovia, Polonia' },
+  { value: 'Europe/Stockholm', label: '(UTC+01:00) Estocolmo, Suecia' },
+  { value: 'Europe/Copenhagen', label: '(UTC+01:00) Copenhague, Dinamarca' },
+  { value: 'Europe/Prague', label: '(UTC+01:00) Praga, Chequia' },
+  { value: 'Africa/Lagos', label: '(UTC+01:00) Lagos, Nigeria' },
+  { value: 'Europe/Athens', label: '(UTC+02:00) Atenas, Grecia' },
+  { value: 'Europe/Bucharest', label: '(UTC+02:00) Bucarest, Rumania' },
+  { value: 'Europe/Helsinki', label: '(UTC+02:00) Helsinki, Finlandia' },
+  { value: 'Europe/Istanbul', label: '(UTC+03:00) Estambul, Turquía' },
+  { value: 'Africa/Cairo', label: '(UTC+02:00) El Cairo, Egipto' },
+  { value: 'Africa/Johannesburg', label: '(UTC+02:00) Johannesburgo, Sudáfrica' },
+  { value: 'Asia/Jerusalem', label: '(UTC+02:00) Jerusalén, Israel' },
+  { value: 'Europe/Moscow', label: '(UTC+03:00) Moscú, Rusia' },
+  { value: 'Asia/Riyadh', label: '(UTC+03:00) Riad, Arabia Saudita' },
+  { value: 'Asia/Baghdad', label: '(UTC+03:00) Bagdad, Irak' },
+  { value: 'Africa/Nairobi', label: '(UTC+03:00) Nairobi, Kenia' },
+  { value: 'Asia/Tehran', label: '(UTC+03:30) Teherán, Irán' },
+  { value: 'Asia/Dubai', label: '(UTC+04:00) Dubái, EAU' },
+  { value: 'Asia/Kabul', label: '(UTC+04:30) Kabul, Afganistán' },
+  { value: 'Asia/Karachi', label: '(UTC+05:00) Karachi, Pakistán' },
+  { value: 'Asia/Kolkata', label: '(UTC+05:30) India (Mumbai, Delhi)' },
+  { value: 'Asia/Kathmandu', label: '(UTC+05:45) Katmandú, Nepal' },
+  { value: 'Asia/Dhaka', label: '(UTC+06:00) Daca, Bangladesh' },
+  { value: 'Asia/Bangkok', label: '(UTC+07:00) Bangkok, Tailandia' },
+  { value: 'Asia/Jakarta', label: '(UTC+07:00) Yakarta, Indonesia' },
+  { value: 'Asia/Ho_Chi_Minh', label: '(UTC+07:00) Ho Chi Minh, Vietnam' },
+  { value: 'Asia/Shanghai', label: '(UTC+08:00) Shanghái, China' },
+  { value: 'Asia/Hong_Kong', label: '(UTC+08:00) Hong Kong' },
+  { value: 'Asia/Taipei', label: '(UTC+08:00) Taipéi, Taiwán' },
+  { value: 'Asia/Singapore', label: '(UTC+08:00) Singapur' },
+  { value: 'Asia/Manila', label: '(UTC+08:00) Manila, Filipinas' },
+  { value: 'Australia/Perth', label: '(UTC+08:00) Perth, Australia' },
+  { value: 'Asia/Tokyo', label: '(UTC+09:00) Tokio, Japón' },
+  { value: 'Asia/Seoul', label: '(UTC+09:00) Seúl, Corea del Sur' },
+  { value: 'Australia/Sydney', label: '(UTC+10:00) Sídney, Australia' },
+  { value: 'Australia/Melbourne', label: '(UTC+10:00) Melbourne, Australia' },
+  { value: 'Pacific/Auckland', label: '(UTC+12:00) Auckland, Nueva Zelanda' },
+  { value: 'Pacific/Fiji', label: '(UTC+12:00) Fiyi' },
+];
 
 export default async function SettingsPage() {
   const session = await getSession();
   const wsId = session?.workspaceId ?? 'ws_default';
   let workspace: any = null;
-  let credentials: any[] = [];
   try {
-    [workspace, credentials] = await Promise.all([
-      prisma.workspace.findFirst({ where: { id: wsId } }),
-      prisma.apiCredential.findMany({
-        where: { workspaceId: wsId },
-        select: { provider: true, isActive: true, lastUsedAt: true, scopes: true, encryptedKey: true },
-      }),
-    ]);
+    workspace = await prisma.workspace.findFirst({ where: { id: wsId } });
   } catch (e) {
     console.error('[SettingsPage] DB error:', e);
-  }
-
-  const getCredential = (provider: string) =>
-    credentials.find((c) => c.provider === provider);
-
-  // Decode Meta account info from base64 payload
-  const metaCred = getCredential('META');
-  let metaAccountInfo: { igUsername?: string; fbPageName?: string; connectedAt?: string; connectedVia?: string } | null = null;
-  if (metaCred?.encryptedKey) {
-    try {
-      const decoded = JSON.parse(Buffer.from(metaCred.encryptedKey, 'base64').toString('utf-8'));
-      metaAccountInfo = {
-        igUsername: decoded.igUsername,
-        fbPageName: decoded.fbPageName,
-        connectedAt: decoded.connectedAt,
-        connectedVia: decoded.connectedVia,
-      };
-    } catch {}
-  }
-
-  // Decode Cloudinary account info
-  const cloudCred = getCredential('CLOUDINARY');
-  let cloudinaryInfo: { cloudName?: string } | null = null;
-  if (cloudCred?.encryptedKey) {
-    try {
-      const decoded = JSON.parse(Buffer.from(cloudCred.encryptedKey, 'base64').toString('utf-8'));
-      cloudinaryInfo = { cloudName: decoded.cloudName };
-    } catch {}
   }
 
   return (
@@ -80,30 +128,31 @@ export default async function SettingsPage() {
                 defaultValue={workspace?.timezone ?? 'America/Mexico_City'}
                 className="input-field"
               >
-                <option value="America/Mexico_City">America/Mexico_City</option>
-                <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
-                <option value="America/Bogota">America/Bogota</option>
-                <option value="America/Santiago">America/Santiago</option>
-                <option value="America/Lima">America/Lima</option>
-                <option value="Europe/Madrid">Europe/Madrid</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="America/Los_Angeles">America/Los_Angeles</option>
+                {TIMEZONES.map(tz => (
+                  <option key={tz.value} value={tz.value}>{tz.label}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="input-label">Canales activos</label>
-              <div className="flex gap-4 mt-1">
-                {['instagram', 'facebook'].map((ch) => (
-                  <label key={ch} className="flex items-center gap-2.5 text-sm cursor-pointer group" style={{ color: 'var(--color-text-secondary)' }}>
+              <div className="flex flex-wrap gap-4 mt-1">
+                {[
+                  { key: 'instagram', icon: '📸' }, { key: 'facebook', icon: '📘' }, { key: 'threads', icon: '🧵' },
+                  { key: 'twitter', icon: '🐦' }, { key: 'linkedin', icon: '💼' }, { key: 'tiktok', icon: '🎵' },
+                  { key: 'youtube', icon: '▶️' }, { key: 'pinterest', icon: '📌' }, { key: 'discord', icon: '💬' },
+                  { key: 'whatsapp', icon: '💬' }, { key: 'meta_ads', icon: '📢' }, { key: 'google_ads', icon: '📊' },
+                  { key: 'mercadolibre', icon: '🛒' },
+                ].map((ch) => (
+                  <label key={ch.key} className="flex items-center gap-2.5 text-sm cursor-pointer group" style={{ color: 'var(--color-text-secondary)' }}>
                     <input
                       type="checkbox"
                       name="activeChannels"
-                      value={ch}
-                      defaultChecked={workspace?.activeChannels?.includes(ch)}
+                      value={ch.key}
+                      defaultChecked={workspace?.activeChannels?.includes(ch.key)}
                       className="w-4 h-4 rounded accent-purple-500"
                     />
                     <span className="group-hover:text-white transition-colors">
-                      {ch === 'instagram' ? '📸' : '📘'} {ch.charAt(0).toUpperCase() + ch.slice(1)}
+                      {ch.icon} {ch.key.charAt(0).toUpperCase() + ch.key.slice(1)}
                     </span>
                   </label>
                 ))}
@@ -126,121 +175,7 @@ export default async function SettingsPage() {
         <LearningConfigSection />
       </div>
 
-      {/* ── Meta (Instagram / Facebook) ── */}
-      <div className="max-w-3xl animate-fade-in-delay-2">
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="section-title">📱 Meta (Instagram / Facebook)</h3>
-          </div>
-          <MetaConnect
-            isConnected={!!metaCred?.isActive}
-            accountInfo={metaAccountInfo}
-            credentialScopes={metaCred?.scopes}
-            onDisconnect={async () => {
-              'use server';
-              await disconnectCredential('META');
-            }}
-          />
-        </div>
-      </div>
 
-      {/* ── Cloudinary ── */}
-      <div className="max-w-3xl animate-fade-in-delay-2">
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="section-title">☁️ Cloudinary (CDN de media)</h3>
-          </div>
-          <CloudinaryConnect
-            isConnected={!!cloudCred?.isActive}
-            accountInfo={cloudinaryInfo}
-            onDisconnect={async () => {
-              'use server';
-              await disconnectCredential('CLOUDINARY');
-            }}
-            onSave={async (formData: FormData) => {
-              'use server';
-              await saveApiCredential(formData);
-            }}
-            onTest={async (formData: FormData) => {
-              'use server';
-              return testCloudinaryConnection(formData);
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── Media & AI Status ── */}
-      <div className="max-w-3xl animate-fade-in-delay-3">
-        <div className="glass-card p-6">
-          <h3 className="section-title">🎨 Estado de servicios de media</h3>
-          <div className="space-y-3 mt-4">
-            <div className="flex items-center justify-between py-2 px-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}>
-              <div>
-                <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🖼️ Imágenes AI</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Pollinations.ai (Flux) — gratis, sin límites</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                <span className="badge-dot" style={{ backgroundColor: '#10b981' }} /> Activo
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 px-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}>
-              <div>
-                <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🎠 Carruseles</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>SVG Composer local — sin dependencias externas</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                <span className="badge-dot" style={{ backgroundColor: '#10b981' }} /> Activo
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 px-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}>
-              <div>
-                <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🗣️ Voz / TTS</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Edge TTS (Microsoft) — gratis, voces naturales en español</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                <span className="badge-dot" style={{ backgroundColor: '#10b981' }} /> Activo
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 px-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}>
-              <div>
-                <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🎬 Video Avatar</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Mock — necesita HEYGEN_API_KEY para video real</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-                <span className="badge-dot" style={{ backgroundColor: '#f59e0b' }} /> Mock
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 px-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}>
-              <div>
-                <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🤖 LLM / Contenido</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>OpenAI GPT-4o</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                <span className="badge-dot" style={{ backgroundColor: '#10b981' }} /> Activo
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Playbook Reset ── */}
-      <div className="max-w-3xl animate-fade-in-delay-3">
-        <PlaybookResetSection currentIndustry={workspace?.industry ?? null} />
-      </div>
-
-      {/* ── Schedule ── */}
-      <div className="max-w-3xl animate-fade-in-delay-3">
-        <div className="glass-card p-6">
-          <h3 className="section-title">⏰ Horario editorial</h3>
-          <div className="flex items-center gap-3 mt-2 px-4 py-3 rounded-xl" style={{ backgroundColor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.15)' }}>
-            <span className="text-2xl">🕐</span>
-            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              El pipeline se ejecuta diariamente a las <strong style={{ color: 'var(--color-primary)' }}>7:00 AM</strong> (zona horaria del workspace).
-              Configurable via cron en el servicio API.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

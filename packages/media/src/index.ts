@@ -87,6 +87,7 @@ export interface VideoJobStatus {
 export { DallEImageAdapter, StabilityImageAdapter, MockImageAdapter } from './adapters/image-generator';
 export { PollinationsImageAdapter } from './adapters/pollinations';
 export { HuggingFaceImageAdapter, type HuggingFaceImageConfig } from './adapters/huggingface';
+export { ResilientImageAdapter, type ResilientConfig } from './adapters/resilient';
 export {
   CloudinaryAdapter,
   MockCloudinaryAdapter,
@@ -97,6 +98,25 @@ export {
 
 // --- Adapters (Image — New providers) ---
 export { ReplicateImageAdapter, type ReplicateConfig, type ReplicateImageModel } from './adapters/replicate';
+
+// --- Adapters (KIE AI — Music + Pro Image) ---
+export {
+  KieMusicAdapter,
+  KieImageProAdapter,
+  KieVideoAdapter,
+  KIE_VIDEO_MODELS,
+  PRO_IMAGE_MODELS,
+  DEFAULT_BATCH_KIE_MODEL,
+  type KieAIConfig,
+  type KieImageModelId,
+  type KieVideoType,
+  type KieVideoModelDef,
+  type ProImageModelId,
+  type ProImageModelDef,
+  type MusicGenerationOptions,
+  type GeneratedMusic,
+  type IdeogramOptions,
+} from './adapters/kie-ai';
 
 // --- Adapters (Video) ---
 export { HeyGenVideoAdapter, type HeyGenConfig } from './adapters/heygen';
@@ -149,6 +169,13 @@ export {
   type SharpRenderOptions,
   type RenderedImage,
 } from './composers/sharp-renderer';
+
+// --- Slideshow Renderer (FFmpeg local — gratis) ---
+export {
+  SlideshowRenderer,
+  type SlideshowInput,
+  type SlideshowResult,
+} from './renderers/slideshow-renderer';
 
 // --- Pipeline ---
 export {

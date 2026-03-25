@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useCallback, useEffect, useState } from 'react';
-import { getClientApiUrl, getClientSession } from './client-session';
+import { getClientSession } from './client-session';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -70,8 +70,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const url = `${getClientApiUrl()}/api/plans/info`;
-      const res = await fetch(url, {
+      const res = await fetch('/api/plans/info', {
         headers: { 'x-workspace-id': workspaceId },
         credentials: 'include',
       });

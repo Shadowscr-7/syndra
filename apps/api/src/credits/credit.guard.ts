@@ -12,6 +12,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { CreditService, CREDIT_COSTS } from './credits.service';
 import { PlansService } from '../plans/plans.service';
+import { CredentialsService } from '../credentials/credentials.service';
 
 export const CREDIT_COST_KEY = 'credit_cost';
 
@@ -28,6 +29,7 @@ export class CreditGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly creditService: CreditService,
     private readonly plansService: PlansService,
+    private readonly credentialsService: CredentialsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -50,6 +52,15 @@ export class CreditGuard implements CanActivate {
 
     const cost = CREDIT_COSTS[operation] ?? 0;
     if (cost === 0) return true;
+
+    // Si el workspace usa credenciales propias → no gasta créditos
+    const usesOwn = await this.credentialsService.usesOwnCredentials(workspaceId);
+    if (usesOwn) {
+      request._creditOperation = operation;
+      request._creditCost = 0; // sin costo porque usa sus propias keys
+      request._usesOwnCredentials = true;
+      return true;
+    }
 
     // Obtener plan del workspace
     const plan = await this.plansService.getPlanForWorkspace(workspaceId);

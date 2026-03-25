@@ -6,6 +6,7 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Delete,
   Body,
   Req,
@@ -40,6 +41,13 @@ export class BusinessProfileController {
     const workspaceId = req.workspaceId;
     await this.service.delete(workspaceId);
     return { data: { deleted: true } };
+  }
+
+  @Post('extract-from-web')
+  async extractFromWeb(@Req() req: any, @Body() body: { urls: string[] }) {
+    const workspaceId = req.workspaceId;
+    const result = await this.service.extractFromWeb(workspaceId, body.urls);
+    return { data: result };
   }
 
   @Get('prompt-context')

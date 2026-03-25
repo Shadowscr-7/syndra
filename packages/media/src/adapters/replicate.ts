@@ -52,7 +52,7 @@ export class ReplicateImageAdapter implements ImageGeneratorAdapter {
 
     const input = this.buildInput(model, prompt, options);
 
-    // Create prediction
+    // Create prediction (with rate-limit retry)
     const isVersioned = modelId.includes(':');
     const createUrl = isVersioned
       ? `${this.baseUrl}/predictions`
@@ -63,19 +63,35 @@ export class ReplicateImageAdapter implements ImageGeneratorAdapter {
       createBody.version = modelId.split(':')[1];
     }
 
-    const createRes = await fetch(createUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        'Content-Type': 'application/json',
-        Prefer: 'wait', // For fast models, Replicate responds directly
-      },
-      body: JSON.stringify(createBody),
-    });
+    const maxCreateRetries = 5;
+    let createRes: Response | undefined;
+    for (let attempt = 0; attempt < maxCreateRetries; attempt++) {
+      createRes = await fetch(createUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+          Prefer: 'wait',
+        },
+        body: JSON.stringify(createBody),
+      });
 
-    if (!createRes.ok) {
-      const err = await createRes.text();
-      throw new Error(`Replicate create failed (${createRes.status}): ${err}`);
+      if (createRes.status === 429) {
+        // Respect retry_after from API, default 12s
+        let waitSec = 12;
+        try {
+          const body = await createRes.json() as { retry_after?: number };
+          if (body.retry_after) waitSec = Math.ceil(body.retry_after) + 2;
+        } catch { /* use default */ }
+        await new Promise((r) => setTimeout(r, waitSec * 1000));
+        continue;
+      }
+      break;
+    }
+
+    if (!createRes || !createRes.ok) {
+      const err = createRes ? await createRes.text() : 'No response';
+      throw new Error(`Replicate create failed (${createRes?.status}): ${err}`);
     }
 
     let prediction = (await createRes.json()) as any;

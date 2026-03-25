@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Clear all auth cookies
-  cookieStore.delete('access-token');
+  cookieStore.delete('access_token');
   cookieStore.delete('refresh-token');
   cookieStore.delete('auth-user-id');
   cookieStore.delete('auth-email');

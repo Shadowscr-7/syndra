@@ -17,11 +17,13 @@ export function getClientSession() {
 
 /**
  * API base URL for client-side fetch calls.
- * Uses NEXT_PUBLIC_API_URL if set, otherwise defaults to localhost:3001.
+ * In browser: uses same-origin /api proxy routes (avoids cross-origin cookie issues).
+ * Server-side: calls NestJS directly.
  */
 export function getClientApiUrl(): string {
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== 'undefined') {
+    return '/api';
   }
-  return 'http://localhost:3001';
+  const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  return url.endsWith('/api') ? url : `${url}/api`;
 }

@@ -208,6 +208,25 @@ export async function GET(req: NextRequest) {
 
     console.log('[Meta OAuth] Discovery result:', { fbPageId, fbPageName, igUserId, igUsername, threadsUserId, threadsUsername, pagesCount: pages.length });
 
+    // ── Step 3c: Discover Ad Accounts ──
+    let adAccountId = '';
+    let adAccountName = '';
+    try {
+      const adsRes = await fetch(
+        `${GRAPH_API}/me/adaccounts?fields=id,name,account_status&access_token=${longLivedToken}&limit=5`,
+      );
+      const adsData = await adsRes.json();
+      if (adsData.data?.length) {
+        // Pick first active ad account (account_status 1 = ACTIVE)
+        const active = adsData.data.find((a: any) => a.account_status === 1) || adsData.data[0];
+        adAccountId = active.id; // format: act_XXXXXXX
+        adAccountName = active.name || '';
+        console.log('[Meta OAuth] Ad account discovered:', { adAccountId, adAccountName });
+      }
+    } catch (adsErr) {
+      console.warn('[Meta OAuth] Ad account discovery failed (non-blocking):', adsErr);
+    }
+
     // ── Step 4: Store in DB ──
     // Resolve workspace: try cookie first, then DB lookup with userId from state
     let workspaceId = cookieStore.get('workspace-id')?.value;
@@ -241,6 +260,8 @@ export async function GET(req: NextRequest) {
       fbPageName,
       threadsUserId,
       threadsUsername,
+      adAccountId,
+      adAccountName,
       connectedAt: new Date().toISOString(),
       connectedVia: 'oauth',
     };
@@ -255,7 +276,7 @@ export async function GET(req: NextRequest) {
       update: {
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish', 'ads_management', 'ads_read'],
         expiresAt,
       },
       create: {
@@ -263,7 +284,7 @@ export async function GET(req: NextRequest) {
         provider: 'META',
         encryptedKey,
         isActive: true,
-        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish'],
+        scopes: ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'threads_basic', 'threads_content_publish', 'ads_management', 'ads_read'],
         expiresAt,
       },
     });
@@ -273,6 +294,7 @@ export async function GET(req: NextRequest) {
     if (igUsername) parts.push(`@${igUsername}`);
     if (fbPageName) parts.push(fbPageName);
     if (threadsUsername) parts.push(`🧵 ${threadsUsername}`);
+    if (adAccountName) parts.push(`📢 ${adAccountName}`);
     const connectedMsg = parts.length > 0
       ? `Conectado: ${parts.join(' + ')}`
       : 'Conectado exitosamente';

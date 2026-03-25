@@ -24,8 +24,39 @@ const PLATFORM_FORMATS: Record<string, { value: string; label: string }[]> = {
     { value: 'carousel', label: 'Carousel' },
     { value: 'image', label: 'Imagen' },
   ],
+  twitter: [
+    { value: 'post', label: 'Tweet' },
+    { value: 'thread', label: 'Hilo' },
+  ],
+  linkedin: [
+    { value: 'post', label: 'Publicación' },
+    { value: 'carousel', label: 'Documento' },
+  ],
+  tiktok: [
+    { value: 'video', label: 'Video' },
+  ],
+  youtube: [
+    { value: 'video', label: 'Video' },
+    { value: 'short', label: 'Short' },
+  ],
+  pinterest: [
+    { value: 'pin', label: 'Pin' },
+  ],
   discord: [
     { value: 'post', label: 'Anuncio' },
+  ],
+  whatsapp: [
+    { value: 'status', label: 'Estado' },
+  ],
+  meta_ads: [
+    { value: 'ad', label: 'Anuncio' },
+    { value: 'carousel_ad', label: 'Carousel Ad' },
+  ],
+  google_ads: [
+    { value: 'display', label: 'Display' },
+  ],
+  mercadolibre: [
+    { value: 'listing', label: 'Publicación' },
   ],
 };
 
@@ -33,7 +64,16 @@ const CHANNEL_ICONS: Record<string, string> = {
   instagram: '📸',
   facebook: '📘',
   threads: '🧵',
+  twitter: '🐦',
+  linkedin: '💼',
+  tiktok: '🎵',
+  youtube: '▶️',
+  pinterest: '📌',
   discord: '💜',
+  whatsapp: '💬',
+  meta_ads: '📢',
+  google_ads: '📊',
+  mercadolibre: '🛒',
 };
 
 interface ChannelFormatsPickerProps {

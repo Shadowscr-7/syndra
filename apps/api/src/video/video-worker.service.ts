@@ -99,13 +99,16 @@ export class VideoWorkerService implements OnModuleInit {
     }
 
     let checks = 0;
-    const maxChecks = 60; // 60 × 15s = 15 min max
+    const maxChecks = 80; // 80 × 15s = 20 min max
 
     const timer = setInterval(async () => {
       checks++;
+      const elapsed = Math.round((checks * VIDEO_CHECK_INTERVAL_MS) / 1000);
 
       try {
         const result = await this.videoService.pollVideoStatus(mediaAssetId);
+
+        this.logger.log(`🔄 Poll #${checks}/${maxChecks} asset=${mediaAssetId} — status=${result.status} (${elapsed}s elapsed)`);
 
         if (result.completed) {
           clearInterval(timer);
@@ -122,13 +125,23 @@ export class VideoWorkerService implements OnModuleInit {
         if (checks >= maxChecks) {
           clearInterval(timer);
           this.activeRenders.delete(mediaAssetId);
-          this.logger.warn(`Timeout polling render for asset ${mediaAssetId}`);
+          this.logger.warn(`Timeout polling render for asset ${mediaAssetId} — marking as FAILED`);
+          try {
+            await this.videoService.markAssetFailed(mediaAssetId, 'Timeout: el proveedor no completó el video en 20 minutos');
+          } catch (e) {
+            this.logger.error(`Failed to mark asset as FAILED: ${mediaAssetId}`, e);
+          }
         }
       } catch (error) {
-        this.logger.error(`Render poll error for ${mediaAssetId}:`, error);
+        this.logger.error(`Render poll error #${checks} for ${mediaAssetId}:`, error);
         if (checks >= maxChecks) {
           clearInterval(timer);
           this.activeRenders.delete(mediaAssetId);
+          try {
+            await this.videoService.markAssetFailed(mediaAssetId, 'Timeout con errores de polling');
+          } catch (e) {
+            this.logger.error(`Failed to mark asset as FAILED: ${mediaAssetId}`, e);
+          }
         }
       }
     }, VIDEO_CHECK_INTERVAL_MS);

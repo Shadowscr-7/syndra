@@ -37,6 +37,9 @@ export class CampaignsController {
     userPersonaId?: string;
     targetChannels?: string[];
     operationMode?: string;
+    musicEnabled?: boolean;
+    musicStyle?: string;
+    musicPrompt?: string;
   }) {
     return this.campaignsService.create(body);
   }
@@ -58,6 +61,9 @@ export class CampaignsController {
       targetChannels?: string[];
       operationMode?: string | null;
       isActive?: boolean;
+      musicEnabled?: boolean;
+      musicStyle?: string | null;
+      musicPrompt?: string | null;
     },
   ) {
     return this.campaignsService.update(id, body);

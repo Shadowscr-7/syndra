@@ -18,11 +18,21 @@ interface GoogleDrivePayload { accessToken: string; refreshToken?: string; folde
 interface AwsS3Payload { bucket: string; accessKeyId: string; secretAccessKey: string; region?: string }
 interface HeygenPayload { apiKey: string }
 interface TelegramPayload { botToken: string }
+interface TwitterPayload { accessToken: string; refreshToken?: string; userId?: string; username?: string }
+interface LinkedInPayload { accessToken: string; refreshToken?: string; authorUrn: string; name?: string }
+interface TikTokPayload { accessToken: string; refreshToken?: string; openId?: string; username?: string }
+interface YouTubePayload { accessToken: string; refreshToken?: string; channelId?: string; channelTitle?: string }
+interface PinterestPayload { accessToken: string; refreshToken?: string; boardId: string; boardName?: string; username?: string }
+interface GooglePayload { accessToken: string; refreshToken?: string; channelId?: string; channelTitle?: string; adsCustomerId?: string; adsCustomerName?: string }
+interface WhatsAppPayload { instanceUrl: string; apiKey: string; instanceName: string }
+interface MercadoLibrePayload { accessToken: string; refreshToken?: string; userId: string; nickname?: string; siteId?: string }
 
 type CredentialPayload =
   | LlmPayload | ImageGenPayload | ResearchPayload
   | MetaPayload | DiscordPayload | CloudinaryPayload
-  | GoogleDrivePayload | AwsS3Payload | HeygenPayload | TelegramPayload;
+  | GoogleDrivePayload | AwsS3Payload | HeygenPayload | TelegramPayload
+  | TwitterPayload | LinkedInPayload | TikTokPayload | YouTubePayload | PinterestPayload
+  | GooglePayload | WhatsAppPayload | MercadoLibrePayload;
 
 // Fields exposed publicly (with masked secrets)
 export interface CredentialSummary {
@@ -176,6 +186,30 @@ export class CredentialsService {
         case 'HEYGEN':
           result = await this.testHeygen(payload);
           break;
+        case 'TWITTER':
+          result = await this.testTwitter(payload);
+          break;
+        case 'LINKEDIN':
+          result = await this.testLinkedIn(payload);
+          break;
+        case 'TIKTOK':
+          result = await this.testTikTok(payload);
+          break;
+        case 'YOUTUBE':
+          result = await this.testYouTube(payload);
+          break;
+        case 'PINTEREST':
+          result = await this.testPinterest(payload);
+          break;
+        case 'GOOGLE':
+          result = await this.testGoogle(payload);
+          break;
+        case 'WHATSAPP':
+          result = await this.testWhatsApp(payload);
+          break;
+        case 'MERCADOLIBRE':
+          result = await this.testMercadoLibre(payload);
+          break;
         default:
           result = { ok: true, message: 'Proveedor guardado (sin test automático)' };
       }
@@ -198,6 +232,119 @@ export class CredentialsService {
       return decryptJson(existing.encryptedPayload);
     } catch {
       return null;
+    }
+  }
+
+  // ── Credential preference (own vs platform) ───────────
+
+  /** Check if workspace uses own credentials */
+  async usesOwnCredentials(workspaceId: string): Promise<boolean> {
+    const ws = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { useOwnCredentials: true },
+    });
+    return ws?.useOwnCredentials ?? false;
+  }
+
+  /** Toggle own/platform credential preference */
+  async setCredentialPreference(workspaceId: string, useOwn: boolean): Promise<{ useOwnCredentials: boolean }> {
+    const ws = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { useOwnCredentials: useOwn },
+      select: { useOwnCredentials: true },
+    });
+    this.logger.log(`📌 Workspace ${workspaceId} credential preference: ${useOwn ? 'OWN' : 'PLATFORM'}`);
+    return { useOwnCredentials: ws.useOwnCredentials };
+  }
+
+  /** Get credential preference status */
+  async getCredentialPreference(workspaceId: string): Promise<{ useOwnCredentials: boolean }> {
+    const ws = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { useOwnCredentials: true },
+    });
+    return { useOwnCredentials: ws?.useOwnCredentials ?? false };
+  }
+
+  /**
+   * Resolve the right API payload for a provider:
+   * - If workspace uses OWN credentials → gets user's key (throws if missing)
+   * - If workspace uses PLATFORM → returns platform key from env
+   */
+  async resolveCredential(
+    workspaceId: string,
+    userId: string,
+    provider: string,
+  ): Promise<{ payload: Record<string, any>; source: 'own' | 'platform' }> {
+    const usesOwn = await this.usesOwnCredentials(workspaceId);
+
+    if (usesOwn) {
+      const payload = await this.getDecryptedPayload(userId, provider);
+      if (!payload) {
+        throw new BadRequestException({
+          code: 'CREDENTIAL_MISSING',
+          message: `No tienes configurada la credencial de ${provider}. Ve a Credenciales para agregarla, o cambiá a usar las credenciales de la plataforma.`,
+          provider,
+        });
+      }
+      return { payload, source: 'own' };
+    }
+
+    // Platform keys from env
+    const platformPayload = this.getPlatformCredential(provider);
+    if (!platformPayload) {
+      throw new BadRequestException({
+        code: 'PLATFORM_CREDENTIAL_MISSING',
+        message: `La plataforma no tiene configurada la credencial de ${provider}. Contacta al administrador o usa tus propias credenciales.`,
+        provider,
+      });
+    }
+    return { payload: platformPayload, source: 'platform' };
+  }
+
+  /** Get platform credentials from environment variables */
+  private getPlatformCredential(provider: string): Record<string, any> | null {
+    switch (provider) {
+      case 'LLM': {
+        const apiKey = this.config.get<string>('LLM_API_KEY');
+        if (!apiKey) return null;
+        return {
+          apiKey,
+          provider: this.config.get<string>('LLM_PROVIDER', 'openai'),
+          baseUrl: this.config.get<string>('LLM_BASE_URL'),
+          model: this.config.get<string>('LLM_MODEL'),
+        };
+      }
+      case 'IMAGE_GEN': {
+        const apiKey = this.config.get<string>('IMAGE_GEN_API_KEY');
+        if (!apiKey) return null;
+        return {
+          apiKey,
+          provider: this.config.get<string>('IMAGE_GEN_PROVIDER', 'huggingface'),
+        };
+      }
+      case 'RESEARCH': {
+        const apiKey = this.config.get<string>('RESEARCH_API_KEY');
+        if (!apiKey) return null;
+        return {
+          apiKey,
+          provider: this.config.get<string>('RESEARCH_PROVIDER', 'tavily'),
+        };
+      }
+      case 'HEYGEN': {
+        const apiKey = this.config.get<string>('HEYGEN_API_KEY');
+        if (!apiKey) return null;
+        return { apiKey };
+      }
+      case 'CLOUDINARY': {
+        const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+        const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+        const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+        if (!cloudName || !apiKey || !apiSecret) return null;
+        return { cloudName, apiKey, apiSecret };
+      }
+      default:
+        return null;
     }
   }
 
@@ -237,6 +384,34 @@ export class CredentialsService {
       case 'AWS_S3':
         if (!payload.bucket?.trim() || !payload.accessKeyId?.trim() || !payload.secretAccessKey?.trim())
           throw new BadRequestException('Bucket, Access Key y Secret Key son requeridos');
+        break;
+      case 'TWITTER':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        break;
+      case 'LINKEDIN':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        if (!payload.authorUrn?.trim()) throw new BadRequestException('Author URN es requerido');
+        break;
+      case 'TIKTOK':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        break;
+      case 'YOUTUBE':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        break;
+      case 'PINTEREST':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        if (!payload.boardId?.trim()) throw new BadRequestException('Board ID es requerido');
+        break;
+      case 'GOOGLE':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
+        break;
+      case 'WHATSAPP':
+        if (!payload.instanceUrl?.trim()) throw new BadRequestException('Instance URL es requerida');
+        if (!payload.apiKey?.trim()) throw new BadRequestException('API Key es requerida');
+        if (!payload.instanceName?.trim()) throw new BadRequestException('Instance Name es requerido');
+        break;
+      case 'MERCADOLIBRE':
+        if (!payload.accessToken?.trim()) throw new BadRequestException('Access Token es requerido');
         break;
       default:
         throw new BadRequestException(`Proveedor no soportado: ${provider}`);
@@ -344,6 +519,101 @@ export class CredentialsService {
     return { ok: true, message: 'Conexión exitosa' };
   }
 
+  private async testTwitter(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://api.x.com/2/users/me', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    return { ok: true, message: `Conectado como: @${data.data?.username || data.data?.id || 'OK'}` };
+  }
+
+  private async testLinkedIn(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://api.linkedin.com/rest/userinfo', {
+      headers: {
+        Authorization: `Bearer ${payload.accessToken}`,
+        'LinkedIn-Version': '202402',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    return { ok: true, message: `Conectado como: ${data.name || data.sub || 'OK'}` };
+  }
+
+  private async testTikTok(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    const name = data.data?.user?.display_name;
+    return { ok: true, message: `Conectado como: ${name || 'OK'}` };
+  }
+
+  private async testYouTube(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    const title = data.items?.[0]?.snippet?.title;
+    return { ok: true, message: `Canal: ${title || 'OK'}` };
+  }
+
+  private async testPinterest(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://api.pinterest.com/v5/user_account', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    return { ok: true, message: `Conectado como: ${data.username || 'OK'}` };
+  }
+
+  private async testGoogle(payload: any): Promise<{ ok: boolean; message: string }> {
+    // Verify Google token via userinfo endpoint
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    const parts: string[] = [];
+    if (data.name) parts.push(data.name);
+    if (payload.channelTitle) parts.push(`YT: ${payload.channelTitle}`);
+    if (payload.adsCustomerId) parts.push(`Ads: ${payload.adsCustomerId}`);
+    return { ok: true, message: `Conectado: ${parts.join(', ') || data.email || 'OK'}` };
+  }
+
+  private async testWhatsApp(payload: any): Promise<{ ok: boolean; message: string }> {
+    const url = `${payload.instanceUrl.replace(/\/$/, '')}/instance/connectionState/${payload.instanceName}`;
+    const res = await fetch(url, {
+      headers: { 'apikey': payload.apiKey },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: No se pudo conectar con Evolution API` };
+    const data: any = await res.json();
+    if (data.state === 'open') {
+      const number = data.instance?.wuid?.split('@')[0];
+      return { ok: true, message: `WhatsApp conectado${number ? ` (+${number})` : ''}` };
+    }
+    return { ok: false, message: `Estado: ${data.state || 'desconectado'}. Escanea el QR nuevamente.` };
+  }
+
+  private async testMercadoLibre(payload: any): Promise<{ ok: boolean; message: string }> {
+    const res = await fetch('https://api.mercadolibre.com/users/me', {
+      headers: { Authorization: `Bearer ${payload.accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}: Token inválido o expirado` };
+    const data: any = await res.json();
+    return { ok: true, message: `Conectado como: ${data.nickname || data.id || 'OK'}` };
+  }
+
   // ════════════════════════════════════════════════════════
   // META OAUTH — Read status from workspace-level ApiCredential
   // ════════════════════════════════════════════════════════
@@ -363,6 +633,8 @@ export class CredentialsService {
           igUsername: decoded.igUsername || null,
           fbPageName: decoded.fbPageName || null,
           threadsUsername: decoded.threadsUsername || null,
+          adAccountId: decoded.adAccountId || null,
+          adAccountName: decoded.adAccountName || null,
           connectedAt: decoded.connectedAt || null,
           connectedVia: decoded.connectedVia || null,
         },

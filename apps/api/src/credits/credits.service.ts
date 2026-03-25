@@ -16,17 +16,39 @@ export const CREDIT_COSTS: Record<string, number> = {
   IMAGE_STANDARD: 1,
   IMAGE_TEXT: 5,
   IMAGE_HD: 3,
+  IMAGE_PRO_TEXT: 4,   // KIE Ideogram V3 — especializado en texto en imágenes
+  // Imágenes Pro por modelo
+  'IMAGE_PRO:ideogram/v3-text-to-image': 4,
+  'IMAGE_PRO:gpt-image/1.5-text-to-image': 5,
+  'IMAGE_PRO:flux-2/pro-text-to-image': 4,
+  'IMAGE_PRO:bytedance/seedream': 3,
+  'IMAGE_PRO:grok-imagine/text-to-image': 4,
+  'IMAGE_PRO:qwen/text-to-image': 3,
+  'IMAGE_PRO:gpt-image/4o-text-to-image': 5,
+  'IMAGE_PRO:flux/kontext-text-to-image': 4,
+  'IMAGE_PRO:qwen/2.0-text-to-image': 3,
+  'IMAGE_PRO:google/imagen-4': 5,
+  'IMAGE_PRO:google/nano-banana-2': 2,
+  'IMAGE_PRO:replicate/flux-dev': 2,
+  'IMAGE_PRO:replicate/recraft-v3': 3,
+  'IMAGE_PRO:standard': 0,
   // Animaciones
   ANIMATION_5S: 10,
   ANIMATION_10S: 15,
   // Video
   VIDEO_REEL_10S: 20,
   VIDEO_REEL_15S: 25,
+  // Video KIE
+  VIDEO_KIE_SLIDES: 0,  // Gratis — renderizado local con FFmpeg + EdgeTTS
+  VIDEO_KIE_VIDEO: 15,
+  VIDEO_KIE_AVATAR: 25,
   // Avatares
   AVATAR_BASIC_30S: 30,
   AVATAR_PREMIUM_30S: 50,
   // Audio/Voz
   VOICE_PREMIUM: 2,
+  // Música
+  MUSIC_BACKGROUND: 3, // KIE Suno — música de fondo para Reels/Stories/Shorts
   // IA (contenido, research, estrategia)
   AI_CONTENT: 3,
   AI_RESEARCH: 2,

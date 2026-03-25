@@ -245,21 +245,35 @@ export class EditorialOrchestratorService {
             data: { status: 'RESEARCH' },
           });
 
-          // Detect if the current theme is promotional → use internal research
-          const activeTheme = await this.resolveActiveTheme(editorialRunId, workspaceId);
-          const themeType = activeTheme?.type ?? null;
+          // Check origin: weekly-planner-business → force internal research
+          const run = await this.prisma.editorialRun.findUniqueOrThrow({
+            where: { id: editorialRunId },
+            select: { origin: true },
+          });
 
-          if (themeType && this.researchService.isPromotionalThemeType(themeType)) {
-            this.logger.log(
-              `Theme type "${themeType}" is promotional → using internal business research`,
-            );
+          if (run.origin === 'weekly-planner-business') {
+            this.logger.log('Origin is weekly-planner-business → using internal business research');
             await this.researchService.executeInternalResearch(
               editorialRunId,
               workspaceId,
-              themeType,
             );
           } else {
-            await this.researchService.executeResearch(editorialRunId, workspaceId);
+            // Detect if the current theme is promotional → use internal research
+            const activeTheme = await this.resolveActiveTheme(editorialRunId, workspaceId);
+            const themeType = activeTheme?.type ?? null;
+
+            if (themeType && this.researchService.isPromotionalThemeType(themeType)) {
+              this.logger.log(
+                `Theme type "${themeType}" is promotional → using internal business research`,
+              );
+              await this.researchService.executeInternalResearch(
+                editorialRunId,
+                workspaceId,
+                themeType,
+              );
+            } else {
+              await this.researchService.executeResearch(editorialRunId, workspaceId);
+            }
           }
           // Research service ya actualiza el status a STRATEGY
           return await this.enqueueNextStage(editorialRunId, workspaceId, 'strategy');
@@ -298,10 +312,14 @@ export class EditorialOrchestratorService {
           try {
             await this.mediaEngine.executeMediaGeneration(editorialRunId, workspaceId);
           } catch (err) {
-            this.logger.warn(`Media generation failed for ${editorialRunId}, continuing to review`, err);
+            const errMsg = err instanceof Error ? err.message : String(err);
+            this.logger.error(`Media generation FAILED for ${editorialRunId}: ${errMsg}`, err instanceof Error ? err.stack : '');
             await this.prisma.editorialRun.update({
               where: { id: editorialRunId },
-              data: { status: 'REVIEW' },
+              data: {
+                status: 'REVIEW',
+                errorMessage: `Media: ${errMsg.substring(0, 500)}`,
+              },
             });
           }
 
@@ -310,10 +328,49 @@ export class EditorialOrchestratorService {
             where: { editorialRunId },
           });
           const format = briefForVideo?.format?.toLowerCase() ?? '';
-          if (format === 'avatar_video' || format === 'hybrid_motion' || format === 'reel') {
-            return await this.enqueueNextStage(editorialRunId, workspaceId, 'video');
+
+          // Always route through music stage — it will decide whether to generate music
+          // and then route to video or review as appropriate
+          return await this.enqueueNextStage(editorialRunId, workspaceId, 'music');
+        }
+
+        case 'music': {
+          this.logger.log(`Music stage for ${editorialRunId}`);
+          const AUDIO_FORMATS = new Set(['reel', 'story', 'avatar_video', 'hybrid_motion']);
+
+          // Weekly planner runs handle music separately via checkBatchCompletion (respects musicEnabled config)
+          const runForMusic = await this.prisma.editorialRun.findUniqueOrThrow({
+            where: { id: editorialRunId },
+            select: { origin: true },
+          });
+          const isWeeklyPlanner = runForMusic.origin?.startsWith('weekly-planner');
+
+          const briefForMusic = await this.prisma.contentBrief.findUnique({
+            where: { editorialRunId },
+            include: { contentVersions: { take: 1, select: { id: true } } },
+          });
+          const musicFormat = briefForMusic?.format?.toLowerCase() ?? '';
+          const mainVersionId = briefForMusic?.contentVersions?.[0]?.id;
+
+          if (!isWeeklyPlanner && AUDIO_FORMATS.has(musicFormat) && mainVersionId) {
+            // Check if music already exists
+            const existingMusic = await this.prisma.mediaAsset.findFirst({
+              where: { contentVersionId: mainVersionId, type: 'AUDIO' },
+            });
+            if (!existingMusic) {
+              try {
+                await this.mediaEngine.generateBackgroundMusic(mainVersionId);
+                this.logger.log(`🎵 Music generated for run ${editorialRunId}`);
+              } catch (err) {
+                this.logger.warn(`Music generation skipped for ${editorialRunId}: ${err instanceof Error ? err.message : err}`);
+              }
+            }
           }
 
+          // Route to video stage if format requires it
+          if (['avatar_video', 'hybrid_motion', 'reel'].includes(musicFormat)) {
+            return await this.enqueueNextStage(editorialRunId, workspaceId, 'video');
+          }
           return await this.enqueueNextStage(editorialRunId, workspaceId, 'review');
         }
 
@@ -395,6 +452,40 @@ export class EditorialOrchestratorService {
             return { nextStage: null };
           }
 
+          // Check if this run belongs to a weekly planner batch
+          const plannedPub = await this.prisma.plannedPublication.findUnique({
+            where: { editorialRunId },
+            include: { batch: { include: { config: { select: { approvalMode: true } } } } },
+          });
+          if (plannedPub) {
+            // Update item status immediately so frontend progress reflects completion
+            await this.prisma.plannedPublication.update({
+              where: { id: plannedPub.id },
+              data: { status: 'PENDING_REVIEW' },
+            });
+            this.logger.log(`PlannedPublication ${plannedPub.id} updated to PENDING_REVIEW`);
+
+            // Check if entire batch is now complete
+            if (plannedPub.batchId) {
+              const remaining = await this.prisma.plannedPublication.count({
+                where: { batchId: plannedPub.batchId, status: 'GENERATING' },
+              });
+              if (remaining === 0) {
+                await this.prisma.weeklyPlanBatch.update({
+                  where: { id: plannedPub.batchId },
+                  data: { status: 'PENDING_REVIEW' },
+                });
+                this.logger.log(`Batch ${plannedPub.batchId} fully complete — status set to PENDING_REVIEW`);
+                // Telegram notification handled by cron checkBatchCompletion
+              }
+            }
+
+            if (plannedPub.batch?.config?.approvalMode === 'panel') {
+              this.logger.log(`Run ${editorialRunId} belongs to weekly planner with panel approval — waiting for dashboard action`);
+              return { nextStage: null };
+            }
+          }
+
           // Enviar preview a Telegram para aprobación humana
           this.logger.log(`Run ${editorialRunId} ready for review — sending to Telegram`);
           try {
@@ -417,6 +508,30 @@ export class EditorialOrchestratorService {
         where: { id: editorialRunId },
         data: { status: 'FAILED', errorMessage: `[${stage}] ${errMsg}` },
       });
+
+      // Update PlannedPublication status immediately on failure
+      const failedPub = await this.prisma.plannedPublication.findUnique({
+        where: { editorialRunId },
+      });
+      if (failedPub && failedPub.status === 'GENERATING') {
+        await this.prisma.plannedPublication.update({
+          where: { id: failedPub.id },
+          data: { status: 'FAILED' },
+        });
+        // Check if batch is now fully done
+        if (failedPub.batchId) {
+          const remaining = await this.prisma.plannedPublication.count({
+            where: { batchId: failedPub.batchId, status: 'GENERATING' },
+          });
+          if (remaining === 0) {
+            await this.prisma.weeklyPlanBatch.update({
+              where: { id: failedPub.batchId },
+              data: { status: 'PENDING_REVIEW' },
+            });
+          }
+        }
+      }
+
       throw error;
     }
   }
@@ -437,12 +552,16 @@ export class EditorialOrchestratorService {
     });
 
     const channels = (run.targetChannels ?? ['instagram']) as string[];
-    // Filter to valid Publication platforms only (discord is cross-post, not a platform)
-    const validPlatforms = ['instagram', 'facebook', 'threads'];
+    // Filter to valid Publication platforms (discord is cross-post via webhook, not an editorial platform)
+    const validPlatforms = [
+      'instagram', 'facebook', 'threads', 'twitter', 'linkedin',
+      'tiktok', 'youtube', 'pinterest', 'meta_ads', 'google_ads',
+      'whatsapp', 'mercadolibre',
+    ];
     const publishableChannels = channels.filter((ch) => validPlatforms.includes(ch.toLowerCase()));
 
     for (const channel of publishableChannels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
+      const platform = channel.toUpperCase() as any;
 
       // Idempotencia: verificar que no exista publicación exitosa
       const existing = await this.prisma.publication.findFirst({

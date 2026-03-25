@@ -61,7 +61,7 @@ export class TrendDetectionService {
   private async getLlm(workspaceId: string): Promise<LLMAdapter> {
     const userId = await this.resolveUserId(workspaceId);
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
         return provider === 'anthropic'

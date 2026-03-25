@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
 interface LearningConfig {
   autoApply: boolean;
   dimensions: string[];
@@ -28,7 +26,7 @@ export function LearningConfigSection() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/api/learning/config`, { credentials: 'include' })
+    fetch('/api/learning/config')
       .then(r => r.json())
       .then(json => { if (json?.data) setConfig(json.data); })
       .catch((err) => console.error('Learning config fetch error:', err));
@@ -38,9 +36,8 @@ export function LearningConfigSection() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch(`${API}/api/learning/config`, {
+      const res = await fetch('/api/learning/config', {
         method: 'PATCH',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       });

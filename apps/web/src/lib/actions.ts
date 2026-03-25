@@ -196,6 +196,9 @@ export async function createCampaign(formData: FormData) {
   const channelFormatsRaw = formData.get('channelFormats') as string || '{}';
   let channelFormats: Record<string, string[]> | null = null;
   try { channelFormats = JSON.parse(channelFormatsRaw); } catch { /* ignore */ }
+  const musicEnabled = formData.get('musicEnabled') === 'true';
+  const musicStyle = formData.get('musicStyle') as string || null;
+  const musicPrompt = formData.get('musicPrompt') as string || null;
 
   if (!name?.trim()) throw new Error('Nombre requerido');
 
@@ -214,6 +217,9 @@ export async function createCampaign(formData: FormData) {
       userPersonaId: userPersonaId || null,
       targetChannels: channels.length > 0 ? channels : ['instagram'],
       channelFormats: channelFormats ?? undefined,
+      musicEnabled,
+      musicStyle,
+      musicPrompt,
       campaignThemes: themeIds.length > 0 ? {
         create: themeIds.map((tId) => ({ themeId: tId })),
       } : undefined,

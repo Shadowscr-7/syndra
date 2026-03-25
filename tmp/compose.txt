@@ -1,0 +1,11 @@
+﻿docker : unable to get image 'postgres:16-alpine': error during connect: Get "h
+ttp://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.51/images/postgres:16-alpine
+/json": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the 
+file specified.
+En línea: 1 Carácter: 1
++ docker compose up -d 2>&1 | Out-File E:\Proyectos\automatismos\tmp\co ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (unable to get i...file specified. 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

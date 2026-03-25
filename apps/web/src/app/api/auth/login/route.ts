@@ -40,9 +40,17 @@ export async function POST(req: NextRequest) {
 
     // Store JWT tokens as httpOnly cookies
     if (data.accessToken) {
-      response.cookies.set('access-token', data.accessToken, {
+      response.cookies.set('access_token', data.accessToken, {
         ...cookieOptions,
-        maxAge: 15 * 60, // 15 min
+        maxAge: 60 * 60 * 24, // 24 hours (matches backend)
+      });
+    }
+
+    // Store refresh token for auto-refresh
+    if (data.refreshToken) {
+      response.cookies.set('refresh-token', data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 60 * 60 * 24 * 7, // 7 days
       });
     }
 

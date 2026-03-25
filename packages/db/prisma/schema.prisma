@@ -98,6 +98,7 @@ model Workspace {
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   industry     String?  // tech, coaching, ecommerce, personal_brand, etc.
   operationMode OperationMode @default(APPROVAL_REQUIRED) @map("operation_mode")
+  useOwnCredentials Boolean @default(false) @map("use_own_credentials") // true = user's own API keys (no credits), false = platform keys (credits)
   learningConfig Json?  @map("learning_config") // {autoApply: bool, dimensions: string[], minConfidence: float}
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -133,6 +134,8 @@ model Workspace {
   aiCredits        AICredit[]
   creditBalance    CreditBalance?
   avatarProfiles   AvatarProfile[]
+  weeklyPlanConfigs WeeklyPlanConfig[]
+  weeklyPlanBatches WeeklyPlanBatch[]
 
   @@map("workspaces")
 }
@@ -311,6 +314,12 @@ model Campaign {
   targetChannels   String[] @default(["instagram"]) @map("target_channels")
   channelFormats   Json?    @map("channel_formats")
   operationMode    OperationMode? @map("operation_mode") // Override del workspace, null = hereda
+
+  // Música de fondo para publicaciones que la requieran
+  musicEnabled     Boolean  @default(false) @map("music_enabled")
+  musicStyle       String?  @map("music_style") // upbeat | calm | corporate | energetic | cinematic | custom
+  musicPrompt      String?  @map("music_prompt") // Descripción personalizada
+
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -437,6 +446,7 @@ model EditorialRun {
   editorialAssignments EditorialAssignment[]
   approvalSteps     ApprovalStep[]
   videoRenderJobs   VideoRenderJob[]
+  plannedPublication PlannedPublication?
 
   @@map("editorial_runs")
 }
@@ -539,6 +549,7 @@ enum MediaType {
   AVATAR_VIDEO
   THUMBNAIL
   MOTION_GRAPHIC
+  AUDIO          // Música de fondo generada por IA
 }
 
 enum MediaStatus {
@@ -618,6 +629,17 @@ enum Platform {
   INSTAGRAM
   FACEBOOK
   THREADS
+  TWITTER
+  LINKEDIN
+  TIKTOK
+  YOUTUBE
+  PINTEREST
+  META_ADS
+  GOOGLE_ADS
+  WHATSAPP
+  MERCADOLIBRE
+  DISCORD
+  TELEGRAM
 }
 
 enum PublicationStatus {
@@ -745,12 +767,20 @@ model ApiCredential {
 
 enum CredentialProvider {
   META
+  GOOGLE
   TELEGRAM
   DISCORD
   LLM
   IMAGE_GEN
   CLOUDINARY
   HEYGEN
+  TWITTER
+  LINKEDIN
+  TIKTOK
+  YOUTUBE
+  PINTEREST
+  WHATSAPP
+  MERCADOLIBRE
 }
 
 // ============================================================
@@ -790,6 +820,7 @@ model Plan {
   apiAccess              Boolean @default(false) @map("api_access")
   prioritySupport        Boolean @default(false) @map("priority_support")
   customBranding         Boolean @default(false) @map("custom_branding")
+  weeklyPlannerEnabled   Boolean @default(false) @map("weekly_planner_enabled")
 
   // ── Tiered feature levels ──
   analyticsLevel    String @default("basic")    @map("analytics_level")    // basic | complete | ai
@@ -1113,6 +1144,14 @@ enum UserCredentialProvider {
   FAL_AI        // fal.ai API (video)
   DID           // D-ID avatar video
   HEDRA         // Hedra avatar video
+  TWITTER       // Twitter/X OAuth 2.0
+  LINKEDIN      // LinkedIn OAuth 2.0
+  TIKTOK        // TikTok OAuth 2.0
+  YOUTUBE       // YouTube / Google OAuth 2.0 (legacy, usar GOOGLE)
+  PINTEREST     // Pinterest OAuth 2.0
+  GOOGLE        // Google unificado (YouTube + Google Ads)
+  WHATSAPP      // WhatsApp via Evolution API
+  MERCADOLIBRE  // Mercado Libre OAuth 2.0
 }
 
 // ============================================================
@@ -2105,6 +2144,7 @@ enum CreditOperationType {
   IMAGE_STANDARD      // 1 crédito  — Replicate Flux-schnell
   IMAGE_TEXT           // 5 créditos — Ideogram/Recraft
   IMAGE_HD             // 3 créditos — Flux-dev
+  IMAGE_PRO_TEXT       // 4 créditos — KIE Ideogram V3 (texto en imágenes)
   ANIMATION_5S         // 10 créditos — Wan i2v 5s
   ANIMATION_10S        // 15 créditos
   VIDEO_REEL_10S       // 20 créditos — Wan t2v
@@ -2112,6 +2152,10 @@ enum CreditOperationType {
   AVATAR_BASIC_30S     // 30 créditos — D-ID/Hedra
   AVATAR_PREMIUM_30S   // 50 créditos — HeyGen
   VOICE_PREMIUM        // 2 créditos  — ElevenLabs
+  MUSIC_BACKGROUND     // 3 créditos  — KIE Suno (música de fondo)
+  VIDEO_KIE_SLIDES     // 0 créditos  — FFmpeg local (gratis)
+  VIDEO_KIE_VIDEO      // 15 créditos — KIE Video IA
+  VIDEO_KIE_AVATAR     // 25 créditos — KIE Avatar
 }
 
 model AICredit {
@@ -2169,4 +2213,108 @@ model AvatarProfile {
 
   @@index([workspaceId])
   @@map("avatar_profiles")
+}
+
+// ============================================================
+// WEEKLY PLANNER — Planificación semanal de publicaciones (Pro)
+// ============================================================
+
+model WeeklyPlanConfig {
+  id               String   @id @default(cuid())
+  workspaceId      String   @map("workspace_id")
+  name             String   @default("Planificador semanal")
+  isActive         Boolean  @default(true) @map("is_active")
+
+  // Días en que se ejecuta el planificador (genera el contenido)
+  plannerRunDays   DayOfWeek[] @default([MONDAY]) @map("planner_run_days")
+  plannerRunTime   String   @default("08:00") @map("planner_run_time")  // "HH:MM"
+
+  // Días para los que se genera contenido
+  publishDays      DayOfWeek[] @default([MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY]) @map("publish_days")
+  publishTime      String   @default("10:00") @map("publish_time")     // "HH:MM"
+
+  // Modo de contenido: editorial (research externo) o business (recursos de la empresa)
+  contentMode      String   @default("editorial") @map("content_mode") // editorial | business
+
+  // Modo de aprobación: telegram (auto-envía por Telegram) o panel (requiere aprobación en panel web)
+  approvalMode     String   @default("telegram") @map("approval_mode") // telegram | panel
+
+  // Canales destino
+  targetChannels   String[] @default(["instagram"]) @map("target_channels")
+  timezone         String   @default("America/Mexico_City")
+
+  // Música de fondo para publicaciones (Reels/Stories/Shorts)
+  musicEnabled     Boolean  @default(false) @map("music_enabled")
+  musicStyle       String?  @map("music_style") // upbeat | calm | corporate | energetic | cinematic | custom
+  musicPrompt      String?  @map("music_prompt") // Descripción personalizada para generación de música
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  batches          WeeklyPlanBatch[]
+
+  @@index([workspaceId])
+  @@map("weekly_plan_configs")
+}
+
+enum WeeklyBatchStatus {
+  GENERATING
+  PENDING_REVIEW
+  PARTIALLY_APPROVED
+  FULLY_APPROVED
+  PUBLISHED
+  CANCELLED
+}
+
+model WeeklyPlanBatch {
+  id               String   @id @default(cuid())
+  workspaceId      String   @map("workspace_id")
+  configId         String   @map("config_id")
+  weekLabel        String   @map("week_label")            // "2026-W12"
+  status           WeeklyBatchStatus @default(GENERATING)
+  totalItems       Int      @default(0) @map("total_items")
+  approvedItems    Int      @default(0) @map("approved_items")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  config           WeeklyPlanConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  items            PlannedPublication[]
+
+  @@unique([workspaceId, configId, weekLabel])
+  @@index([workspaceId])
+  @@map("weekly_plan_batches")
+}
+
+enum PlannedPublicationStatus {
+  GENERATING
+  GENERATING_MUSIC
+  PENDING_REVIEW
+  APPROVED
+  MODIFIED
+  REJECTED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+model PlannedPublication {
+  id               String   @id @default(cuid())
+  batchId          String   @map("batch_id")
+  editorialRunId   String?  @unique @map("editorial_run_id")
+  scheduledDate    DateTime @map("scheduled_date")
+  scheduledTime    String   @map("scheduled_time")        // "HH:MM"
+  dayOfWeek        DayOfWeek @map("day_of_week")
+  status           PlannedPublicationStatus @default(GENERATING)
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  batch            WeeklyPlanBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  editorialRun     EditorialRun? @relation(fields: [editorialRunId], references: [id], onDelete: SetNull)
+
+  @@index([batchId])
+  @@index([editorialRunId])
+  @@map("planned_publications")
 }

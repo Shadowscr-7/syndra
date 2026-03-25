@@ -18,12 +18,17 @@ import {
   PollinationsImageAdapter,
   HuggingFaceImageAdapter,
   ReplicateImageAdapter,
+  ResilientImageAdapter,
   CloudinaryAdapter,
   MockCloudinaryAdapter,
   SvgCarouselComposer,
   getTemplateForCategory,
   ImageComposer,
   SharpRenderer,
+  KieMusicAdapter,
+  KieImageProAdapter,
+  PRO_IMAGE_MODELS,
+  DEFAULT_BATCH_KIE_MODEL,
   type ComposeImageOptions,
   type CompositionTemplate,
   type ImagePipelineResult,
@@ -31,6 +36,8 @@ import {
   type BrandingConfig,
   type CarouselSlide,
   type ImageGeneratorAdapter,
+  type ProImageModelId,
+  type KieImageModelId,
 } from '@automatismos/media';
 
 @Injectable()
@@ -56,6 +63,7 @@ export class MediaEngineService {
     // --- Fallback Imagen adapter (from env vars) ---
     const imageApiKey = this.config.get<string>('IMAGE_GEN_API_KEY', '');
     const imageProvider = this.config.get<string>('IMAGE_GEN_PROVIDER', 'mock');
+    const replicateToken = this.config.get<string>('REPLICATE_API_TOKEN', '');
 
     let imageGen: ImageGeneratorAdapter;
     if (imageProvider === 'dalle' && imageApiKey) {
@@ -64,10 +72,46 @@ export class MediaEngineService {
       imageGen = new HuggingFaceImageAdapter({ apiToken: imageApiKey });
       this.logger.log('Fallback: HuggingFaceImageAdapter from env vars');
     } else if (imageProvider === 'pollinations' || (!imageApiKey && imageProvider !== 'dalle')) {
-      imageGen = new PollinationsImageAdapter();
-      this.logger.log('Fallback: PollinationsImageAdapter from env vars');
-    } else if (imageProvider === 'replicate' && imageApiKey) {
-      imageGen = new ReplicateImageAdapter({ apiToken: imageApiKey });
+      const pollinations = new PollinationsImageAdapter();
+      const hfToken = this.config.get<string>('HUGGINGFACE_API_KEY', '');
+      // Build resilient chain: Pollinations → HuggingFace → Replicate
+      if (hfToken) {
+        const huggingface = new HuggingFaceImageAdapter({ apiToken: hfToken });
+        let fallback: ImageGeneratorAdapter = huggingface;
+        let fallbackName = 'HuggingFace/FLUX';
+        // If Replicate also available, nest it as third fallback
+        if (replicateToken) {
+          const replicate = new ReplicateImageAdapter({ apiToken: replicateToken, defaultModel: 'flux-schnell' });
+          fallback = new ResilientImageAdapter({
+            primary: huggingface,
+            fallback: replicate,
+            primaryName: 'HuggingFace/FLUX',
+            fallbackName: 'Replicate/flux-schnell',
+          });
+          fallbackName = 'HuggingFace → Replicate';
+        }
+        imageGen = new ResilientImageAdapter({
+          primary: pollinations,
+          fallback,
+          primaryName: 'Pollinations',
+          fallbackName,
+        });
+        this.logger.log(`Fallback: Pollinations → ${fallbackName} (resilient)`);
+      } else if (replicateToken) {
+        const replicate = new ReplicateImageAdapter({ apiToken: replicateToken, defaultModel: 'flux-schnell' });
+        imageGen = new ResilientImageAdapter({
+          primary: pollinations,
+          fallback: replicate,
+          primaryName: 'Pollinations',
+          fallbackName: 'Replicate/flux-schnell',
+        });
+        this.logger.log('Fallback: Pollinations → Replicate (resilient)');
+      } else {
+        imageGen = pollinations;
+        this.logger.log('Fallback: PollinationsImageAdapter from env vars');
+      }
+    } else if (imageProvider === 'replicate' && (imageApiKey || replicateToken)) {
+      imageGen = new ReplicateImageAdapter({ apiToken: imageApiKey || replicateToken });
       this.logger.log('Fallback: ReplicateImageAdapter from env vars');
     } else {
       imageGen = new MockImageAdapter();
@@ -115,14 +159,14 @@ export class MediaEngineService {
     return wsUser?.userId ?? null;
   }
 
-  /** Build LLM adapter: DB credentials first, env-var fallback */
+  /** Build LLM adapter: respects workspace credential preference */
   private async getLlm(workspaceId: string): Promise<LLMAdapter> {
     const userId = await this.resolveUserId(workspaceId);
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
-        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        this.logger.debug(`Using ${provider} LLM credential for workspace ${workspaceId}`);
         return provider === 'anthropic'
           ? new AnthropicAdapter({ apiKey: payload.apiKey })
           : new OpenAIAdapter({ apiKey: payload.apiKey });
@@ -131,46 +175,52 @@ export class MediaEngineService {
     return this.fallbackLlm;
   }
 
-  /** Build ImageGenerator adapter: DB credentials first, env-var fallback */
-  private async getImageGen(userId: string | null): Promise<ImageGeneratorAdapter> {
+  /** Build ImageGenerator adapter: respects workspace credential preference */
+  private async getImageGen(workspaceId: string, userId: string | null): Promise<ImageGeneratorAdapter> {
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'IMAGE_GEN');
-      if (payload?.apiKey) {
-        const provider = payload.provider ?? this.config.get<string>('IMAGE_GEN_PROVIDER', 'huggingface');
-        this.logger.log(`Using DB IMAGE_GEN credential (${provider}) for user ${userId}`);
-        if (provider === 'dalle') return new DallEImageAdapter({ apiKey: payload.apiKey });
-        if (provider === 'huggingface') return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
-        if (provider === 'pollinations') return new PollinationsImageAdapter();
-        if (provider === 'replicate') return new ReplicateImageAdapter({ apiToken: payload.apiKey });
-        // Default: huggingface if we have a key
-        return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
+      try {
+        const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'IMAGE_GEN');
+        if (payload?.apiKey) {
+          const provider = payload.provider ?? this.config.get<string>('IMAGE_GEN_PROVIDER', 'huggingface');
+          this.logger.log(`Using ${provider} IMAGE_GEN credential for workspace ${workspaceId}`);
+          if (provider === 'dalle') return new DallEImageAdapter({ apiKey: payload.apiKey });
+          if (provider === 'huggingface') return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
+          if (provider === 'pollinations') return new PollinationsImageAdapter();
+          if (provider === 'replicate') return new ReplicateImageAdapter({ apiToken: payload.apiKey });
+          return new HuggingFaceImageAdapter({ apiToken: payload.apiKey });
+        }
+      } catch {
+        // If resolveCredential throws (missing own credential), fall through to fallback
       }
     }
     return this.fallbackPipeline['imageGen'] as ImageGeneratorAdapter;
   }
 
-  /** Build Cloudinary adapter: DB credentials first, env-var fallback */
-  private async getCloudinary(userId: string | null): Promise<CloudinaryAdapter | undefined> {
+  /** Build Cloudinary adapter: respects workspace credential preference */
+  private async getCloudinary(workspaceId: string, userId: string | null): Promise<CloudinaryAdapter | undefined> {
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'CLOUDINARY');
-      if (payload?.cloudName && payload?.apiKey) {
-        this.logger.debug(`Using DB CLOUDINARY credential for user ${userId}`);
-        return new CloudinaryAdapter({
-          cloudName: payload.cloudName,
-          apiKey: payload.apiKey,
-          apiSecret: payload.apiSecret ?? '',
-        });
+      try {
+        const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'CLOUDINARY');
+        if (payload?.cloudName && payload?.apiKey) {
+          this.logger.debug(`Using CLOUDINARY credential for workspace ${workspaceId}`);
+          return new CloudinaryAdapter({
+            cloudName: payload.cloudName,
+            apiKey: payload.apiKey,
+            apiSecret: payload.apiSecret ?? '',
+          });
+        }
+      } catch {
+        // Cloudinary is optional, fall through
       }
     }
-    // Fallback to env-var configured cloudinary (may be undefined)
     return this.fallbackPipeline['cloudinary'] as CloudinaryAdapter | undefined;
   }
 
   /** Build a per-request MediaPipeline using DB credentials */
   private async getPipeline(workspaceId: string): Promise<MediaPipeline> {
     const userId = await this.resolveUserId(workspaceId);
-    const imageGen = await this.getImageGen(userId);
-    const cloudinary = await this.getCloudinary(userId);
+    const imageGen = await this.getImageGen(workspaceId, userId);
+    const cloudinary = await this.getCloudinary(workspaceId, userId);
 
     const defaultBranding: BrandingConfig = {
       primaryFont: 'Inter',
@@ -264,34 +314,46 @@ export class MediaEngineService {
     const mediaAssetIds: string[] = [];
 
     if (format === 'carousel') {
+      // Generate AI images for carousel slides — use KIE Pro when available
       try {
-        const result = await this.generateCarouselMedia(mainVersion, branding, brief, pipeline);
-        // Verify slides have real URLs (not SVG data URIs)
-        const hasRealUrls = result.slides.some(
-          (s) => s.optimizedUrl && !s.optimizedUrl.startsWith('data:'),
-        );
-        if (!hasRealUrls) {
-          throw new Error('Carousel slides are SVG data URIs — falling back to AI image');
+        const slideCount = Math.min(4, Math.max(2, Math.ceil(mainVersion.copy.split(/\n\n+/).length / 2)));
+        const slides = this.buildSlidesFromCopy(mainVersion, brief);
+        
+        // Generate a cover image and one per key content point
+        const slidePrompts = this.buildCarouselImagePrompts(slides, brief);
+        
+        for (let i = 0; i < Math.min(slidePrompts.length, slideCount); i++) {
+          try {
+            const slideVersion = { copy: slidePrompts[i]!, caption: mainVersion.caption };
+            const result = await this.generateSingleImageWithProFallback(
+              slideVersion, brief, llm, pipeline, workspaceId,
+            );
+            const asset = await this.prisma.mediaAsset.create({
+              data: {
+                contentVersionId: mainVersion.id,
+                type: 'CAROUSEL_SLIDE',
+                prompt: result.prompt,
+                provider: result.provider,
+                originalUrl: result.originalUrl,
+                optimizedUrl: result.optimizedUrl,
+                thumbnailUrl: i === 0 ? result.thumbnailUrl : null,
+                status: 'READY',
+                metadata: { slideIndex: i, carouselAI: true } as any,
+              },
+            });
+            mediaAssetIds.push(asset.id);
+          } catch (slideErr) {
+            this.logger.warn(`Failed to generate carousel slide ${i}: ${slideErr}`);
+          }
         }
-        for (const slide of result.slides) {
-          const asset = await this.prisma.mediaAsset.create({
-            data: {
-              contentVersionId: mainVersion.id,
-              type: 'CAROUSEL_SLIDE',
-              provider: 'svg-composer',
-              originalUrl: slide.originalUrl,
-              optimizedUrl: slide.optimizedUrl,
-              thumbnailUrl: slide.index === 0 ? result.thumbnailUrl : null,
-              status: 'READY',
-              metadata: { slideIndex: slide.index, slideType: slide.type, templateId: result.templateId },
-            },
-          });
-          mediaAssetIds.push(asset.id);
+        
+        // If no slides generated, fall back to single image
+        if (mediaAssetIds.length === 0) {
+          throw new Error('No carousel slides generated');
         }
       } catch (carouselErr) {
-        // Fallback: generate a single AI image for the carousel instead of SVG slides
-        this.logger.warn(`Carousel SVG generation failed, falling back to AI image: ${carouselErr}`);
-        const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
+        this.logger.warn(`Carousel AI generation failed, falling back to single image: ${carouselErr}`);
+        const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId);
         const asset = await this.prisma.mediaAsset.create({
           data: {
             contentVersionId: mainVersion.id,
@@ -344,20 +406,8 @@ export class MediaEngineService {
         mediaAssetIds.push(asset.id);
       }
     } else {
-      // Standard AI image generation path
-      const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
-
-      // If logo available, compose logo overlay on top of the AI image
-      let finalUrl = result.optimizedUrl;
-      if (logoUrl) {
-        try {
-          const composer = new ImageComposer();
-          const composed = composer.composeLogoOverlay(result.optimizedUrl, logoUrl);
-          finalUrl = composed.svgDataUri;
-        } catch {
-          this.logger.warn('Logo overlay failed, using original image');
-        }
-      }
+      // Standard AI image generation path — try KIE Pro model first if API key available
+      const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId);
 
       const asset = await this.prisma.mediaAsset.create({
         data: {
@@ -366,13 +416,10 @@ export class MediaEngineService {
           prompt: result.prompt,
           provider: result.provider,
           originalUrl: result.originalUrl,
-          optimizedUrl: finalUrl,
+          optimizedUrl: result.optimizedUrl,
           thumbnailUrl: result.thumbnailUrl,
           status: 'READY',
-          metadata: {
-            ...(result.metadata ?? {}),
-            ...(logoUrl ? { logoOverlay: true } : {}),
-          } as any,
+          metadata: (result.metadata ?? {}) as any,
         },
       });
       mediaAssetIds.push(asset.id);
@@ -457,6 +504,72 @@ Respond ONLY with the English image prompt. Max 150 words.`,
         thumbnailUrl: result.thumbnailUrl,
         status: 'READY',
         metadata: (result.metadata ?? {}) as any,
+      },
+    });
+
+    return { mediaAssetId: asset.id };
+  }
+
+  /**
+   * Genera una imagen ADICIONAL para un content version (sin reemplazar las existentes).
+   * Usada para crear slides extra cuando se necesita más de una imagen para un video slideshow.
+   */
+  async generateAdditionalImage(
+    contentVersionId: string,
+    variationIndex: number,
+  ): Promise<{ mediaAssetId: string }> {
+    this.logger.log(`Generating additional image #${variationIndex} for version ${contentVersionId}`);
+
+    const version = await this.prisma.contentVersion.findUniqueOrThrow({
+      where: { id: contentVersionId },
+      include: { brief: { include: { editorialRun: { select: { workspaceId: true } } } } },
+    });
+
+    const workspaceId = version.brief.editorialRun?.workspaceId;
+    const llm = workspaceId ? await this.getLlm(workspaceId) : this.fallbackLlm;
+    const pipeline = workspaceId ? await this.getPipeline(workspaceId) : this.fallbackPipeline;
+
+    // Use LLM to create a varied prompt for each additional slide
+    let prompt: string;
+    try {
+      const llmResult = await llm.complete(
+        `You are an expert at creating image generation prompts for social media.
+Create a vivid, detailed image prompt for slide #${variationIndex + 1} of a multi-slide social media video.
+Each slide should show a DIFFERENT visual angle or aspect of the same topic.
+No text/typography in the image. Make it visually distinct from other slides.
+Tone: ${version.brief.tone}. Format: ${version.brief.format}.
+Topic: ${version.brief.angle}
+Post content: ${version.copy.substring(0, 400)}
+
+Respond ONLY with the English image prompt. Max 150 words.`,
+        { temperature: 0.9, maxTokens: 300 },
+      );
+      prompt = llmResult.trim();
+    } catch {
+      prompt = pipeline.buildImagePromptFromBrief({
+        angle: version.brief.angle,
+        tone: version.brief.tone,
+        format: version.brief.format,
+        cta: version.brief.cta,
+        copy: version.copy,
+      });
+    }
+
+    const result = await this.generateSingleImageWithProFallback(
+      version, version.brief, llm, pipeline, workspaceId,
+    );
+
+    const asset = await this.prisma.mediaAsset.create({
+      data: {
+        contentVersionId,
+        type: 'IMAGE',
+        prompt: result.prompt,
+        provider: result.provider,
+        originalUrl: result.originalUrl,
+        optimizedUrl: result.optimizedUrl,
+        thumbnailUrl: result.thumbnailUrl,
+        status: 'READY',
+        metadata: { ...(result.metadata ?? {}), slideVariation: variationIndex } as any,
       },
     });
 
@@ -689,6 +802,162 @@ Máximo 200 palabras.`;
   // --- Private helpers ---
 
   /**
+   * Regeneración Pro — genera imágenes con el modelo seleccionado.
+   * Soporta modelos KIE (Ideogram, GPT Image, Flux-2, etc.), Replicate, o estándar.
+   */
+  async regenerateImagePro(
+    contentVersionId: string,
+    customPrompt?: string,
+    modelId?: ProImageModelId,
+  ): Promise<{ mediaAssetId: string }> {
+    const effectiveModel: ProImageModelId = modelId ?? 'ideogram/v3-text-to-image';
+    const modelDef = PRO_IMAGE_MODELS.find(m => m.id === effectiveModel);
+    const modelLabel = modelDef?.name ?? effectiveModel;
+    this.logger.log(`Pro regeneration (${modelLabel}) for version ${contentVersionId}`);
+
+    const version = await this.prisma.contentVersion.findUniqueOrThrow({
+      where: { id: contentVersionId },
+      include: { brief: { include: { editorialRun: { select: { workspaceId: true } } } } },
+    });
+
+    const workspaceId = version.brief.editorialRun?.workspaceId;
+
+    // Resolve the image adapter based on model selection
+    let imageAdapter: ImageGeneratorAdapter;
+    let providerLabel: string;
+
+    if (effectiveModel === 'standard') {
+      // Use the standard fallback pipeline (Pollinations → HF → Replicate)
+      imageAdapter = workspaceId
+        ? (await this.getPipeline(workspaceId) as any).imageGen
+        : (this.fallbackPipeline as any).imageGen;
+      providerLabel = 'standard';
+    } else if (effectiveModel.startsWith('replicate/')) {
+      const replicateToken = this.config.get<string>('REPLICATE_API_TOKEN', '');
+      if (!replicateToken) throw new Error('REPLICATE_API_TOKEN not configured');
+      const replicateModel = effectiveModel.replace('replicate/', '') as any;
+      imageAdapter = new ReplicateImageAdapter({ apiToken: replicateToken, defaultModel: replicateModel });
+      providerLabel = `replicate-${replicateModel}`;
+    } else {
+      // KIE API model
+      const kieApiKey = this.config.get<string>('KIE_AI_API_KEY', '');
+      if (!kieApiKey) throw new Error(`KIE_AI_API_KEY not configured — cannot use ${modelLabel}`);
+      imageAdapter = new KieImageProAdapter({ apiKey: kieApiKey, modelId: effectiveModel as KieImageModelId });
+      providerLabel = `kie-${effectiveModel.split('/')[0]}`;
+    }
+
+    // Build the prompt
+    const isTextModel = modelDef?.textCapability === 'excellent' || modelDef?.textCapability === 'good';
+    let prompt: string;
+    if (customPrompt) {
+      prompt = customPrompt;
+    } else {
+      const llm = workspaceId ? await this.getLlm(workspaceId) : this.fallbackLlm;
+      try {
+        const systemPrompt = isTextModel
+          ? `You are an expert at creating image generation prompts optimized for ${modelLabel}, which excels at rendering text inside images.
+Given this social media post, create a visually striking image prompt that INCLUDES readable text overlays as part of the design.
+Design like a professional social media graphic with bold headlines and clean typography.`
+          : `You are an expert at creating image generation prompts for ${modelLabel}.
+Given this social media post, create a visually striking image prompt for a professional social media graphic.
+Focus on visual impact, composition, and brand aesthetics.`;
+
+        const llmResult = await llm.complete(
+          `${systemPrompt}
+
+Tone: ${version.brief.tone}. Format: ${version.brief.format}.
+Topic: ${version.brief.angle}
+Post content: ${version.copy.substring(0, 500)}
+
+${isTextModel ? 'Include the key message as text IN the image. ' : ''}Respond ONLY with the prompt in English. Max 150 words.`,
+          { temperature: 0.8, maxTokens: 300 },
+        );
+        prompt = llmResult.trim();
+      } catch {
+        prompt = isTextModel
+          ? `Professional social media graphic about "${version.brief.angle}", bold headline text, clean modern typography, vibrant design, Instagram post style`
+          : `Professional social media image about "${version.brief.angle}", vibrant, high quality, Instagram post style`;
+      }
+    }
+
+    const result = await imageAdapter.generate(prompt);
+
+    // Mark previous images as replaced
+    await this.prisma.mediaAsset.updateMany({
+      where: { contentVersionId, type: 'IMAGE' },
+      data: { status: 'FAILED', metadata: { replaced: true, replacedAt: new Date().toISOString() } },
+    });
+
+    const asset = await this.prisma.mediaAsset.create({
+      data: {
+        contentVersionId,
+        type: 'IMAGE',
+        prompt: result.prompt,
+        provider: providerLabel,
+        originalUrl: result.url,
+        optimizedUrl: result.url,
+        status: 'READY',
+        metadata: { ...(result.metadata ?? {}), proRegeneration: true, model: effectiveModel } as any,
+      },
+    });
+
+    return { mediaAssetId: asset.id };
+  }
+
+  /**
+   * Genera música de fondo usando KIE Suno API.
+   * Almacena como MediaAsset tipo AUDIO vinculado al ContentVersion.
+   */
+  async generateBackgroundMusic(
+    contentVersionId: string,
+    style?: string,
+    customPrompt?: string,
+  ): Promise<{ mediaAssetId: string; audioUrl: string }> {
+    this.logger.log(`Generating background music for version ${contentVersionId}, style: ${style ?? 'upbeat'}`);
+
+    const version = await this.prisma.contentVersion.findUniqueOrThrow({
+      where: { id: contentVersionId },
+      include: { brief: { include: { editorialRun: { select: { workspaceId: true } } } } },
+    });
+
+    const kieApiKey = this.config.get<string>('KIE_AI_API_KEY', '');
+    if (!kieApiKey) {
+      throw new Error('KIE_AI_API_KEY not configured — cannot generate music');
+    }
+
+    const musicAdapter = new KieMusicAdapter({ apiKey: kieApiKey });
+
+    const result = await musicAdapter.generateAndWait({
+      style: style ?? 'upbeat',
+      prompt: customPrompt,
+      instrumental: true,
+    });
+
+    if (result.status !== 'completed' || !result.audioUrl) {
+      throw new Error(`Music generation failed: ${JSON.stringify(result.metadata)}`);
+    }
+
+    const asset = await this.prisma.mediaAsset.create({
+      data: {
+        contentVersionId,
+        type: 'AUDIO',
+        prompt: customPrompt ?? `Background music: ${style ?? 'upbeat'}`,
+        provider: result.provider,
+        originalUrl: result.audioUrl,
+        optimizedUrl: result.audioUrl,
+        status: 'READY',
+        metadata: {
+          musicStyle: style ?? 'upbeat',
+          title: result.title,
+          duration: result.duration,
+        } as any,
+      },
+    });
+
+    return { mediaAssetId: asset.id, audioUrl: result.audioUrl };
+  }
+
+  /**
    * Genera una imagen promocional usando SharpRenderer (raster real) con fallback a SVG.
    * 1. Intenta composición Sharp (background + product + logo + text → PNG)
    * 2. Sube el PNG a Cloudinary si disponible
@@ -815,6 +1084,94 @@ Máximo 200 palabras.`;
   }
 
   /**
+   * Intenta usar KIE Pro (Ideogram V3) para generar la imagen del batch.
+   * Si KIE_AI_API_KEY está configurado, genera con Ideogram (texto legible en imágenes).
+   * Si no, hace fallback al pipeline estándar gratuito.
+   */
+  /** Track KIE credit failures — resets after 30 min so KIE is retried if credits are replenished */
+  private kieCreditsExhaustedAt: number | null = null;
+  private readonly KIE_CREDITS_COOLDOWN_MS = 30 * 60 * 1000;
+
+  private async generateSingleImageWithProFallback(
+    version: { copy: string; caption: string },
+    brief: { angle: string; tone: string; format: string; cta: string },
+    llm: LLMAdapter,
+    pipeline: MediaPipeline,
+    workspaceId?: string,
+  ): Promise<ImagePipelineResult> {
+    const kieApiKey = this.config.get<string>('KIE_AI_API_KEY', '');
+    const kieExhausted = this.kieCreditsExhaustedAt !== null && (Date.now() - this.kieCreditsExhaustedAt) < this.KIE_CREDITS_COOLDOWN_MS;
+    if (this.kieCreditsExhaustedAt !== null && !kieExhausted) {
+      this.logger.log('KIE credits cooldown expired (30 min) — will retry KIE');
+      this.kieCreditsExhaustedAt = null;
+    }
+    this.logger.debug(`KIE check: apiKey=${kieApiKey ? 'SET(' + kieApiKey.length + 'chars)' : 'EMPTY'}, creditsExhausted=${kieExhausted}`);
+    if (!kieApiKey || kieExhausted) {
+      this.logger.log(`Skipping KIE Pro — ${!kieApiKey ? 'no API key' : 'credits exhausted (cooldown ' + Math.round((this.KIE_CREDITS_COOLDOWN_MS - (Date.now() - (this.kieCreditsExhaustedAt ?? 0))) / 60000) + ' min left)'}, using standard pipeline`);
+      return this.generateSingleImage(version, brief, llm, pipeline);
+    }
+
+    const modelId = DEFAULT_BATCH_KIE_MODEL;
+    const modelDef = PRO_IMAGE_MODELS.find(m => m.id === modelId);
+    const modelLabel = modelDef?.name ?? modelId;
+    this.logger.log(`Batch image: using KIE Pro model ${modelLabel}`);
+
+    try {
+      const formatLower = brief.format.toLowerCase();
+      const isTextModel = modelDef?.textCapability === 'excellent' || modelDef?.textCapability === 'good';
+
+      const systemPrompt = isTextModel
+        ? `You are an expert at creating image generation prompts optimized for ${modelLabel}, which excels at rendering text inside images.
+Given this social media post, create a visually striking image prompt that INCLUDES readable text overlays as part of the design.
+Design like a professional social media graphic with bold headlines and clean typography.
+The image should look like a polished Instagram post with integrated text elements.
+Include the MAIN MESSAGE or HOOK as readable text in the image design.`
+        : `You are an expert at creating image generation prompts for ${modelLabel}.
+Given this social media post, create a visually striking professional social media graphic.
+Focus on visual impact, composition, and brand aesthetics.`;
+
+      const userMessage = `Topic: ${brief.angle}
+Content summary: ${version.copy.substring(0, 400)}
+Tone: ${brief.tone}
+Format: ${brief.format}
+CTA: ${brief.cta}
+
+${isTextModel ? 'Include the key message as readable text IN the image design. ' : ''}Respond ONLY with the prompt in English. Max 150 words.`;
+
+      let prompt: string;
+      try {
+        const llmResult = await llm.complete(`${systemPrompt}\n\n${userMessage}`, { temperature: 0.8, maxTokens: 300 });
+        prompt = llmResult.trim();
+      } catch {
+        prompt = isTextModel
+          ? `Professional social media graphic about "${brief.angle}", bold headline text, clean modern typography, vibrant design, Instagram post style`
+          : `Professional social media image about "${brief.angle}", vibrant, high quality, Instagram post style`;
+      }
+
+      const imageAdapter = new KieImageProAdapter({ apiKey: kieApiKey, modelId });
+      const result = await imageAdapter.generate(prompt);
+
+      return {
+        originalUrl: result.url,
+        optimizedUrl: result.url,
+        thumbnailUrl: result.url,
+        prompt: result.prompt,
+        provider: `kie-${modelId.split('/')[0]}`,
+        metadata: { kieBatch: true, model: modelId, ...(result.metadata ?? {}) },
+      };
+    } catch (err) {
+      const errMsg = String(err);
+      if (errMsg.includes('402') || errMsg.includes('Credits insufficient') || errMsg.includes('balance')) {
+        this.kieCreditsExhaustedAt = Date.now();
+        this.logger.warn(`KIE credits exhausted — skipping KIE for remaining batch items. Falling back to standard.`);
+      } else {
+        this.logger.warn(`KIE Pro batch generation failed, falling back to standard: ${err}`);
+      }
+      return this.generateSingleImage(version, brief, llm, pipeline);
+    }
+  }
+
+  /**
    * Genera una imagen para un post usando LLM para crear un prompt rico y contextual.
    * El LLM analiza el copy, ángulo, tono y formato para generar un prompt
    * de imagen que realmente refleje el contenido del post.
@@ -825,22 +1182,34 @@ Máximo 200 palabras.`;
     llm: LLMAdapter,
     pipeline: MediaPipeline,
   ): Promise<ImagePipelineResult> {
-    // Usar LLM para generar un prompt de imagen contextual y rico
-    const systemPrompt = `You are an expert at creating image generation prompts for social media posts.
-Given a social media post's content, create a detailed, vivid image prompt that:
-- Captures the CORE MESSAGE and EMOTION of the post
-- Uses specific visual elements, colors, composition
-- Is suitable for ${brief.format} format on Instagram (1080x1080)
-- Matches the tone: ${brief.tone}
-- NEVER includes text, letters, words, or typography in the image
-- Focuses on visual metaphors, scenes, or abstract representations
-- Is detailed enough for AI image generation (FLUX model)
+    const formatLower = brief.format.toLowerCase();
+    const aspectRatio = formatLower === 'story' || formatLower === 'reel' ? '9:16 vertical (1080x1920)' : '4:5 (1080x1350)';
+    
+    const systemPrompt = `You are an expert social media visual designer who creates prompts for AI image generation.
+Your goal is to create PROFESSIONAL, VISUALLY STRIKING images for Instagram ${brief.format} posts.
 
-Respond ONLY with the image prompt in English, no explanations. Max 150 words.`;
+STYLE GUIDELINES (create images like top social media accounts):
+- Clean, modern, professional design with vibrant colors
+- Hand-drawn illustration style with bold outlines, like editorial illustrations
+- Include relevant ICONS, DIAGRAMS, or VISUAL METAPHORS that represent the topic
+- Use a clean background (white, light gradient, or soft pastel)
+- The image should look like a professional infographic or editorial illustration
+- Think of popular Instagram business/tech accounts with illustrated content
+- DO NOT include any text, words, letters, numbers, or typography - the image must be purely visual
+- DO NOT create photorealistic images - use illustration/digital art style
 
-    const userMessage = `Post topic: ${brief.angle}
-Post copy: ${version.copy.substring(0, 500)}
-Caption: ${(version.caption || '').substring(0, 200)}
+COMPOSITION:
+- Central visual element that represents the main concept
+- Supporting icons or small illustrations around it
+- Professional color palette (2-3 main colors)
+- Clean whitespace, not cluttered
+- Aspect ratio: ${aspectRatio}
+
+Respond ONLY with the image prompt in English, no explanations. Max 120 words.`;
+
+    const userMessage = `Topic: ${brief.angle}
+Content summary: ${version.copy.substring(0, 400)}
+Tone: ${brief.tone}
 CTA: ${brief.cta}`;
 
     let prompt: string;
@@ -852,18 +1221,15 @@ CTA: ${brief.cta}`;
       prompt = llmResult.trim();
       this.logger.log(`LLM-generated image prompt: ${prompt.substring(0, 100)}...`);
     } catch (err) {
-      // Fallback al prompt básico si el LLM falla
       this.logger.warn(`LLM prompt generation failed, using basic prompt: ${err}`);
-      prompt = pipeline.buildImagePromptFromBrief({
-        angle: brief.angle,
-        tone: brief.tone,
-        format: brief.format,
-        cta: brief.cta,
-        copy: version.copy,
-      });
+      prompt = `Professional illustrated infographic about ${brief.angle}, clean modern design, hand-drawn style icons and diagrams, vibrant colors on white background, editorial illustration, no text`;
     }
 
-    return pipeline.generateImage(prompt);
+    const dimensions = formatLower === 'story' || formatLower === 'reel'
+      ? { width: 1080, height: 1920 }
+      : { width: 1080, height: 1350 };
+
+    return pipeline.generateImage(prompt, dimensions);
   }
 
   private async generateCarouselMedia(
@@ -930,6 +1296,33 @@ CTA: ${brief.cta}`;
     });
 
     return slides;
+  }
+
+  /**
+   * Builds unique image prompts for each carousel slide.
+   * Each prompt is tailored to the slide's content (cover, content point, CTA)
+   * and produces illustrated, infographic-style images.
+   */
+  private buildCarouselImagePrompts(
+    slides: CarouselSlide[],
+    brief: { angle: string; tone: string; format: string; cta: string },
+  ): string[] {
+    const baseStyle = 'professional illustrated infographic style, clean modern design, hand-drawn icons and diagrams, bold outlines, vibrant colors on white background, editorial illustration, 4:5 aspect ratio, no text no words no letters no typography';
+
+    return slides.map((slide, index) => {
+      if (slide.type === 'cover') {
+        return `Hero illustration representing "${brief.angle}", large central visual metaphor with supporting icons, eye-catching composition, ${baseStyle}`;
+      }
+
+      if (slide.type === 'cta') {
+        return `Call to action illustration, hands pointing or sharing gesture, community and engagement visual metaphor, warm inviting colors, ${baseStyle}`;
+      }
+
+      // Content slides: each one focuses on its specific point
+      const topic = slide.title || `Point ${index}`;
+      const context = slide.body ? ` — ${slide.body.substring(0, 100)}` : '';
+      return `Illustration explaining "${topic}"${context}, relevant icons and mini diagrams, educational infographic visual, ${baseStyle}`;
+    });
   }
 
   private toneToCategory(

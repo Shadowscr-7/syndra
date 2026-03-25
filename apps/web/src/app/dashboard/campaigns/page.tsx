@@ -159,6 +159,27 @@ export default async function CampaignsPage() {
                 <input type="text" name="kpiTarget" placeholder="ej: 10K interacciones" className="input-field" />
               </div>
             </div>
+
+            {/* Music */}
+            <div>
+              <label className="input-label">🎵 Música de fondo (3 créditos/canción)</label>
+              <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Genera música instrumental con IA para Reels, Stories y Shorts</p>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+                  <input type="checkbox" name="musicEnabled" value="true" className="accent-purple-500" />
+                  Activar música
+                </label>
+                <select name="musicStyle" className="input-field w-auto text-xs">
+                  <option value="upbeat">🎉 Upbeat</option>
+                  <option value="calm">🧘 Calm</option>
+                  <option value="corporate">💼 Corporate</option>
+                  <option value="energetic">⚡ Energetic</option>
+                  <option value="cinematic">🎬 Cinematic</option>
+                </select>
+                <input type="text" name="musicPrompt" placeholder="Prompt musical personalizado..." className="input-field flex-1 text-xs" />
+              </div>
+            </div>
+
             <button type="submit" className="btn-primary w-full text-sm">
               ✅ Crear campaña
             </button>

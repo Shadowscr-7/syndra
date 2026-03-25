@@ -53,6 +53,9 @@ export class CampaignsService {
     userPersonaId?: string;
     targetChannels?: string[];
     operationMode?: string;
+    musicEnabled?: boolean;
+    musicStyle?: string;
+    musicPrompt?: string;
   }) {
     return this.prisma.campaign.create({
       data: {
@@ -68,6 +71,9 @@ export class CampaignsService {
         userPersonaId: data.userPersonaId,
         targetChannels: data.targetChannels ?? ['instagram'],
         operationMode: data.operationMode as any ?? null,
+        musicEnabled: data.musicEnabled ?? false,
+        musicStyle: data.musicStyle ?? null,
+        musicPrompt: data.musicPrompt ?? null,
       },
     });
   }
@@ -85,6 +91,9 @@ export class CampaignsService {
     targetChannels?: string[];
     operationMode?: string | null;
     isActive?: boolean;
+    musicEnabled?: boolean;
+    musicStyle?: string | null;
+    musicPrompt?: string | null;
   }) {
     await this.findById(id); // throws if not found
     return this.prisma.campaign.update({
@@ -102,6 +111,9 @@ export class CampaignsService {
         ...(data.targetChannels !== undefined && { targetChannels: data.targetChannels }),
         ...(data.operationMode !== undefined && { operationMode: data.operationMode as any }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
+        ...(data.musicEnabled !== undefined && { musicEnabled: data.musicEnabled }),
+        ...(data.musicStyle !== undefined && { musicStyle: data.musicStyle }),
+        ...(data.musicPrompt !== undefined && { musicPrompt: data.musicPrompt }),
       },
     });
   }

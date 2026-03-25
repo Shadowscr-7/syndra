@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
@@ -15,12 +15,23 @@ async function bootstrap() {
   // Cookie parser — required for JWT cookie-based auth
   app.use(cookieParser());
 
+  // Global validation pipe — rejects unknown fields, transforms types
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+    transformOptions: { enableImplicitConversion: true },
+  }));
+
+  const corsOrigins: string[] = [
+    process.env.APP_URL || 'http://localhost:3002',
+  ];
+  // Only allow localhost origins in development
+  if (process.env.NODE_ENV !== 'production') {
+    corsOrigins.push('http://localhost:3000', 'http://localhost:3002');
+  }
   app.enableCors({
-    origin: [
-      process.env.APP_URL || 'http://localhost:3002',
-      'http://localhost:3000',
-      'http://localhost:3002',
-    ],
+    origin: corsOrigins,
     credentials: true,
   });
 

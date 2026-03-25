@@ -27,9 +27,11 @@ export function buildStrategyPrompt(params: {
   defaultTone: string;
   objective: string;
   availableFormats: string[];
+  preferredFormat?: string;
   themeKeywords: string[];
   campaignContext?: string;
   previousAngles?: string[];
+  recentFormats?: string[];
   persona?: {
     brandName: string;
     brandDescription: string;
@@ -129,6 +131,7 @@ CONTEXTO DE MARCA:
 - Tono default: ${params.defaultTone}
 - Objetivo actual: ${params.objective}
 - Formatos disponibles: ${params.availableFormats.join(', ')}
+${params.preferredFormat ? `- ⭐ FORMATO PREFERIDO: ${params.preferredFormat} — Usa este formato a menos que el contenido sea claramente inadecuado para él. Adapta la presentación al formato: post (imagen estática + copy), carousel (múltiples slides educativos/informativos), reel (video corto dinámico), story (contenido efímero/urgente/detrás de cámaras).` : ''}
 - Keywords del tema: ${params.themeKeywords.join(', ')}
 ${params.campaignContext ? `- Campaña activa: ${params.campaignContext}
 
@@ -145,21 +148,30 @@ ${params.researchSummary}
 ${params.previousAngles?.length ? `ÁNGULOS YA USADOS (evitar repetición):
 ${params.previousAngles.join('\n')}` : ''}
 
+${params.recentFormats?.length ? `FORMATOS RECIENTES (varía para no repetir el mismo formato consecutivamente):
+${params.recentFormats.join(', ')}` : ''}
+
 Genera un BRIEF EDITORIAL con:
 1. El ángulo más prometedor para engagement — ${params.campaignContext ? 'DEBE estar alineado con la campaña activa y sus keywords' : 'basado en el research del día'}
-2. El formato ideal (prioriza los formatos disponibles listados arriba)
+2. El formato ideal (prioriza el formato preferido si está indicado, adapta el estilo de presentación al formato)
 3. Un CTA potente alineado al objetivo
-4. Un seed prompt para la generación de copy
+4. Un seed prompt para la generación de copy — debe indicar el estilo de presentación adecuado al formato:
+   - post: copy conciso + imagen estática impactante
+   - carousel: contenido educativo/paso a paso en múltiples slides
+   - reel: guion para video corto, dinámico, con ganchos visuales
+   - story: contenido efímero, cercano, behind-the-scenes o encuesta
 5. El tono más adecuado para este contenido específico
+6. El tipo de medio visual que mejor acompaña al contenido
 
 Responde con JSON:
 {
   "angle": "descripción del ángulo elegido",
   "format": "post|carousel|reel|story|avatar_video",
   "cta": "call to action concreto",
-  "seedPrompt": "prompt semilla para generar el copy final",
+  "seedPrompt": "prompt semilla para generar el copy final (adaptado al formato elegido)",
   "tone": "tono elegido para esta pieza",
-  "reasoning": "explicación de por qué esta estrategia",
+  "mediaType": "image|video|carousel_slides|mixed",
+  "reasoning": "explicación de por qué esta estrategia y este formato",
   "references": ["url o título de fuente usada"],
   "estimatedEngagement": "low|medium|high",
   "suggestedHashtags": ["#hashtag1", "#hashtag2"]

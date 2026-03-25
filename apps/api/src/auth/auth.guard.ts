@@ -44,9 +44,12 @@ export class AuthGuard implements CanActivate {
     private readonly prisma: PrismaService,
   ) {
     const secret = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET;
-    this.isDev = !secret;
+    this.isDev = !secret && process.env.NODE_ENV !== 'production';
+    if (!secret && process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL: JWT_SECRET is required in production. The API will not start without it.');
+    }
     if (this.isDev) {
-      this.logger.warn('⚠️  No JWT_SECRET set — running in dev mode (mock auth)');
+      this.logger.warn('⚠️  No JWT_SECRET set — running in dev mode (mock auth). NOT for production!');
     }
   }
 
@@ -203,8 +206,8 @@ export class AuthGuard implements CanActivate {
       return authHeader.slice(7);
     }
 
-    // 2. access-token cookie
-    const cookieToken = request.cookies?.['access-token'];
+    // 2. access-token cookie (NestJS sets with hyphen, Next.js proxy sets with underscore)
+    const cookieToken = request.cookies?.['access-token'] || request.cookies?.['access_token'];
     if (cookieToken) {
       return cookieToken;
     }

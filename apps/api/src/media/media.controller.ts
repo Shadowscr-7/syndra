@@ -111,4 +111,59 @@ export class MediaController {
       updatedUrl: result.updatedUrl,
     };
   }
+
+  /**
+   * POST /api/media/regenerate-pro/:contentVersionId
+   * Regeneración Pro — Ideogram V3 especializado en texto en imágenes
+   * Body: { customPrompt?: string }
+   */
+  @Post('regenerate-pro/:contentVersionId')
+  @UseCredits('IMAGE_PRO_TEXT')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
+  async regenerateImagePro(
+    @Param('contentVersionId') contentVersionId: string,
+    @Body() body: { customPrompt?: string; model?: string },
+  ) {
+    const modelLabel = body.model ?? 'Ideogram V3';
+    this.logger.log(`Pro regeneration (${modelLabel}) for version ${contentVersionId}`);
+
+    const result = await this.mediaEngine.regenerateImagePro(
+      contentVersionId,
+      body.customPrompt,
+      body.model as any,
+    );
+
+    return {
+      success: true,
+      mediaAssetId: result.mediaAssetId,
+    };
+  }
+
+  /**
+   * POST /api/media/generate-music
+   * Genera música de fondo para una publicación
+   * Body: { contentVersionId: string, style?: string, prompt?: string }
+   */
+  @Post('generate-music')
+  @UseCredits('MUSIC_BACKGROUND')
+  @UseGuards(CreditGuard)
+  @UseInterceptors(CreditInterceptor)
+  async generateMusic(
+    @Body() body: { contentVersionId: string; style?: string; prompt?: string },
+  ) {
+    this.logger.log(`Music generation for version ${body.contentVersionId}, style: ${body.style ?? 'upbeat'}`);
+
+    const result = await this.mediaEngine.generateBackgroundMusic(
+      body.contentVersionId,
+      body.style,
+      body.prompt,
+    );
+
+    return {
+      success: true,
+      mediaAssetId: result.mediaAssetId,
+      audioUrl: result.audioUrl,
+    };
+  }
 }

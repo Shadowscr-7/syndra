@@ -15,6 +15,7 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/db/package.json ./packages/db/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/media/package.json ./packages/media/
+COPY packages/publishers/package.json ./packages/publishers/
 
 RUN npm ci --ignore-scripts
 
@@ -28,7 +29,8 @@ RUN npx --workspace=packages/db prisma generate
 FROM prisma AS builder
 WORKDIR /app
 
-# Copy all source
+# Copy root tsconfig and all source
+COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/web/ ./apps/web/
 

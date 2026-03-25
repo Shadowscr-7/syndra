@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { AiEditModal } from './ai-edit-modal';
+import { MediaPreviewModal } from './media-preview-modal';
 import { useRouter } from 'next/navigation';
 
 interface AssetCardProps {
@@ -31,6 +32,7 @@ const TYPE_LABELS: Record<string, string> = {
   AVATAR_VIDEO: '🤖 Avatar',
   THUMBNAIL: '📐 Thumbnail',
   MOTION_GRAPHIC: '✨ Motion',
+  AUDIO: '🎵 Audio',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -43,20 +45,61 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function AssetCard({ asset }: AssetCardProps) {
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const router = useRouter();
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const url = asset.optimizedUrl ?? asset.originalUrl;
+  const isVideo = asset.type === 'VIDEO' || asset.type === 'AVATAR_VIDEO' || asset.type === 'MOTION_GRAPHIC';
+  const isAudio = asset.type === 'AUDIO';
+  const canPreview = !!url && asset.status === 'READY';
 
   return (
     <>
       <div className="glass-card p-0 overflow-hidden group">
-        {/* Image preview */}
+        {/* Media preview area */}
         <div
-          className="relative aspect-square flex items-center justify-center overflow-hidden"
+          className={`relative aspect-square flex items-center justify-center overflow-hidden${canPreview ? ' cursor-pointer' : ''}`}
           style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+          onClick={() => canPreview && !isAudio && setShowPreview(true)}
         >
-          {asset.optimizedUrl || asset.originalUrl ? (
+          {isAudio ? (
+            /* Audio card — icon + inline player */
+            <div className="flex flex-col items-center justify-center gap-3 p-4 w-full">
+              <span className="text-5xl">🎵</span>
+              {url && (
+                <audio ref={audioRef} src={url} preload="metadata" className="w-full" controls />
+              )}
+            </div>
+          ) : isVideo && url ? (
+            /* Video/Avatar thumbnail with play overlay */
+            <>
+              <video
+                src={url}
+                muted
+                preload="metadata"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                onLoadedMetadata={(e) => {
+                  // Seek to 1s for thumbnail
+                  (e.target as HTMLVideoElement).currentTime = 1;
+                }}
+              />
+              {canPreview && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center opacity-70 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
+                    style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+                  >
+                    <span className="text-white text-2xl ml-1">▶</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : url ? (
+            /* Image */
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={asset.optimizedUrl ?? asset.originalUrl ?? ''}
+              src={url}
               alt={asset.prompt ?? 'Media asset'}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
@@ -77,16 +120,29 @@ export function AssetCard({ asset }: AssetCardProps) {
             {asset.status}
           </span>
 
-          {/* AI Edit button — hover overlay */}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-all duration-300">
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100 transition-all duration-300 px-4 py-2.5 rounded-xl text-xs font-semibold text-white"
-              style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(124,58,237,0.4)' }}
-            >
-              ✨ Editar con IA
-            </button>
-          </div>
+          {/* Hover overlay — click to view / edit */}
+          {!isAudio && (
+            <div className="absolute inset-0 flex items-end justify-center pb-3 bg-black/0 group-hover:bg-black/30 transition-all duration-300 pointer-events-none">
+              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 pointer-events-auto">
+                {canPreview && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowPreview(true); }}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:brightness-125"
+                    style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}
+                  >
+                    {isVideo ? '▶ Reproducir' : '🔍 Ampliar'}
+                  </button>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowEditModal(true); }}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:brightness-125"
+                  style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 20px rgba(124,58,237,0.4)' }}
+                >
+                  ✨ Editar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Info */}
@@ -149,6 +205,14 @@ export function AssetCard({ asset }: AssetCardProps) {
           currentUrl={asset.optimizedUrl ?? asset.originalUrl}
           onClose={() => setShowEditModal(false)}
           onSuccess={() => router.refresh()}
+        />
+      )}
+
+      {/* Media Preview Modal */}
+      {showPreview && (
+        <MediaPreviewModal
+          asset={asset}
+          onClose={() => setShowPreview(false)}
         />
       )}
     </>

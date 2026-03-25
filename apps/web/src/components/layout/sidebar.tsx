@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePlan } from '@/lib/plan-context';
 import { PlanBadge } from '@/components/plan/usage-badge';
 import { CreditWidget } from '@/components/layout/credit-widget';
+import { useBackgroundTasks } from '@/lib/background-tasks-context';
 
 interface SidebarItem {
   name: string;
@@ -50,6 +51,7 @@ const allSections: SidebarSection[] = [
       { name: 'Playbooks', href: '/dashboard/playbooks', icon: '📚' },
       { name: 'Perfiles IA', href: '/dashboard/profiles', icon: '🤖' },
       { name: 'Scheduler', href: '/dashboard/scheduler', icon: '📅' },
+      { name: 'Aprobaciones', href: '/dashboard/approvals', icon: '✅' },
     ],
   },
   // ── Archivos y producción ──
@@ -95,6 +97,8 @@ const allSections: SidebarSection[] = [
   {
     label: 'Config',
     items: [
+      { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
+      { name: 'Facturación', href: '/dashboard/billing', icon: '💳' },
       { name: 'Credenciales', href: '/dashboard/credentials', icon: '🔑' },
       { name: 'Configuración', href: '/dashboard/settings', icon: '⚙️' },
     ],
@@ -117,7 +121,6 @@ const allSections: SidebarSection[] = [
       { name: 'Panel Admin', href: '/dashboard/admin', icon: '🏛️' },
       { name: 'Usuarios', href: '/dashboard/admin/users', icon: '👤' },
       { name: 'Equipo', href: '/dashboard/team', icon: '👥', minPlan: 'creator' },
-      { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
       { name: 'Comisiones', href: '/dashboard/admin/commissions', icon: '💰' },
       { name: 'Operaciones', href: '/dashboard/admin/operations', icon: '🔧' },
       { name: 'Playbooks', href: '/dashboard/admin/playbooks', icon: '📖' },
@@ -133,6 +136,7 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
   const pathname = usePathname();
   const router = useRouter();
   const { isAtLeast, loading: planLoading, planName } = usePlan();
+  const { runningCount, setShowPanel } = useBackgroundTasks();
 
   const sections = useMemo(
     () => allSections.filter((s) => !s.roles || s.roles.includes(userRole)),
@@ -310,6 +314,34 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
           );
         })}
       </nav>
+
+      {/* ── Processes button ─────── */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => setShowPanel(true)}
+          className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 hover:bg-white/5"
+          style={{ color: runningCount > 0 ? '#60a5fa' : 'rgba(160,160,192,0.8)' }}
+        >
+          <span className="text-base relative">
+            ⚙️
+            {runningCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1.5 w-3.5 h-3.5 rounded-full text-[8px] font-bold flex items-center justify-center animate-pulse"
+                style={{ background: '#3b82f6', color: '#fff' }}
+              >
+                {runningCount}
+              </span>
+            )}
+          </span>
+          <span>Procesos</span>
+          {runningCount > 0 && (
+            <span
+              className="ml-auto w-2 h-2 rounded-full animate-pulse"
+              style={{ background: '#3b82f6', boxShadow: '0 0 6px #3b82f6' }}
+            />
+          )}
+        </button>
+      </div>
 
       {/* ── Separator ────────────── */}
       <div className="mx-5 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.15), transparent)' }} />

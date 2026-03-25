@@ -5,9 +5,9 @@
 // Usage: Apply globally or per-controller. When a workspace has
 // a higher-tier plan, they get more generous rate limits.
 //
-// FREE:       30 req/min, 500 req/hour
-// PRO:        120 req/min, 3000 req/hour
-// ENTERPRISE: 300 req/min, 10000 req/hour
+// FREE:       200 req/min, 5000 req/hour
+// PRO:        500 req/min, 15000 req/hour
+// ENTERPRISE: 1000 req/min, 50000 req/hour
 // ============================================================
 
 import { Injectable, ExecutionContext, Logger } from '@nestjs/common';
@@ -20,12 +20,12 @@ interface PlanRateLimit {
 }
 
 const PLAN_RATE_LIMITS: Record<string, PlanRateLimit> = {
-  FREE: { perMinute: 30, perHour: 500 },
-  PRO: { perMinute: 120, perHour: 3000 },
-  ENTERPRISE: { perMinute: 300, perHour: 10000 },
+  FREE: { perMinute: 200, perHour: 5000 },
+  PRO: { perMinute: 500, perHour: 15000 },
+  ENTERPRISE: { perMinute: 1000, perHour: 50000 },
 };
 
-const DEFAULT_RATE_LIMIT: PlanRateLimit = { perMinute: 30, perHour: 500 };
+const DEFAULT_RATE_LIMIT: PlanRateLimit = { perMinute: 200, perHour: 5000 };
 
 // In-memory rate tracking (per workspace)
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();

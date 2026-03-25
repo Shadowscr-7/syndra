@@ -44,7 +44,7 @@ export class ExperimentService {
       select: { userId: true },
     });
     if (wsUser?.userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(wsUser.userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, wsUser.userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
         return provider === 'anthropic'

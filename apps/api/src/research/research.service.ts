@@ -83,16 +83,15 @@ export class ResearchService {
   private async getLlm(workspaceId: string): Promise<LLMAdapter> {
     const userId = await this.resolveUserId(workspaceId);
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
-        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        this.logger.debug(`Using ${provider} LLM credential for workspace ${workspaceId}`);
         return provider === 'anthropic'
           ? new AnthropicAdapter({ apiKey: payload.apiKey })
           : new OpenAIAdapter({ apiKey: payload.apiKey });
       }
     }
-    this.logger.debug('Using env-var fallback LLM adapter');
     return this.fallbackLlm;
   }
 
@@ -383,6 +382,30 @@ export class ResearchService {
 
     this.logger.log(`Found ${briefs.length} active business briefs for internal research`);
 
+    // 1b. If this run belongs to a weekly planner batch, select a subset of briefs
+    //     based on the item's position to ensure topic diversity across the batch.
+    let selectedBriefs = briefs;
+    const plannedPub = await this.prisma.plannedPublication.findUnique({
+      where: { editorialRunId },
+      select: { sortOrder: true, batch: { select: { totalItems: true } } },
+    });
+    if (plannedPub && briefs.length > 1) {
+      const totalItems = plannedPub.batch.totalItems || 1;
+      const idx = plannedPub.sortOrder;
+      // Round-robin: assign ~2 briefs per item, cycling through all briefs
+      const briefsPerItem = Math.max(2, Math.ceil(briefs.length / totalItems));
+      const start = (idx * briefsPerItem) % briefs.length;
+      selectedBriefs = [];
+      for (let i = 0; i < briefsPerItem; i++) {
+        selectedBriefs.push(briefs[(start + i) % briefs.length]!);
+      }
+      // Deduplicate by id
+      selectedBriefs = [...new Map(selectedBriefs.map((b) => [b.id, b])).values()];
+      this.logger.log(
+        `Weekly planner item ${idx + 1}/${totalItems}: using ${selectedBriefs.length} briefs → [${selectedBriefs.map((b) => b.title).join(', ')}]`,
+      );
+    }
+
     // 2. Load business profile for prompt context
     const profile = await this.businessProfileService.get(workspaceId);
     const workspace = await this.prisma.workspace.findUnique({
@@ -403,7 +426,7 @@ export class ResearchService {
       contentGoals: profile?.contentGoals || [],
     };
 
-    const briefInputs: BusinessBriefInput[] = briefs.map((b) => ({
+    const briefInputs: BusinessBriefInput[] = selectedBriefs.map((b) => ({
       type: b.type as BusinessBriefInput['type'],
       title: b.title,
       content: b.content,
@@ -427,10 +450,24 @@ export class ResearchService {
     const llm = await this.getLlm(workspaceId);
 
     // 5. Generate editorial angles using business research prompt
+    // Build batch context for format diversity
+    let researchOptions: { preferredFormat?: string; batchContext?: string } | undefined;
+    if (plannedPub) {
+      const idx = plannedPub.sortOrder;
+      const total = plannedPub.batch.totalItems;
+      const formats = ['post', 'carousel', 'reel', 'story'];
+      const preferredFormat = formats[idx % formats.length];
+      researchOptions = {
+        preferredFormat,
+        batchContext: `Esta publicación es la ${idx + 1} de ${total} de la semana. Genera ángulos variados que sean diferentes a los demás días.`,
+      };
+    }
+
     const researchPrompt = buildBusinessResearchPrompt(
       briefInputs,
       profileInput,
       campaignObjective,
+      researchOptions,
     );
 
     interface ResearchAngle {
@@ -454,7 +491,7 @@ export class ResearchService {
     } catch (error) {
       this.logger.error('LLM business research failed:', error);
       // Fallback: create basic angles from briefs directly
-      angles = briefs.map((b) => ({
+      angles = selectedBriefs.map((b) => ({
         briefTitle: b.title,
         angle: `Promocionar: ${b.title}${b.discountText ? ` con ${b.discountText}` : ''}`,
         format: 'post',
@@ -466,7 +503,7 @@ export class ResearchService {
     // 6. Create ResearchSnapshots from angles + briefs
     const snapshots = await Promise.all(
       angles.map((angle, idx) => {
-        const matchedBrief = briefs.find((b) => b.title === angle.briefTitle) || briefs[0];
+        const matchedBrief = selectedBriefs.find((b) => b.title === angle.briefTitle) || selectedBriefs[0];
         return this.prisma.researchSnapshot.create({
           data: {
             editorialRunId,
@@ -491,7 +528,7 @@ export class ResearchService {
     // 7. Increment usage count on used briefs
     const usedBriefIds = new Set(
       angles
-        .map((a) => briefs.find((b) => b.title === a.briefTitle)?.id)
+        .map((a) => selectedBriefs.find((b) => b.title === a.briefTitle)?.id)
         .filter(Boolean) as string[],
     );
     await Promise.all(
@@ -501,7 +538,7 @@ export class ResearchService {
     // 8. Build summary
     const summaryText = JSON.stringify({
       dominantTheme: `${profileInput.businessName} — ${themeType || 'Promocional'}`,
-      summary: `${angles.length} ángulos editoriales generados desde ${briefs.length} briefs internos del negocio.`,
+      summary: `${angles.length} ángulos editoriales generados desde ${selectedBriefs.length} briefs internos del negocio.`,
       angles: angles.map((a) => ({
         angle: a.angle,
         format: a.format,
@@ -534,7 +571,7 @@ export class ResearchService {
     }));
 
     this.logger.log(
-      `Internal research complete: ${snapshots.length} snapshots from ${briefs.length} briefs, moving to STRATEGY`,
+      `Internal research complete: ${snapshots.length} snapshots from ${selectedBriefs.length} briefs, moving to STRATEGY`,
     );
 
     return {

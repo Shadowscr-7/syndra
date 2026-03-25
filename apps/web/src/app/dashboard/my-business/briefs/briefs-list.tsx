@@ -53,8 +53,9 @@ export function BusinessBriefsList() {
 
   const loadBriefs = useCallback(async () => {
     try {
-      const data = await apiFetch<BusinessBrief[]>('/business-briefs');
-      setBriefs(data ?? []);
+      const res = await apiFetch<any>('/business-briefs');
+      const list = Array.isArray(res) ? res : (res?.data ?? []);
+      setBriefs(list);
     } catch {
       setBriefs([]);
     } finally {

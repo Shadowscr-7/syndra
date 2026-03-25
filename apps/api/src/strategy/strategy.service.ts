@@ -22,6 +22,7 @@ export interface StrategyResult {
   cta: string;
   seedPrompt: string;
   tone: string;
+  mediaType?: string;
   reasoning: string;
   references: string[];
   estimatedEngagement: string;
@@ -59,14 +60,14 @@ export class StrategyService {
     return wsUser?.userId ?? null;
   }
 
-  /** Build LLM adapter: DB credentials first, env-var fallback */
+  /** Build LLM adapter: respects workspace credential preference */
   private async getLlm(workspaceId: string): Promise<LLMAdapter> {
     const userId = await this.resolveUserId(workspaceId);
     if (userId) {
-      const payload = await this.credentialsService.getDecryptedPayload(userId, 'LLM');
+      const { payload } = await this.credentialsService.resolveCredential(workspaceId, userId, 'LLM');
       if (payload?.apiKey) {
         const provider = payload.provider ?? 'openai';
-        this.logger.debug(`Using DB LLM credential (${provider}) for user ${userId}`);
+        this.logger.debug(`Using ${provider} LLM credential for workspace ${workspaceId}`);
         return provider === 'anthropic'
           ? new AnthropicAdapter({ apiKey: payload.apiKey })
           : new OpenAIAdapter({ apiKey: payload.apiKey });
@@ -164,7 +165,7 @@ export class StrategyService {
         editorialRun: { workspaceId },
         createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
       },
-      select: { angle: true },
+      select: { angle: true, format: true },
       orderBy: { createdAt: 'desc' },
       take: 10,
     });
@@ -176,7 +177,7 @@ export class StrategyService {
     const llm = await this.getLlm(workspaceId);
 
     // Determine available formats: campaign's channelFormats > theme preferredFormats > defaults
-    let availableFormats = themes[0]?.preferredFormats ?? ['post', 'carousel'];
+    let availableFormats = themes[0]?.preferredFormats ?? ['post', 'carousel', 'reel', 'story'];
     if (run.campaign?.channelFormats && typeof run.campaign.channelFormats === 'object') {
       const cf = run.campaign.channelFormats as Record<string, string[]>;
       // Merge unique formats across all channels
@@ -184,6 +185,56 @@ export class StrategyService {
       if (allFormats.length > 0) {
         availableFormats = [...new Set(allFormats)];
       }
+    }
+
+    // 5a. Batch-aware format diversity: if this run belongs to a weekly planner batch,
+    //     check what formats sibling items are using and suggest a different one.
+    let preferredFormat: string | undefined;
+    const plannedPub = await this.prisma.plannedPublication.findUnique({
+      where: { editorialRunId },
+      select: {
+        sortOrder: true,
+        batch: {
+          select: {
+            totalItems: true,
+            items: {
+              where: { editorialRunId: { not: null } },
+              select: {
+                editorialRun: {
+                  select: {
+                    contentBrief: { select: { format: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (plannedPub) {
+      // Formats already used by sibling items in this batch
+      const usedFormats = plannedPub.batch.items
+        .map((i) => i.editorialRun?.contentBrief?.format?.toLowerCase())
+        .filter(Boolean) as string[];
+
+      // Assign format by cycling through available formats based on sortOrder
+      if (availableFormats.length > 0) {
+        preferredFormat = availableFormats[plannedPub.sortOrder % availableFormats.length];
+        // If preferred is already heavily used, try next one
+        const useCount = usedFormats.filter((f) => f === preferredFormat).length;
+        const maxPerFormat = Math.ceil(plannedPub.batch.totalItems / availableFormats.length);
+        if (useCount >= maxPerFormat && availableFormats.length > 1) {
+          const alts = availableFormats.filter((f) => {
+            const c = usedFormats.filter((u) => u === f).length;
+            return c < maxPerFormat;
+          });
+          if (alts.length > 0) preferredFormat = alts[0];
+        }
+      }
+      this.logger.log(
+        `Batch format diversity: item ${plannedPub.sortOrder + 1}, ` +
+        `usedFormats=[${usedFormats.join(',')}], preferredFormat=${preferredFormat}`,
+      );
     }
 
     // 5b. Obtener datos de aprendizaje (Learning Loop)
@@ -205,11 +256,13 @@ export class StrategyService {
       defaultTone: brand?.tone ?? 'didáctico',
       objective: run.campaign?.objective ?? 'AUTHORITY',
       availableFormats,
+      preferredFormat,
       themeKeywords: themes.flatMap((t) => t.keywords),
       campaignContext: run.campaign
         ? `${run.campaign.name} (${run.campaign.objective})`
         : undefined,
       previousAngles: recentRuns.map((r) => r.angle).filter(Boolean),
+      recentFormats: recentRuns.map((r) => r.format).filter(Boolean),
       industryContext: businessCtx.industryContext,
       businessContext: businessCtx.businessContext,
       persona: activePersona

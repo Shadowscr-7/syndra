@@ -81,7 +81,7 @@ export default function AdvancedScoringPage() {
             <label className="input-label">Canal</label>
             <select value={channel} onChange={(e) => setChannel(e.target.value)} className="input-field">
               <option value="">Cualquiera</option>
-              {['instagram', 'facebook', 'threads', 'discord', 'twitter', 'linkedin', 'tiktok'].map((c) => (
+              {['instagram', 'facebook', 'threads', 'discord', 'twitter', 'linkedin', 'tiktok', 'youtube', 'pinterest', 'meta_ads', 'google_ads', 'whatsapp', 'mercadolibre'].map((c) => (
                 <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
               ))}
             </select>

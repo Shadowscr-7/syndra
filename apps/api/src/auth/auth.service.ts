@@ -49,8 +49,8 @@ export interface LoginDto {
 // ── Constants ──────────────────────────────────────────────
 
 const BCRYPT_ROUNDS = 12;
-const ACCESS_TOKEN_EXPIRY = '15m';
-const ACCESS_TOKEN_EXPIRY_SEC = 900; // 15 min
+const ACCESS_TOKEN_EXPIRY = '24h';
+const ACCESS_TOKEN_EXPIRY_SEC = 86400; // 24 hours
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const REFERRAL_DISCOUNT_PERCENT = 20;
 
@@ -66,10 +66,13 @@ export class AuthService {
     this.jwtSecret =
       process.env.JWT_SECRET ||
       process.env.SUPABASE_JWT_SECRET ||
-      'dev-jwt-secret-change-in-production';
+      '';
 
-    if (this.jwtSecret === 'dev-jwt-secret-change-in-production') {
-      this.logger.warn('⚠️  Using default JWT secret — set JWT_SECRET in production!');
+    if (!this.jwtSecret && process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL: JWT_SECRET is required in production. Set it in your .env file.');
+    }
+    if (!this.jwtSecret) {
+      this.logger.warn('⚠️  No JWT_SECRET set — running in dev mode. DO NOT use in production!');
     }
   }
 
@@ -144,21 +147,18 @@ export class AuthService {
         },
       });
 
-      // 4. Create subscription with selected plan
+      // 4. Create subscription with selected plan (TRIALING until PayPal payment)
       const billingCycle = dto.billingCycle || 'MONTHLY';
       const periodStart = new Date();
       const periodEnd = new Date();
-      if (billingCycle === 'YEARLY') {
-        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-      } else {
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
-      }
+      // Trial period: 7 days to complete PayPal payment
+      periodEnd.setDate(periodEnd.getDate() + 7);
 
       const subscription = await tx.subscription.create({
         data: {
           workspaceId: workspace.id,
           planId: plan.id,
-          status: 'ACTIVE',
+          status: 'TRIALING',
           billingCycle,
           discountPercent,
           currentPeriodStart: periodStart,
@@ -167,7 +167,22 @@ export class AuthService {
         include: { plan: true },
       });
 
-      // 5. Create default brand profile for the workspace
+      // 5. Grant initial credits based on plan
+      const INITIAL_CREDITS: Record<string, number> = {
+        starter: 50,
+        creator: 200,
+        pro: 2000,
+      };
+      const initialCredits = INITIAL_CREDITS[plan.name] ?? 50;
+      await tx.creditBalance.create({
+        data: {
+          workspaceId: workspace.id,
+          totalPurchased: initialCredits,
+          currentBalance: initialCredits,
+        },
+      });
+
+      // 7. Create default brand profile for the workspace
       await tx.brandProfile.create({
         data: {
           workspaceId: workspace.id,
@@ -176,7 +191,7 @@ export class AuthService {
         },
       });
 
-      // 6. Create AffiliateReferral if registering with a referral code
+      // 8. Create AffiliateReferral if registering with a referral code
       let affiliateReferral = null;
       if (referrer) {
         const priceInCents = billingCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;

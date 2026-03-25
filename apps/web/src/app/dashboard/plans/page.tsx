@@ -13,6 +13,12 @@ export default async function PlansPage() {
   });
 
   let currentPlan = 'starter';
+  let subscriptionStatus = 'TRIALING';
+  let currentPlanId = 'plan_starter';
+  let billingCycle = 'MONTHLY';
+  let currentPeriodEnd: string | null = null;
+  let paypalSubscriptionId: string | null = null;
+  let cancelAtPeriodEnd = false;
 
   if (session?.workspaceId) {
     const sub = await prisma.subscription.findUnique({
@@ -21,6 +27,12 @@ export default async function PlansPage() {
     });
     if (sub?.plan) {
       currentPlan = sub.plan.name;
+      currentPlanId = sub.plan.id;
+      subscriptionStatus = sub.status;
+      billingCycle = sub.billingCycle;
+      currentPeriodEnd = sub.currentPeriodEnd?.toISOString() ?? null;
+      paypalSubscriptionId = sub.paypalSubscriptionId ?? null;
+      cancelAtPeriodEnd = sub.cancelAtPeriodEnd;
     }
   }
 
@@ -30,5 +42,16 @@ export default async function PlansPage() {
     createdAt: p.createdAt.toISOString(),
   }));
 
-  return <PlansPageClient plans={serializedPlans} currentPlan={currentPlan} />;
+  return (
+    <PlansPageClient
+      plans={serializedPlans}
+      currentPlan={currentPlan}
+      currentPlanId={currentPlanId}
+      subscriptionStatus={subscriptionStatus}
+      billingCycle={billingCycle}
+      currentPeriodEnd={currentPeriodEnd}
+      paypalSubscriptionId={paypalSubscriptionId}
+      cancelAtPeriodEnd={cancelAtPeriodEnd}
+    />
+  );
 }

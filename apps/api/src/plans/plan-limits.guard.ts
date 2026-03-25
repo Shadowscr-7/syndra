@@ -72,6 +72,9 @@ export class PlanLimitsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const workspaceId = request.workspaceId;
 
+    // Super admins bypass all plan limits
+    if (request.user?.role === 'ADMIN') return true;
+
     if (!workspaceId) return true; // Let auth guard handle missing workspace
 
     // ── Metric-based limit check ────────────────────────

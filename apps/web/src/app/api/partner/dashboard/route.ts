@@ -7,7 +7,7 @@ async function getHeaders(req: NextRequest) {
   const cookieStore = await cookies();
   const token =
     req.headers.get('authorization') ||
-    cookieStore.get('access-token')?.value;
+    cookieStore.get('access_token')?.value;
   const userId = cookieStore.get('auth-user-id')?.value;
   const workspaceId = cookieStore.get('workspace-id')?.value;
   const headers: Record<string, string> = {

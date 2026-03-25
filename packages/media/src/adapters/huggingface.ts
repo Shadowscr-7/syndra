@@ -50,11 +50,12 @@ export class HuggingFaceImageAdapter implements ImageGeneratorAdapter {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          // Backoff: 5s, 15s (model may be loading)
           const delay = attempt === 1 ? 5000 : 15000;
           console.log(`HuggingFace: retry ${attempt}/${maxRetries} in ${delay / 1000}s...`);
           await new Promise((r) => setTimeout(r, delay));
         }
+
+        console.log(`HuggingFace: attempt ${attempt + 1}/${maxRetries} → ${this.model}`);
 
         const res = await fetch(url, {
           method: 'POST',
@@ -68,11 +69,13 @@ export class HuggingFaceImageAdapter implements ImageGeneratorAdapter {
             parameters: {
               width: Math.min(width, 1024),
               height: Math.min(height, 1024),
-              num_inference_steps: 4, // FLUX.1-schnell is optimized for 4 steps
+              num_inference_steps: 4,
             },
           }),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(60_000),
         });
+
+        console.log(`HuggingFace: response ${res.status} (${res.headers.get('content-type') ?? 'no-ct'})`);
 
         // Model loading — has estimated_time
         if (res.status === 503) {

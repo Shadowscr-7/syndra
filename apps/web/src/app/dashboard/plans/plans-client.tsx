@@ -103,22 +103,73 @@ const LEVEL_ROWS: { key: string; label: string; labels: Record<string, string> }
   },
 ];
 
-export function PlansPageClient({ plans, currentPlan }: { plans: Plan[]; currentPlan: string }) {
+export function PlansPageClient({
+  plans,
+  currentPlan,
+  currentPlanId,
+  subscriptionStatus,
+  billingCycle: currentBillingCycle,
+  currentPeriodEnd,
+  paypalSubscriptionId,
+  cancelAtPeriodEnd,
+}: {
+  plans: Plan[];
+  currentPlan: string;
+  currentPlanId: string;
+  subscriptionStatus: string;
+  billingCycle: string;
+  currentPeriodEnd: string | null;
+  paypalSubscriptionId: string | null;
+  cancelAtPeriodEnd: boolean;
+}) {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
+  const [loading, setLoading] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const { refresh } = usePlan();
 
-  const handleSubscribe = async (planName: string) => {
-    if (planName === currentPlan) return;
+  const isPaid = subscriptionStatus === 'ACTIVE' && !!paypalSubscriptionId;
+  const isTrialing = subscriptionStatus === 'TRIALING' || (!paypalSubscriptionId && subscriptionStatus === 'ACTIVE');
+
+  const handleSubscribe = async (planId: string, planName: string) => {
+    if (planName === currentPlan && isPaid) return;
+    setLoading(planName);
 
     try {
-      const res = await fetch('http://localhost:3001/api/plans/subscribe', {
+      // Use PayPal checkout flow
+      const res = await fetch('/api/paypal/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          planName,
+          planId,
           billingCycle: billing === 'monthly' ? 'MONTHLY' : 'YEARLY',
         }),
+      });
+
+      const data = await res.json();
+
+      if (data.approvalUrl) {
+        // Redirect to PayPal for payment
+        window.location.href = data.approvalUrl;
+      } else {
+        console.error('PayPal subscribe error:', data);
+        setLoading(null);
+      }
+    } catch {
+      setLoading(null);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!confirm('¿Estás seguro de que deseas cancelar tu suscripción? Mantendrás el acceso hasta el fin del período actual.')) return;
+    setCancelling(true);
+
+    try {
+      const res = await fetch('/api/paypal/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reason: 'Customer requested cancellation' }),
       });
 
       if (res.ok) {
@@ -127,6 +178,8 @@ export function PlansPageClient({ plans, currentPlan }: { plans: Plan[]; current
       }
     } catch {
       // handle error silently
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -139,6 +192,70 @@ export function PlansPageClient({ plans, currentPlan }: { plans: Plan[]; current
           Elige el plan perfecto para tu estrategia de contenido
         </p>
       </div>
+
+      {/* Subscription Status Banner */}
+      {isTrialing && (
+        <div
+          className="rounded-xl border p-4 flex items-center gap-3"
+          style={{ background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' }}
+        >
+          <span className="text-2xl">⚠️</span>
+          <div>
+            <p className="font-semibold" style={{ color: '#f59e0b' }}>
+              Tu cuenta está en período de prueba
+            </p>
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Activa tu suscripción con PayPal para mantener el acceso a todas las funcionalidades de tu plan.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {cancelAtPeriodEnd && currentPeriodEnd && (
+        <div
+          className="rounded-xl border p-4 flex items-center gap-3"
+          style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.25)' }}
+        >
+          <span className="text-2xl">🔴</span>
+          <div>
+            <p className="font-semibold" style={{ color: '#ef4444' }}>
+              Suscripción cancelada
+            </p>
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Tu acceso al plan actual finaliza el{' '}
+              {new Date(currentPeriodEnd).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isPaid && !cancelAtPeriodEnd && currentPeriodEnd && (
+        <div
+          className="rounded-xl border p-4 flex items-center justify-between"
+          style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)' }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="font-semibold" style={{ color: '#10b981' }}>
+                Suscripción activa — {plans.find(p => p.name === currentPlan)?.displayName} ({currentBillingCycle === 'YEARLY' ? 'Anual' : 'Mensual'})
+              </p>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Próxima renovación:{' '}
+                {new Date(currentPeriodEnd).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="text-sm px-4 py-2 rounded-lg border transition-colors hover:bg-red-500/10"
+            style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
+          >
+            {cancelling ? 'Cancelando...' : 'Cancelar suscripción'}
+          </button>
+        </div>
+      )}
 
       {/* Billing toggle */}
       <div className="flex items-center justify-center gap-3">
@@ -267,17 +384,24 @@ export function PlansPageClient({ plans, currentPlan }: { plans: Plan[]; current
 
               {/* CTA */}
               <button
-                onClick={() => handleSubscribe(plan.name)}
+                onClick={() => handleSubscribe(plan.id, plan.name)}
                 className="w-full py-3 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
-                  background: isCurrent ? 'rgba(255,255,255,0.05)' : `linear-gradient(135deg, ${colors.accent}, ${colors.accent}cc)`,
-                  color: isCurrent ? 'var(--color-text-muted)' : 'white',
-                  cursor: isCurrent ? 'default' : 'pointer',
-                  boxShadow: isCurrent ? 'none' : `0 4px 16px ${colors.accent}25`,
+                  background: (isCurrent && isPaid) ? 'rgba(255,255,255,0.05)' : `linear-gradient(135deg, ${colors.accent}, ${colors.accent}cc)`,
+                  color: (isCurrent && isPaid) ? 'var(--color-text-muted)' : 'white',
+                  cursor: (isCurrent && isPaid) ? 'default' : 'pointer',
+                  boxShadow: (isCurrent && isPaid) ? 'none' : `0 4px 16px ${colors.accent}25`,
                 }}
-                disabled={isCurrent}
+                disabled={(isCurrent && isPaid) || loading === plan.name}
               >
-                {isCurrent ? '✓ Plan actual' : `Cambiar a ${plan.displayName}`}
+                {loading === plan.name
+                  ? '⏳ Redirigiendo a PayPal...'
+                  : isCurrent && isPaid
+                    ? '✓ Plan actual'
+                    : isCurrent && isTrialing
+                      ? `Activar ${plan.displayName} con PayPal`
+                      : `Cambiar a ${plan.displayName}`
+                }
               </button>
             </div>
           );

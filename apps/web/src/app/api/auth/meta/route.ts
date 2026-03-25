@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   // Build the redirect URI — must match what's registered in the Facebook App
   const redirectUri = `${baseUrl}/api/auth/meta/callback`;
 
-  // Scopes for Facebook page management + Instagram publishing + Threads via Graph API.
+  // Scopes for Facebook page management + Instagram publishing + Threads + Ads.
   // All must be "Listo para prueba" in developers.facebook.com.
   // instagram_business_* scopes use a different OAuth flow — use classic scopes here.
   const scopes = [
@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
     'instagram_manage_comments',
     'threads_basic',
     'threads_content_publish',
+    'ads_management',
+    'ads_read',
   ].join(',');
 
   // CSRF protection: use a simple state token (include returnTo for redirect)

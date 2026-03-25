@@ -36,6 +36,10 @@ export function buildBusinessResearchPrompt(
   briefs: BusinessBriefInput[],
   profile: BusinessProfileInput,
   campaignObjective?: string,
+  options?: {
+    preferredFormat?: string;
+    batchContext?: string;
+  },
 ): string {
   const briefsText = briefs
     .map(
@@ -72,7 +76,8 @@ Para CADA brief genera entre 1 y 3 ángulos. Devuelve un JSON:
       "reasoning": "por qué funcionaría este ángulo",
       "hooks": ["hook 1", "hook 2"],
       "urgency": "high | medium | low",
-      "suggestedVisual": "descripción breve del visual a usar (ej: 'foto del producto con overlay OFERTA')"
+      "suggestedVisual": "descripción breve del visual a usar (ej: 'foto del producto con overlay OFERTA')",
+      "mediaType": "image | video | carousel_slides | mixed"
     }
   ]
 }
@@ -83,6 +88,13 @@ REGLAS:
 - Destaca el valor diferencial (${profile.usp || 'calidad y servicio'}).
 - Sugiere visuales que usen imágenes del producto cuando sea posible.
 - Para ofertas con fecha límite, incluye urgencia en los hooks.
+- VARÍA los formatos: no todos post, no todos carousel. Mezcla entre post, carousel, reel y story según el tipo de contenido:
+  - Educativo/paso a paso → carousel
+  - Testimonio/behind the scenes → story o reel
+  - Dato impactante/oferta → post
+  - Demo/tutorial rápido → reel
+${options?.preferredFormat ? `- ⭐ Da PRIORIDAD al formato "${options.preferredFormat}" para al menos uno de los ángulos.` : ''}
+${options?.batchContext ? `\nCONTEXTO DEL LOTE SEMANAL:\n${options.batchContext}\n` : ''}
 
 Responde SOLO con el JSON.`;
 }

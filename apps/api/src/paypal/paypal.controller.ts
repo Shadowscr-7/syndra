@@ -78,6 +78,16 @@ export class PaypalController {
     return this.paypalService.getCheckoutStatus(workspaceId);
   }
 
+  // ── Billing history ───────────────────────────────────
+
+  @Get('billing')
+  async getBillingHistory(@Req() req: Request) {
+    const workspaceId = (req as any).workspaceId;
+    if (!workspaceId) return { error: 'No workspace' };
+
+    return this.paypalService.getBillingHistory(workspaceId);
+  }
+
   // ── Webhook (public — PayPal calls this) ──────────────
 
   @Public()

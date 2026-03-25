@@ -12,6 +12,15 @@ import {
   FacebookPublisher,
   ThreadsPublisher,
   DiscordPublisher,
+  TwitterPublisher,
+  LinkedInPublisher,
+  TikTokPublisher,
+  YouTubePublisher,
+  PinterestPublisher,
+  MetaAdsPublisher,
+  GoogleAdsPublisher,
+  WhatsAppPublisher,
+  MercadoLibrePublisher,
   MockPublisher,
   buildCaption,
 } from '@automatismos/publishers';
@@ -20,7 +29,7 @@ import type {
   MetaCredentials,
   PublishResult,
 } from '@automatismos/publishers';
-import { QUEUES, MAX_RETRIES, RETRY_BACKOFF_BASE_MS } from '@automatismos/shared';
+import { QUEUES, MAX_RETRIES, RETRY_BACKOFF_BASE_MS, decryptJson } from '@automatismos/shared';
 
 @Injectable()
 export class PublisherService {
@@ -69,11 +78,29 @@ export class PublisherService {
     fb: PublisherAdapter | null;
     threads: PublisherAdapter | null;
     discord: PublisherAdapter | null;
+    twitter: PublisherAdapter | null;
+    linkedin: PublisherAdapter | null;
+    tiktok: PublisherAdapter | null;
+    youtube: PublisherAdapter | null;
+    pinterest: PublisherAdapter | null;
+    meta_ads: PublisherAdapter | null;
+    google_ads: PublisherAdapter | null;
+    whatsapp: PublisherAdapter | null;
+    mercadolibre: PublisherAdapter | null;
   }> {
     let ig: PublisherAdapter | null = null;
     let fb: PublisherAdapter | null = null;
     let threads: PublisherAdapter | null = null;
     let discord: PublisherAdapter | null = null;
+    let twitter: PublisherAdapter | null = null;
+    let linkedin: PublisherAdapter | null = null;
+    let tiktok: PublisherAdapter | null = null;
+    let youtube: PublisherAdapter | null = null;
+    let pinterest: PublisherAdapter | null = null;
+    let meta_ads: PublisherAdapter | null = null;
+    let google_ads: PublisherAdapter | null = null;
+    let whatsapp: PublisherAdapter | null = null;
+    let mercadolibre: PublisherAdapter | null = null;
 
     // --- Meta (Instagram + Facebook + Threads) ---
     const metaCred = await this.prisma.apiCredential.findUnique({
@@ -105,6 +132,16 @@ export class PublisherService {
             threadsUserId,
           });
           this.logger.log(`Threads adapter configured for workspace ${workspaceId} (user: ${threadsUserId})`);
+        }
+
+        // Meta Ads — uses the same META credential (userToken + adAccountId)
+        if (payload.adAccountId) {
+          meta_ads = new MetaAdsPublisher({
+            accessToken: payload.userToken || payload.accessToken,
+            adAccountId: payload.adAccountId,
+            pageId: payload.fbPageId,
+          });
+          this.logger.log(`Meta Ads adapter configured for workspace ${workspaceId} (account: ${payload.adAccountId})`);
         }
       } catch (err) {
         this.logger.error('Failed to parse DB credentials:', err);
@@ -153,7 +190,151 @@ export class PublisherService {
       }
     }
 
-    return { ig, fb, threads, discord };
+    // --- New platforms via UserCredential (per-user, AES-256-GCM encrypted) ---
+    const ownerId = await this.resolveOwnerId(workspaceId);
+    if (ownerId) {
+      // Twitter/X
+      try {
+        const twitterCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'TWITTER' } },
+        });
+        if (twitterCred?.isActive && twitterCred.encryptedPayload) {
+          const p = decryptJson(twitterCred.encryptedPayload);
+          if (p.accessToken) {
+            twitter = new TwitterPublisher({ accessToken: p.accessToken, refreshToken: p.refreshToken, userId: p.userId, username: p.username });
+            this.logger.log(`Twitter adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load Twitter credential:', e); }
+
+      // LinkedIn
+      try {
+        const linkedinCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'LINKEDIN' } },
+        });
+        if (linkedinCred?.isActive && linkedinCred.encryptedPayload) {
+          const p = decryptJson(linkedinCred.encryptedPayload);
+          if (p.accessToken && p.authorUrn) {
+            linkedin = new LinkedInPublisher({ accessToken: p.accessToken, authorUrn: p.authorUrn, name: p.name });
+            this.logger.log(`LinkedIn adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load LinkedIn credential:', e); }
+
+      // TikTok
+      try {
+        const tiktokCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'TIKTOK' } },
+        });
+        if (tiktokCred?.isActive && tiktokCred.encryptedPayload) {
+          const p = decryptJson(tiktokCred.encryptedPayload);
+          if (p.accessToken) {
+            tiktok = new TikTokPublisher({ accessToken: p.accessToken, refreshToken: p.refreshToken, openId: p.openId, username: p.username });
+            this.logger.log(`TikTok adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load TikTok credential:', e); }
+
+      // YouTube — check GOOGLE credential first, then legacy YOUTUBE
+      try {
+        let ytCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'GOOGLE' } },
+        });
+        if (!ytCred?.isActive) {
+          ytCred = await this.prisma.userCredential.findUnique({
+            where: { userId_provider: { userId: ownerId, provider: 'YOUTUBE' } },
+          });
+        }
+        if (ytCred?.isActive && ytCred.encryptedPayload) {
+          const p = decryptJson(ytCred.encryptedPayload);
+          if (p.accessToken && p.channelId) {
+            youtube = new YouTubePublisher({ accessToken: p.accessToken, refreshToken: p.refreshToken, channelId: p.channelId, channelTitle: p.channelTitle });
+            this.logger.log(`YouTube adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load YouTube credential:', e); }
+
+      // Pinterest
+      try {
+        const pinterestCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'PINTEREST' } },
+        });
+        if (pinterestCred?.isActive && pinterestCred.encryptedPayload) {
+          const p = decryptJson(pinterestCred.encryptedPayload);
+          if (p.accessToken && p.boardId) {
+            pinterest = new PinterestPublisher({ accessToken: p.accessToken, refreshToken: p.refreshToken, boardId: p.boardId, boardName: p.boardName, username: p.username });
+            this.logger.log(`Pinterest adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load Pinterest credential:', e); }
+
+      // Google Ads — from GOOGLE credential (same as YouTube)
+      try {
+        const googleCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'GOOGLE' } },
+        });
+        if (googleCred?.isActive && googleCred.encryptedPayload) {
+          const p = decryptJson(googleCred.encryptedPayload);
+          if (p.accessToken && p.adsCustomerId) {
+            const developerToken = this.config.get<string>('GOOGLE_ADS_DEVELOPER_TOKEN', '');
+            if (developerToken) {
+              google_ads = new GoogleAdsPublisher({
+                accessToken: p.accessToken,
+                refreshToken: p.refreshToken,
+                customerId: p.adsCustomerId,
+                developerToken,
+              });
+              this.logger.log(`Google Ads adapter configured for workspace ${workspaceId}`);
+            }
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load Google Ads credential:', e); }
+
+      // WhatsApp — via Evolution API
+      try {
+        const waCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'WHATSAPP' } },
+        });
+        if (waCred?.isActive && waCred.encryptedPayload) {
+          const p = decryptJson(waCred.encryptedPayload);
+          if (p.instanceUrl && p.apiKey && p.instanceName) {
+            whatsapp = new WhatsAppPublisher({ instanceUrl: p.instanceUrl, apiKey: p.apiKey, instanceName: p.instanceName });
+            this.logger.log(`WhatsApp adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load WhatsApp credential:', e); }
+
+      // Mercado Libre
+      try {
+        const mlCred = await this.prisma.userCredential.findUnique({
+          where: { userId_provider: { userId: ownerId, provider: 'MERCADOLIBRE' } },
+        });
+        if (mlCred?.isActive && mlCred.encryptedPayload) {
+          const p = decryptJson(mlCred.encryptedPayload);
+          if (p.accessToken && p.userId) {
+            mercadolibre = new MercadoLibrePublisher({ accessToken: p.accessToken, refreshToken: p.refreshToken, userId: p.userId, nickname: p.nickname, siteId: p.siteId });
+            this.logger.log(`MercadoLibre adapter configured for workspace ${workspaceId}`);
+          }
+        }
+      } catch (e) { this.logger.warn('Failed to load MercadoLibre credential:', e); }
+    }
+
+    return { ig, fb, threads, discord, twitter, linkedin, tiktok, youtube, pinterest, meta_ads, google_ads, whatsapp, mercadolibre };
+  }
+
+  /**
+   * Resolve the owner userId for a workspace.
+   */
+  private async resolveOwnerId(workspaceId: string): Promise<string | null> {
+    try {
+      const owner = await this.prisma.workspaceUser.findFirst({
+        where: { workspaceId, role: 'OWNER' },
+        select: { userId: true },
+      });
+      return owner?.userId ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -183,7 +364,7 @@ export class PublisherService {
     const publicationIds: string[] = [];
 
     for (const channel of channels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
+      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS' | 'TWITTER' | 'LINKEDIN' | 'TIKTOK' | 'YOUTUBE' | 'PINTEREST' | 'META_ADS' | 'GOOGLE_ADS' | 'WHATSAPP' | 'MERCADOLIBRE' | 'DISCORD' | 'TELEGRAM';
 
       // Idempotencia: verificar que no exista ya una publicación exitosa
       const existing = await this.prisma.publication.findFirst({
@@ -290,7 +471,7 @@ export class PublisherService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const platform = publication.platform.toLowerCase() as 'instagram' | 'facebook' | 'threads';
+    const platform = publication.platform.toLowerCase() as PublishResult['platform'];
 
     // Get workspace ID for credential lookup
     const workspaceId = publication.editorialRun?.workspaceId;
@@ -301,11 +482,22 @@ export class PublisherService {
     }
 
     const adapters = await this.getAdaptersForWorkspace(workspaceId);
-    const adapter = platform === 'instagram'
-      ? adapters.ig
-      : platform === 'threads'
-        ? adapters.threads
-        : adapters.fb;
+    const adapterMap: Record<string, PublisherAdapter | null> = {
+      instagram: adapters.ig,
+      facebook: adapters.fb,
+      threads: adapters.threads,
+      discord: adapters.discord,
+      twitter: adapters.twitter,
+      linkedin: adapters.linkedin,
+      tiktok: adapters.tiktok,
+      youtube: adapters.youtube,
+      pinterest: adapters.pinterest,
+      meta_ads: adapters.meta_ads,
+      google_ads: adapters.google_ads,
+      whatsapp: adapters.whatsapp,
+      mercadolibre: adapters.mercadolibre,
+    };
+    const adapter = adapterMap[platform] ?? null;
 
     if (!adapter) {
       const error = `No adapter available for ${platform}`;
@@ -320,13 +512,28 @@ export class PublisherService {
       .map((a) => a.optimizedUrl ?? a.originalUrl)
       .filter((url): url is string => !!url && !url.startsWith('data:'));
 
+    // Check for video assets
+    const videoAsset = mediaAssets.find((a) => a.type === 'VIDEO' || a.type === 'AVATAR_VIDEO');
+    const videoUrl = videoAsset?.optimizedUrl ?? videoAsset?.originalUrl ?? null;
+    const thumbnailUrl = videoAsset?.thumbnailUrl ?? null;
+    const format = (publication.editorialRun?.contentBrief?.format ?? '').toLowerCase();
+    const isVideo = !!videoUrl || ['reel', 'video', 'short', 'reels'].includes(format);
+
     let result: PublishResult;
 
     // Build payload for audit
-    const payload = { caption, hashtags, imageUrls, format: publication.editorialRun?.contentBrief?.format };
+    const payload = { caption, hashtags, imageUrls, videoUrl, format: publication.editorialRun?.contentBrief?.format };
 
     try {
-      if (imageUrls.length > 1) {
+      if (isVideo && videoUrl) {
+        // Video / Reel / Short
+        result = await adapter.publishVideo({
+          videoUrl,
+          caption,
+          hashtags,
+          thumbnailUrl: thumbnailUrl ?? undefined,
+        });
+      } else if (imageUrls.length > 1) {
         // Carousel
         result = await adapter.publishCarousel({
           imageUrls,
@@ -378,9 +585,22 @@ export class PublisherService {
 
       // Notificar por Telegram (resolver chatId del owner del workspace)
       const ownerChatId = await this.resolveOwnerChatId(workspaceId);
-      const platformLabel = platform === 'instagram' ? '📷 Instagram'
-        : platform === 'threads' ? '🧵 Threads'
-        : '📘 Facebook';
+      const platformLabels: Record<string, string> = {
+        instagram: '📷 Instagram',
+        facebook: '📘 Facebook',
+        threads: '🧵 Threads',
+        twitter: '🐦 Twitter/X',
+        linkedin: '💼 LinkedIn',
+        tiktok: '🎵 TikTok',
+        youtube: '▶️ YouTube',
+        pinterest: '📌 Pinterest',
+        discord: '🎮 Discord',
+        meta_ads: '📢 Meta Ads',
+        google_ads: '📊 Google Ads',
+        whatsapp: '📡 WhatsApp',
+        mercadolibre: '🛒 Mercado Libre',
+      };
+      const platformLabel = platformLabels[platform] ?? `📣 ${platform}`;
       await this.telegram.sendPublishConfirmation(
         platformLabel,
         result.permalink ?? `Post ID: ${result.externalPostId}`,
@@ -390,8 +610,10 @@ export class PublisherService {
       // Cross-post to Discord (fire-and-forget)
       try {
         if (adapters.discord) {
-          const platformEmoji = platform === 'instagram' ? '📷' : platform === 'threads' ? '🧵' : '📘';
-          const platformName = platform === 'instagram' ? 'Instagram' : platform === 'threads' ? 'Threads' : 'Facebook';
+          const emojiMap: Record<string, string> = { instagram: '📷', facebook: '📘', threads: '🧵', twitter: '🐦', linkedin: '💼', tiktok: '🎵', youtube: '▶️', pinterest: '📌', meta_ads: '📢', google_ads: '📊', whatsapp: '📡', mercadolibre: '🛒' };
+          const nameMap: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook', threads: 'Threads', twitter: 'Twitter/X', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube', pinterest: 'Pinterest', meta_ads: 'Meta Ads', google_ads: 'Google Ads', whatsapp: 'WhatsApp', mercadolibre: 'Mercado Libre' };
+          const platformEmoji = emojiMap[platform] ?? '📣';
+          const platformName = nameMap[platform] ?? platform;
           const discordCaption = `${platformEmoji} Nuevo post en ${platformName}!\n\n${caption}${result.permalink ? `\n\n🔗 ${result.permalink}` : ''}`;
           if (imageUrls.length > 1) {
             await adapters.discord.publishCarousel({ imageUrls, caption: discordCaption, hashtags });
@@ -451,7 +673,7 @@ export class PublisherService {
     const results: PublishResult[] = [];
 
     for (const channel of channels) {
-      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS';
+      const platform = channel.toUpperCase() as 'INSTAGRAM' | 'FACEBOOK' | 'THREADS' | 'TWITTER' | 'LINKEDIN' | 'TIKTOK' | 'YOUTUBE' | 'PINTEREST' | 'META_ADS' | 'GOOGLE_ADS' | 'WHATSAPP' | 'MERCADOLIBRE' | 'DISCORD' | 'TELEGRAM';
 
       // Idempotencia: verificar que no exista ya una publicación exitosa
       const existing = await this.prisma.publication.findFirst({
