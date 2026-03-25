@@ -17,7 +17,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check auth: only trust the httpOnly JWT cookie
-  const accessToken = request.cookies.get('access_token')?.value;
+  // NestJS sets 'access-token' (hyphen), Next.js proxy sets 'access_token' (underscore)
+  const accessToken = request.cookies.get('access_token')?.value || request.cookies.get('access-token')?.value;
   const refreshToken = request.cookies.get('refresh-token')?.value;
 
   if (!accessToken && refreshToken && pathname.startsWith('/dashboard')) {
