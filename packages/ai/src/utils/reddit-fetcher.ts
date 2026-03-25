@@ -67,7 +67,7 @@ export async function fetchRedditTrending(
     throw new Error(`Reddit fetch failed (${response.status}): r/${cleanSub}`);
   }
 
-  const data: RedditListing = await response.json();
+  const data = (await response.json()) as RedditListing;
   const children = data?.data?.children ?? [];
 
   return children
