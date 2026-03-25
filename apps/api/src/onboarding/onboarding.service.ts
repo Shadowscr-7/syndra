@@ -158,6 +158,14 @@ export interface OnboardingData {
   instagramToken?: string;
   facebookToken?: string;
   facebookPageId?: string;
+  /** 'business' | 'creator' — determines the onboarding flow used */
+  mode?: string;
+  /** Creator-specific fields */
+  creatorName?: string;
+  creatorCategory?: string;
+  creatorTopics?: string;
+  creatorSources?: string;
+  websiteUrl?: string;
 }
 
 @Injectable()
@@ -515,18 +523,20 @@ export class OnboardingService {
       });
 
       // 1.5️⃣ Store business description in BusinessProfile if provided
-      if (data.businessDescription) {
+      if (data.businessDescription || data.websiteUrl || data.creatorTopics) {
         await tx.businessProfile.upsert({
           where: { workspaceId },
           update: {
-            description: data.businessDescription,
+            description: data.businessDescription || data.creatorTopics || '',
             businessType: data.industry || '',
+            ...(data.websiteUrl ? { websiteUrl: data.websiteUrl } : {}),
           },
           create: {
             workspaceId,
             businessName: data.brandName || data.workspaceName || '',
             businessType: data.industry || '',
-            description: data.businessDescription,
+            description: data.businessDescription || data.creatorTopics || '',
+            ...(data.websiteUrl ? { websiteUrl: data.websiteUrl } : {}),
           },
         });
       }
