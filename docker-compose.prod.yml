@@ -85,7 +85,7 @@ services:
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
 
       # Public URL (para links, webhooks, etc.)
-      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://syndra.aivanguard.app/api}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://syndra.aivanguardlabs.com/api}
 
     env_file:
       - .env
@@ -94,7 +94,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Router para el API — path /api
-      - "traefik.http.routers.syndra-api.rule=Host(`syndra.aivanguard.app`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.syndra-api.rule=Host(`syndra.aivanguardlabs.com`) && PathPrefix(`/api`)"
       - "traefik.http.routers.syndra-api.entrypoints=websecure"
       - "traefik.http.routers.syndra-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.syndra-api.priority=20"
@@ -118,7 +118,7 @@ services:
       HOSTNAME: "0.0.0.0"
       API_URL: http://api:3001
       INTERNAL_API_URL: http://api:3001
-      NEXT_PUBLIC_API_URL: https://syndra.aivanguard.app/api
+      NEXT_PUBLIC_API_URL: https://syndra.aivanguardlabs.com/api
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-syndra}
 
       # Supabase
@@ -131,7 +131,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Router para el frontend — catch-all del dominio
-      - "traefik.http.routers.syndra-web.rule=Host(`syndra.aivanguard.app`)"
+      - "traefik.http.routers.syndra-web.rule=Host(`syndra.aivanguardlabs.com`)"
       - "traefik.http.routers.syndra-web.entrypoints=websecure"
       - "traefik.http.routers.syndra-web.tls.certresolver=letsencrypt"
       - "traefik.http.routers.syndra-web.priority=10"
