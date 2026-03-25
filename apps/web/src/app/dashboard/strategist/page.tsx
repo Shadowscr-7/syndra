@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 
 /* ── Types ────────────────────────────────────────────────── */
 
@@ -97,9 +97,9 @@ export default function StrategistPage() {
   const fetchData = useCallback(async () => {
     try {
       const [activeRes, historyRes, freqRes] = await Promise.all([
-        fetch(`${API}/api/strategist/active`, { credentials: 'include' }),
-        fetch(`${API}/api/strategist/plans?limit=10`, { credentials: 'include' }),
-        fetch(`${API}/api/strategist/frequency`, { credentials: 'include' }),
+        fetch(`/api/strategist/active`, { credentials: 'include' }),
+        fetch(`/api/strategist/plans?limit=10`, { credentials: 'include' }),
+        fetch(`/api/strategist/frequency`, { credentials: 'include' }),
       ]);
       const activeJson = await activeRes.json();
       const historyJson = await historyRes.json();
@@ -119,7 +119,7 @@ export default function StrategistPage() {
   const handleGenerate = async (periodType: 'WEEKLY' | 'MONTHLY' = 'WEEKLY') => {
     setGenerating(true);
     try {
-      await fetch(`${API}/api/strategist/generate`, {
+      await fetch(`/api/strategist/generate`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -136,7 +136,7 @@ export default function StrategistPage() {
   const handleCreateCampaign = async (planId: string) => {
     setActionLoading('campaign');
     try {
-      await fetch(`${API}/api/strategist/plan/${planId}/create-campaign`, {
+      await fetch(`/api/strategist/plan/${planId}/create-campaign`, {
         method: 'POST', credentials: 'include',
       });
       toast('ok', '🎪 Campaña creada exitosamente');
@@ -148,7 +148,7 @@ export default function StrategistPage() {
   const handleGenerateRuns = async (planId: string) => {
     setActionLoading('runs');
     try {
-      const res = await fetch(`${API}/api/strategist/plan/${planId}/generate-runs`, {
+      const res = await fetch(`/api/strategist/plan/${planId}/generate-runs`, {
         method: 'POST', credentials: 'include',
       });
       const json = await res.json();
@@ -161,7 +161,7 @@ export default function StrategistPage() {
 
   const handleArchive = async (planId: string) => {
     try {
-      await fetch(`${API}/api/strategist/plan/${planId}/archive`, {
+      await fetch(`/api/strategist/plan/${planId}/archive`, {
         method: 'PATCH', credentials: 'include',
       });
       await fetchData();

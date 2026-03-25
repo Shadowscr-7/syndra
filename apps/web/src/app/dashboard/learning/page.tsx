@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 
 interface PatternScore {
   id: string;
@@ -85,8 +85,8 @@ export default function LearningPage() {
   const fetchData = useCallback(async () => {
     try {
       const [profileRes, decisionsRes] = await Promise.all([
-        fetch(`${API}/api/learning/profile`, { credentials: 'include' }),
-        fetch(`${API}/api/learning/decisions?limit=30`, { credentials: 'include' }),
+        fetch(`/api/learning/profile`, { credentials: 'include' }),
+        fetch(`/api/learning/decisions?limit=30`, { credentials: 'include' }),
       ]);
       const profileJson = await profileRes.json();
       const decisionsJson = await decisionsRes.json();
@@ -112,7 +112,7 @@ export default function LearningPage() {
   const handleRecalculate = async () => {
     setRecalculating(true);
     try {
-      await fetch(`${API}/api/learning/recalculate`, {
+      await fetch(`/api/learning/recalculate`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +128,7 @@ export default function LearningPage() {
   const handleToggleAutoApply = async () => {
     if (!config) return;
     try {
-      const res = await fetch(`${API}/api/learning/config`, {
+      const res = await fetch(`/api/learning/config`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

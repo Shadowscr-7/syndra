@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
 /* ── Types ────────────────────────────────────────────────── */
 
 interface TrendSignal {
@@ -47,8 +45,8 @@ export default function TrendsPage() {
   const fetchTrends = useCallback(async () => {
     try {
       const url = activeTab === 'all'
-        ? `${API}/api/trends`
-        : `${API}/api/trends?status=${activeTab}`;
+        ? `/api/trends`
+        : `/api/trends?status=${activeTab}`;
       const res = await fetch(url, { credentials: 'include' });
       const json = await res.json();
       setTrends(json?.data ?? []);
@@ -64,7 +62,7 @@ export default function TrendsPage() {
   const handleDetect = async () => {
     setDetecting(true);
     try {
-      const res = await fetch(`${API}/api/trends/detect`, {
+      const res = await fetch(`/api/trends/detect`, {
         method: 'POST', credentials: 'include',
       });
       const json = await res.json();
@@ -83,7 +81,7 @@ export default function TrendsPage() {
   const handleDismiss = async (id: string) => {
     setActionLoading(id);
     try {
-      await fetch(`${API}/api/trends/${id}/dismiss`, {
+      await fetch(`/api/trends/${id}/dismiss`, {
         method: 'PATCH', credentials: 'include',
       });
       await fetchTrends();
@@ -94,7 +92,7 @@ export default function TrendsPage() {
   const handleCreateRun = async (id: string) => {
     setActionLoading(id);
     try {
-      await fetch(`${API}/api/trends/${id}/create-run`, {
+      await fetch(`/api/trends/${id}/create-run`, {
         method: 'POST', credentials: 'include',
       });
       toast('ok', '✅ Run editorial creado desde la tendencia');
@@ -106,7 +104,7 @@ export default function TrendsPage() {
   const handleAddToPlan = async (id: string) => {
     setActionLoading(id);
     try {
-      const res = await fetch(`${API}/api/trends/${id}/add-to-plan`, {
+      const res = await fetch(`/api/trends/${id}/add-to-plan`, {
         method: 'POST', credentials: 'include',
       });
       const json = await res.json();

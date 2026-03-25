@@ -38,14 +38,12 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('ACTIVE');
 
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchAlerts = useCallback(async () => {
     try {
       const statusParam = filter !== 'ALL' ? `?status=${filter}` : '';
       const [alertsRes, countRes] = await Promise.all([
-        fetch(`${base}/api/alerts${statusParam}`, { credentials: 'include' }),
-        fetch(`${base}/api/alerts/count`, { credentials: 'include' }),
+        fetch(`/api/alerts${statusParam}`, { credentials: 'include' }),
+        fetch(`/api/alerts/count`, { credentials: 'include' }),
       ]);
       if (alertsRes.ok) {
         const json = await alertsRes.json();
@@ -60,17 +58,17 @@ export default function AlertsPage() {
     } finally {
       setLoading(false);
     }
-  }, [base, filter]);
+  }, [filter]);
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
   const handleDismiss = async (id: string) => {
-    await fetch(`${base}/api/alerts/${id}/dismiss`, { method: 'PATCH', credentials: 'include' });
+    await fetch(`/api/alerts/${id}/dismiss`, { method: 'PATCH', credentials: 'include' });
     await fetchAlerts();
   };
 
   const handleResolve = async (id: string) => {
-    await fetch(`${base}/api/alerts/${id}/resolve`, { method: 'PATCH', credentials: 'include' });
+    await fetch(`/api/alerts/${id}/resolve`, { method: 'PATCH', credentials: 'include' });
     await fetchAlerts();
   };
 

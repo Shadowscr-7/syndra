@@ -24,14 +24,12 @@ export default function PlaybooksPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchPlaybooks = useCallback(async () => {
     try {
-      const res = await fetch(`${base}/api/onboarding/playbooks`, { credentials: 'include' });
+      const res = await fetch(`/api/onboarding/playbooks`, { credentials: 'include' });
       if (!res.ok) {
         // Fallback to public endpoint
-        const res2 = await fetch(`${base}/api/onboarding/industries`, { credentials: 'include' });
+        const res2 = await fetch(`/api/onboarding/industries`, { credentials: 'include' });
         const json2 = await res2.json();
         setPlaybooks(Array.isArray(json2.data) ? json2.data : []);
         return;
@@ -43,7 +41,7 @@ export default function PlaybooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, []);
 
   useEffect(() => { fetchPlaybooks(); }, [fetchPlaybooks]);
 
@@ -51,7 +49,7 @@ export default function PlaybooksPage() {
     setSeeding(true);
     setMsg(null);
     try {
-      const res = await fetch(`${base}/api/onboarding/seed-playbooks`, {
+      const res = await fetch(`/api/onboarding/seed-playbooks`, {
         method: 'POST',
         credentials: 'include',
       });

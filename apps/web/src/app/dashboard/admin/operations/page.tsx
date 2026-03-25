@@ -93,11 +93,9 @@ export default function OperationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${base}/api/admin/operations`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/operations`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al cargar métricas');
       const json = await res.json();
       setData(json);
@@ -106,7 +104,7 @@ export default function OperationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

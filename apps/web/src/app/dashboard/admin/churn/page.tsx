@@ -52,13 +52,11 @@ export default function ChurnPage() {
   const [evaluating, setEvaluating] = useState(false);
   const [filter, setFilter] = useState<string>('ALL');
 
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchData = useCallback(async () => {
     try {
       const [sigRes, countRes] = await Promise.all([
-        fetch(`${base}/api/admin/churn`, { credentials: 'include' }),
-        fetch(`${base}/api/admin/churn/at-risk`, { credentials: 'include' }),
+        fetch(`/api/admin/churn`, { credentials: 'include' }),
+        fetch(`/api/admin/churn/at-risk`, { credentials: 'include' }),
       ]);
       if (!sigRes.ok) throw new Error('Error al cargar datos');
       const sigsJson = await sigRes.json();
@@ -70,14 +68,14 @@ export default function ChurnPage() {
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleEvaluate = async () => {
     setEvaluating(true);
     try {
-      await fetch(`${base}/api/admin/churn/evaluate`, { method: 'POST', credentials: 'include' });
+      await fetch(`/api/admin/churn/evaluate`, { method: 'POST', credentials: 'include' });
       await fetchData();
     } finally {
       setEvaluating(false);
