@@ -2,6 +2,18 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useBackgroundTasks } from '@/lib/background-tasks-context';
+import { getClientSession } from '@/lib/client-session';
+
+// ── Helpers ──
+
+function wsFetch(input: string, init?: RequestInit): Promise<Response> {
+  const { workspaceId } = getClientSession();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> ?? {}),
+    ...(workspaceId ? { 'x-workspace-id': workspaceId } : {}),
+  };
+  return fetch(input, { ...init, headers, credentials: 'include' });
+}
 
 // ── Types ──
 
@@ -321,9 +333,9 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
   const fetchAll = useCallback(async () => {
     try {
       const [schedRes, profRes, campRes] = await Promise.all([
-        fetch('/api/schedules'),
-        fetch('/api/profiles'),
-        fetch('/api/campaigns'),
+        wsFetch('/api/schedules'),
+        wsFetch('/api/profiles'),
+        wsFetch('/api/campaigns'),
       ]);
       const schedData = await schedRes.json();
       const profData = await profRes.json();
@@ -345,7 +357,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const handleCreate = async (data: any) => {
     try {
-      const res = await fetch('/api/schedules', {
+      const res = await wsFetch('/api/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -360,7 +372,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const handleUpdate = async (id: string, data: any) => {
     try {
-      const res = await fetch(`/api/schedules/${id}`, {
+      const res = await wsFetch(`/api/schedules/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -375,7 +387,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este horario y todos sus slots?')) return;
     try {
-      const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+      const res = await wsFetch(`/api/schedules/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error');
       toast('ok', 'Horario eliminado');
       await fetchAll();
@@ -384,7 +396,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const handleToggle = async (id: string) => {
     try {
-      const res = await fetch(`/api/schedules/${id}/toggle`, { method: 'PUT' });
+      const res = await wsFetch(`/api/schedules/${id}/toggle`, { method: 'PUT' });
       if (!res.ok) throw new Error('Error');
       await fetchAll();
     } catch (e: any) { toast('err', e.message); }
@@ -392,7 +404,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const handleAddSlot = async (scheduleId: string, data: any) => {
     try {
-      const res = await fetch(`/api/schedules/${scheduleId}/slots`, {
+      const res = await wsFetch(`/api/schedules/${scheduleId}/slots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -407,7 +419,7 @@ function SchedulesTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => 
 
   const handleRemoveSlot = async (slotId: string) => {
     try {
-      const res = await fetch(`/api/schedules/slots/${slotId}`, { method: 'DELETE' });
+      const res = await wsFetch(`/api/schedules/slots/${slotId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error');
       toast('ok', 'Slot eliminado');
       await fetchAll();
@@ -628,9 +640,9 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const fetchAll = useCallback(async () => {
     try {
       const [cfgRes, batchRes, campRes] = await Promise.all([
-        fetch('/api/weekly-planner/configs'),
-        fetch('/api/weekly-planner/batches'),
-        fetch('/api/campaigns'),
+        wsFetch('/api/weekly-planner/configs'),
+        wsFetch('/api/weekly-planner/batches'),
+        wsFetch('/api/campaigns'),
       ]);
       if (cfgRes.status === 403 || batchRes.status === 403) {
         setProBlocked(true);
@@ -664,7 +676,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const handleCreateConfig = async (data: any) => {
     try {
-      const res = await fetch('/api/weekly-planner/configs', {
+      const res = await wsFetch('/api/weekly-planner/configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -678,7 +690,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const handleUpdateConfig = async (id: string, data: any) => {
     try {
-      const res = await fetch(`/api/weekly-planner/configs/${id}`, {
+      const res = await wsFetch(`/api/weekly-planner/configs/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -693,7 +705,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const handleDeleteConfig = async (id: string) => {
     if (!confirm('¿Eliminar esta configuración?')) return;
     try {
-      await fetch(`/api/weekly-planner/configs/${id}`, { method: 'DELETE' });
+      await wsFetch(`/api/weekly-planner/configs/${id}`, { method: 'DELETE' });
       toast('ok', 'Eliminado');
       await fetchAll();
     } catch (e: any) { toast('err', e.message); }
@@ -706,7 +718,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const handleGenerate = async (configId: string) => {
     // First check if music is enabled and estimate costs
     try {
-      const estRes = await fetch(`/api/weekly-planner/configs/${configId}/estimate-cost`);
+      const estRes = await wsFetch(`/api/weekly-planner/configs/${configId}/estimate-cost`);
       if (estRes.ok) {
         const { data } = await estRes.json();
         if (data.musicEnabled && data.totalCost > 0 && !data.isUnlimited) {
@@ -722,7 +734,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
     setCostEstimate(null);
     setGenerating(configId);
     try {
-      const res = await fetch(`/api/weekly-planner/batches/generate/${configId}`, {
+      const res = await wsFetch(`/api/weekly-planner/batches/generate/${configId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skipMusic }),
@@ -739,7 +751,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const handleApproveAll = async (batchId: string) => {
     try {
-      const res = await fetch(`/api/weekly-planner/batches/${batchId}`, { method: 'POST' });
+      const res = await wsFetch(`/api/weekly-planner/batches/${batchId}`, { method: 'POST' });
       if (!res.ok) throw new Error('Error');
       toast('ok', 'Todas las publicaciones aprobadas');
       await fetchAll();
@@ -748,7 +760,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const handleApproveItem = async (itemId: string) => {
     try {
-      const res = await fetch(`/api/weekly-planner/items/${itemId}/approve`, { method: 'POST' });
+      const res = await wsFetch(`/api/weekly-planner/items/${itemId}/approve`, { method: 'POST' });
       if (!res.ok) throw new Error('Error');
       await fetchAll();
     } catch (e: any) { toast('err', e.message); }
@@ -756,7 +768,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
 
   const handleRejectItem = async (itemId: string) => {
     try {
-      const res = await fetch(`/api/weekly-planner/items/${itemId}/reject`, { method: 'POST' });
+      const res = await wsFetch(`/api/weekly-planner/items/${itemId}/reject`, { method: 'POST' });
       if (!res.ok) throw new Error('Error');
       await fetchAll();
     } catch (e: any) { toast('err', e.message); }
@@ -765,7 +777,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const handleCancelBatch = async (batchId: string) => {
     if (!confirm('¿Detener la generación? Los items pendientes se marcarán como rechazados.')) return;
     try {
-      const res = await fetch(`/api/weekly-planner/batches/${batchId}/cancel`, { method: 'POST' });
+      const res = await wsFetch(`/api/weekly-planner/batches/${batchId}/cancel`, { method: 'POST' });
       if (!res.ok) throw new Error('Error al detener');
       toast('ok', 'Generación detenida');
       await fetchAll();
@@ -784,7 +796,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
-      const res = await fetch(`/api/weekly-planner/items/${itemId}/${action}`, {
+      const res = await wsFetch(`/api/weekly-planner/items/${itemId}/${action}`, {
         method: opts?.method ?? 'POST',
         headers: { 'Content-Type': 'application/json' },
         ...(opts?.body ? { body: JSON.stringify(opts.body) } : {}),
@@ -830,7 +842,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
       const payload: Record<string, string> = {};
       if (customPrompt) payload.customPrompt = customPrompt;
       if (model) payload.model = model;
-      const res = await fetch(`/api/weekly-planner/items/${itemId}/regenerate-image-pro`, {
+      const res = await wsFetch(`/api/weekly-planner/items/${itemId}/regenerate-image-pro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -853,7 +865,7 @@ function PlannerTab({ toast }: { toast: (type: 'ok' | 'err', text: string) => vo
   const handleGenerateMusic = async (itemId: string, style?: string, prompt?: string) => {
     setMusicGenerating(true);
     try {
-      const res = await fetch(`/api/weekly-planner/items/${itemId}/generate-music`, {
+      const res = await wsFetch(`/api/weekly-planner/items/${itemId}/generate-music`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ style, prompt }),
