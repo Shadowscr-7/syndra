@@ -220,7 +220,7 @@ function RegisterForm() {
         return;
       }
 
-      router.push('/dashboard');
+      router.push('/onboarding');
       router.refresh();
     } catch {
       setMessage('Error de conexión. Inténtalo de nuevo.');
