@@ -42,6 +42,9 @@ export const CREDIT_COSTS: Record<string, number> = {
   VIDEO_KIE_SLIDES: 0,  // Gratis — renderizado local con FFmpeg + EdgeTTS
   VIDEO_KIE_VIDEO: 15,
   VIDEO_KIE_AVATAR: 25,
+  // Video Compositor (Pro FFmpeg)
+  VIDEO_COMPOSITOR: 3,     // Video con imágenes + TTS + subtítulos
+  VIDEO_KIE_REELS: 20,     // Kling 2.6 text-to-video para reels
   // Avatares
   AVATAR_BASIC_30S: 30,
   AVATAR_PREMIUM_30S: 50,

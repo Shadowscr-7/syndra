@@ -177,6 +177,13 @@ export {
   type SlideshowResult,
 } from './renderers/slideshow-renderer';
 
+// --- Pro Video Renderer (FFmpeg compositor — profesional) ---
+export {
+  ProVideoRenderer,
+  type ProVideoInput,
+  type ProVideoResult,
+} from './renderers/pro-video-renderer';
+
 // --- Pipeline ---
 export {
   MediaPipeline,

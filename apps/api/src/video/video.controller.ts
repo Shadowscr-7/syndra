@@ -2,10 +2,11 @@
 // Video Controller — REST endpoints para gestión de videos
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Logger, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Req, Logger, UseGuards, UseInterceptors } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
+import { VideoCompositorService, AVAILABLE_VOICES } from './video-compositor.service';
 import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
 import { UseCredits, CreditGuard } from '../credits/credit.guard';
 import { CreditInterceptor } from '../credits/credit.interceptor';
@@ -20,6 +21,7 @@ export class VideoController {
     private readonly videoService: VideoService,
     private readonly tierRouter: VideoTierRouterService,
     private readonly credits: VideoCreditService,
+    private readonly compositor: VideoCompositorService,
   ) {}
 
   // ── Rutas estáticas (ANTES de :id para evitar colisiones) ──
@@ -224,5 +226,92 @@ export class VideoController {
   @Post('credits/add')
   async addCredits(@Body() body: { workspaceId: string; amount: number }) {
     return this.credits.addCredits(body.workspaceId, body.amount);
+  }
+
+  // ── Video Compositor (Opción 1 — FFmpeg Pro) ──
+
+  /**
+   * GET /api/videos/compositor/voices — Voces disponibles para TTS
+   */
+  @Get('compositor/voices')
+  getVoices() {
+    return { data: AVAILABLE_VOICES };
+  }
+
+  /**
+   * POST /api/videos/compositor/render — Renderizar video con compositor
+   */
+  @Post('compositor/render')
+  async renderCompositor(
+    @Req() req: any,
+    @Body() body: {
+      imageIds?: string[];
+      imageUrls?: string[];
+      aspectRatio?: '9:16' | '16:9' | '1:1';
+      narrationText?: string;
+      voiceId?: string;
+      voiceSpeed?: 'slow' | 'normal' | 'fast';
+      voiceTone?: 'low' | 'normal' | 'high';
+      enableSubtitles?: boolean;
+      enableMusic?: boolean;
+      musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
+      mode?: 'general' | 'product';
+      logoId?: string;
+      productImageId?: string;
+      productName?: string;
+      productPrice?: string;
+      productCta?: string;
+    },
+  ) {
+    const userId = req.user?.sub;
+    const workspaceId = req.workspaceId;
+
+    if (!body.imageIds?.length && !body.imageUrls?.length) {
+      throw new Error('Se necesita al menos una imagen');
+    }
+
+    this.logger.log(`Compositor render: ${body.imageIds?.length ?? 0} images, mode=${body.mode ?? 'general'}`);
+
+    return this.compositor.render({
+      workspaceId,
+      userId,
+      ...body,
+    });
+  }
+
+  // ── Kie AI Reels (Opción 2 — Kling 2.6) ──
+
+  /**
+   * POST /api/videos/kie-reels/render — Generar reel con Kie AI (Kling 2.6)
+   */
+  @Post('kie-reels/render')
+  async renderKieReels(
+    @Req() req: any,
+    @Body() body: {
+      prompt: string;
+      duration?: 5 | 10;
+      aspectRatio?: '9:16' | '16:9' | '1:1';
+    },
+  ) {
+    const workspaceId = req.workspaceId;
+
+    if (!body.prompt?.trim()) {
+      throw new Error('Se necesita un prompt para generar el video');
+    }
+
+    this.logger.log(`Kie Reels render: duration=${body.duration ?? 5}s`);
+
+    // Use existing tier router with KIE provider
+    return this.tierRouter.createRenderJob({
+      workspaceId,
+      tier: 'MVP' as any,
+      provider: 'KIE' as any,
+      inputType: 'SCRIPT',
+      inputPayload: {
+        script: body.prompt,
+        duration: body.duration ?? 5,
+      },
+      options: { aspectRatio: body.aspectRatio ?? '9:16' },
+    });
   }
 }

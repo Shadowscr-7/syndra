@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getClientSession, getClientApiUrl } from '@/lib/client-session';
+import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api-fetch';
+import { UserMediaPicker } from '@/components/media-picker';
 
-interface Credits {
-  totalCredits: number;
-  usedCredits: number;
-  remainingCredits: number;
-  period: string;
+// ── Types ──
+
+type Tab = 'compositor' | 'kie';
+type AspectRatio = '9:16' | '16:9' | '1:1';
+
+interface Voice {
+  id: string;
+  label: string;
+  gender: string;
 }
 
 interface RenderJob {
@@ -17,188 +22,518 @@ interface RenderJob {
   inputType: string;
   status: string;
   outputUrl?: string;
-  renderTimeMs?: number;
-  costCredits?: number;
+  creditsUsed?: number;
   createdAt: string;
 }
 
-interface ProviderInfo {
-  provider: string;
-  available: boolean;
-  tier: string;
+interface Credits {
+  totalCredits: number;
+  usedCredits: number;
+  remainingCredits: number;
+  period: string;
 }
 
-export default function VideoDashboardPage() {
+// ── Status styles ──
+
+const statusStyles: Record<string, { bg: string; color: string; border: string }> = {
+  QUEUED:     { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
+  RENDERING:  { bg: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: 'rgba(59,130,246,0.2)' },
+  COMPOSING:  { bg: 'rgba(168,85,247,0.1)', color: '#a855f7', border: 'rgba(168,85,247,0.2)' },
+  UPLOADING:  { bg: 'rgba(6,182,212,0.1)',  color: '#06b6d4', border: 'rgba(6,182,212,0.2)' },
+  COMPLETED:  { bg: 'rgba(16,185,129,0.1)', color: '#10b981', border: 'rgba(16,185,129,0.2)' },
+  FAILED:     { bg: 'rgba(239,68,68,0.1)',  color: '#ef4444', border: 'rgba(239,68,68,0.2)' },
+  CANCELLED:  { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', border: 'rgba(107,114,128,0.2)' },
+};
+
+// ── Main Page ──
+
+export default function VideoPipelinePage() {
+  const [tab, setTab] = useState<Tab>('compositor');
   const [credits, setCredits] = useState<Credits | null>(null);
+  const [voices, setVoices] = useState<Voice[]>([]);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Render form
-  const [script, setScript] = useState('');
-  const [tier, setTier] = useState('MVP');
-  const [provider, setProvider] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  // ── Compositor state (Option 1) ──
+  const [compImageIds, setCompImageIds] = useState<string[]>([]);
+  const [compAspect, setCompAspect] = useState<AspectRatio>('9:16');
+  const [compNarration, setCompNarration] = useState('');
+  const [compVoiceId, setCompVoiceId] = useState('es-AR-ElenaNeural');
+  const [compVoiceSpeed, setCompVoiceSpeed] = useState<'slow' | 'normal' | 'fast'>('normal');
+  const [compSubtitles, setCompSubtitles] = useState(true);
+  const [compMusic, setCompMusic] = useState(false);
+  const [compMusicStyle, setCompMusicStyle] = useState<'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic'>('upbeat');
+  const [compMode, setCompMode] = useState<'general' | 'product'>('general');
+  const [compLogoIds, setCompLogoIds] = useState<string[]>([]);
+  const [compProductImageIds, setCompProductImageIds] = useState<string[]>([]);
+  const [compProductName, setCompProductName] = useState('');
+  const [compProductPrice, setCompProductPrice] = useState('');
+  const [compProductCta, setCompProductCta] = useState('');
+  const [compSubmitting, setCompSubmitting] = useState(false);
 
-  const getHeaders = () => {
-    const s = getClientSession();
-    return {
-      'Content-Type': 'application/json',
-      'x-workspace-id': s.workspaceId,
-      'x-user-id': s.userId,
-    };
-  };
+  // ── Kie AI state (Option 2) ──
+  const [kiePrompt, setKiePrompt] = useState('');
+  const [kieDuration, setKieDuration] = useState<5 | 10>(5);
+  const [kieAspect, setKieAspect] = useState<AspectRatio>('9:16');
+  const [kieSubmitting, setKieSubmitting] = useState(false);
 
-  const load = async () => {
+  // ── Load data ──
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const s = getClientSession();
-      const apiUrl = getClientApiUrl();
-      const h = getHeaders();
-
-      const [credRes, jobRes, provRes] = await Promise.all([
-        fetch(`${apiUrl}/api/videos/credits?workspaceId=${s.workspaceId}`, { headers: h }),
-        fetch(`${apiUrl}/api/videos/render?workspaceId=${s.workspaceId}`, { headers: h }),
-        fetch(`${apiUrl}/api/videos/providers`, { headers: h }),
+      const [credRes, voicesRes, jobsRes] = await Promise.all([
+        apiFetch<Credits>('/videos/credits').catch(() => null),
+        apiFetch<{ data: Voice[] }>('/videos/compositor/voices').catch(() => ({ data: [] })),
+        apiFetch<RenderJob[]>('/videos/render').catch(() => []),
       ]);
-
-      if (credRes.ok) setCredits(await credRes.json());
-      if (jobRes.ok) setJobs(await jobRes.json());
-      if (provRes.ok) setProviders(await provRes.json());
+      if (credRes) setCredits(credRes);
+      setVoices(voicesRes?.data ?? []);
+      setJobs(Array.isArray(jobsRes) ? jobsRes : []);
     } catch (e) {
-      console.error(e);
+      console.error('Error loading video pipeline data:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const submitRender = async () => {
-    setSubmitting(true);
+  // ── Submit Compositor ──
+  const submitCompositor = async () => {
+    if (!compImageIds.length || !compNarration.trim()) return;
+    setCompSubmitting(true);
     try {
-      const s = getClientSession();
-      const apiUrl = getClientApiUrl();
-      await fetch(`${apiUrl}/api/videos/render`, {
+      await apiFetch('/videos/compositor/render', {
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          workspaceId: s.workspaceId,
-          tier,
-          provider: provider || undefined,
-          script,
-          inputType: 'SCRIPT',
-          duration: 15,
-        }),
+        body: {
+          imageIds: compImageIds,
+          aspectRatio: compAspect,
+          narrationText: compNarration,
+          voiceId: compVoiceId,
+          voiceSpeed: compVoiceSpeed,
+          enableSubtitles: compSubtitles,
+          enableMusic: compMusic,
+          musicStyle: compMusic ? compMusicStyle : undefined,
+          mode: compMode,
+          logoId: compMode === 'product' ? compLogoIds[0] : undefined,
+          productImageId: compMode === 'product' ? compProductImageIds[0] : undefined,
+          productName: compMode === 'product' ? compProductName : undefined,
+          productPrice: compMode === 'product' ? compProductPrice : undefined,
+          productCta: compMode === 'product' ? compProductCta : undefined,
+        },
       });
-      setScript('');
-      load();
+      setCompNarration('');
+      setCompImageIds([]);
+      loadData();
     } catch (e) {
-      console.error(e);
+      console.error('Compositor render error:', e);
     } finally {
-      setSubmitting(false);
+      setCompSubmitting(false);
     }
   };
 
-  const statusStyles: Record<string, { bg: string; color: string; border: string }> = {
-    QUEUED:     { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
-    RENDERING:  { bg: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: 'rgba(59,130,246,0.2)' },
-    COMPLETED:  { bg: 'rgba(16,185,129,0.1)', color: '#10b981', border: 'rgba(16,185,129,0.2)' },
-    FAILED:     { bg: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'rgba(239,68,68,0.2)' },
+  // ── Submit Kie Reels ──
+  const submitKieReels = async () => {
+    if (!kiePrompt.trim()) return;
+    setKieSubmitting(true);
+    try {
+      await apiFetch('/videos/kie-reels/render', {
+        method: 'POST',
+        body: {
+          prompt: kiePrompt,
+          duration: kieDuration,
+          aspectRatio: kieAspect,
+        },
+      });
+      setKiePrompt('');
+      loadData();
+    } catch (e) {
+      console.error('Kie reels render error:', e);
+    } finally {
+      setKieSubmitting(false);
+    }
   };
 
-  const tierStyles: Record<string, { bg: string; color: string; border: string }> = {
-    MVP:      { bg: 'rgba(124,58,237,0.1)', color: 'var(--color-primary-light)', border: 'rgba(124,58,237,0.2)' },
-    SELFHOST: { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
-    PREMIUM:  { bg: 'rgba(236,72,153,0.1)', color: '#ec4899', border: 'rgba(236,72,153,0.2)' },
-  };
+  // ── Cost calculation ──
+  const compositorCost = 3 + (compMusic ? 3 : 0);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="page-header">
         <h1 className="page-title">Video Pipeline</h1>
-        <p className="page-subtitle">Genera videos con IA — créditos, proveedores y render jobs</p>
+        <p className="page-subtitle">Crea videos profesionales con IA — compositor FFmpeg o Kie AI Reels</p>
+      </div>
+
+      {/* Credits bar */}
+      {credits && (
+        <div className="grid grid-cols-3 gap-4 animate-fade-in">
+          <div className="glass-card p-4 text-center stat-gradient-cyan">
+            <div className="text-2xl font-bold" style={{ color: 'var(--color-secondary)' }}>{credits.remainingCredits}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Créditos Restantes</div>
+          </div>
+          <div className="glass-card p-4 text-center stat-gradient-purple">
+            <div className="text-2xl font-bold" style={{ color: 'var(--color-primary-light)' }}>{credits.usedCredits}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Usados</div>
+          </div>
+          <div className="glass-card p-4 text-center stat-gradient-blue">
+            <div className="text-2xl font-bold" style={{ color: '#60a5fa' }}>{credits.totalCredits}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Total ({credits.period})</div>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-2 animate-fade-in-delay-1">
+        <button
+          onClick={() => setTab('compositor')}
+          className={tab === 'compositor' ? 'btn-primary' : 'btn-ghost'}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          🎬 Compositor Pro
+          <span className="chip" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderColor: 'rgba(16,185,129,0.3)', fontSize: '0.65rem' }}>
+            {compositorCost} créd
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('kie')}
+          className={tab === 'kie' ? 'btn-primary' : 'btn-ghost'}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          ⚡ Kie AI Reels
+          <span className="chip" style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899', borderColor: 'rgba(236,72,153,0.3)', fontSize: '0.65rem' }}>
+            20 créd
+          </span>
+        </button>
       </div>
 
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Cargando...</p>
       ) : (
         <>
-          {/* Credits overview */}
-          {credits && (
-            <div className="grid grid-cols-3 gap-4 animate-fade-in">
-              <div className="glass-card p-5 text-center stat-gradient-cyan">
-                <div className="text-3xl font-bold" style={{ color: 'var(--color-secondary)' }}>{credits.remainingCredits}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Créditos Restantes</div>
+          {/* ═══════════════════════════════════════ */}
+          {/* TAB 1 — Compositor Pro                 */}
+          {/* ═══════════════════════════════════════ */}
+          {tab === 'compositor' && (
+            <div className="space-y-4 animate-fade-in">
+              {/* Mode selector */}
+              <div className="glass-card p-5 space-y-4">
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Modo de video</h3>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setCompMode('general')}
+                    className={compMode === 'general' ? 'btn-primary' : 'btn-ghost'}
+                    style={{ flex: 1 }}
+                  >
+                    🎥 General
+                  </button>
+                  <button
+                    onClick={() => setCompMode('product')}
+                    className={compMode === 'product' ? 'btn-primary' : 'btn-ghost'}
+                    style={{ flex: 1 }}
+                  >
+                    🛍️ Producto
+                  </button>
+                </div>
+                {compMode === 'product' && (
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Modo producto: agrega logo, imagen de producto, precio y CTA al video.
+                  </p>
+                )}
               </div>
-              <div className="glass-card p-5 text-center stat-gradient-purple">
-                <div className="text-3xl font-bold" style={{ color: 'var(--color-primary-light)' }}>{credits.usedCredits}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Usados Este Período</div>
+
+              {/* Images */}
+              <div className="glass-card p-5 space-y-3">
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                  📷 Imágenes <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(hasta 10)</span>
+                </h3>
+                <UserMediaPicker
+                  selectedIds={compImageIds}
+                  onChange={setCompImageIds}
+                  max={10}
+                />
+                {compImageIds.length === 0 && (
+                  <p className="text-xs" style={{ color: '#f59e0b' }}>Selecciona al menos 1 imagen de tu biblioteca.</p>
+                )}
               </div>
-              <div className="glass-card p-5 text-center stat-gradient-blue">
-                <div className="text-3xl font-bold" style={{ color: '#60a5fa' }}>{credits.totalCredits}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Total ({credits.period})</div>
+
+              {/* Product fields (conditional) */}
+              {compMode === 'product' && (
+                <div className="glass-card p-5 space-y-3">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🛍️ Datos del Producto</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="input-label">Logo</label>
+                      <UserMediaPicker
+                        selectedIds={compLogoIds}
+                        onChange={setCompLogoIds}
+                        categoryFilter="LOGO"
+                        max={1}
+                      />
+                    </div>
+                    <div>
+                      <label className="input-label">Imagen principal</label>
+                      <UserMediaPicker
+                        selectedIds={compProductImageIds}
+                        onChange={setCompProductImageIds}
+                        categoryFilter="PRODUCT"
+                        max={1}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="input-label">Nombre</label>
+                      <input
+                        type="text"
+                        value={compProductName}
+                        onChange={(e) => setCompProductName(e.target.value)}
+                        placeholder="Mi Producto"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="input-label">Precio</label>
+                      <input
+                        type="text"
+                        value={compProductPrice}
+                        onChange={(e) => setCompProductPrice(e.target.value)}
+                        placeholder="$29.99"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="input-label">CTA</label>
+                      <input
+                        type="text"
+                        value={compProductCta}
+                        onChange={(e) => setCompProductCta(e.target.value)}
+                        placeholder="¡Comprá ahora!"
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Narration */}
+              <div className="glass-card p-5 space-y-3">
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎙️ Narración</h3>
+                <textarea
+                  value={compNarration}
+                  onChange={(e) => setCompNarration(e.target.value)}
+                  placeholder="Texto que se convertirá a voz (TTS). Escribe lo que quieres que diga el video..."
+                  className="input-field"
+                  rows={4}
+                />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="input-label">Voz</label>
+                    <select
+                      value={compVoiceId}
+                      onChange={(e) => setCompVoiceId(e.target.value)}
+                      className="input-field"
+                    >
+                      {voices.map((v) => (
+                        <option key={v.id} value={v.id}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="input-label">Velocidad</label>
+                    <select
+                      value={compVoiceSpeed}
+                      onChange={(e) => setCompVoiceSpeed(e.target.value as 'slow' | 'normal' | 'fast')}
+                      className="input-field"
+                    >
+                      <option value="slow">Lenta</option>
+                      <option value="normal">Normal</option>
+                      <option value="fast">Rápida</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="input-label">Formato</label>
+                    <select
+                      value={compAspect}
+                      onChange={(e) => setCompAspect(e.target.value as AspectRatio)}
+                      className="input-field"
+                    >
+                      <option value="9:16">9:16 (Reel/Story)</option>
+                      <option value="16:9">16:9 (Landscape)</option>
+                      <option value="1:1">1:1 (Cuadrado)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Options: Subtitles + Music */}
+              <div className="glass-card p-5 space-y-4">
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>⚙️ Opciones</h3>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={compSubtitles}
+                      onChange={(e) => setCompSubtitles(e.target.checked)}
+                      className="accent-purple-500 w-4 h-4"
+                    />
+                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      Subtítulos automáticos
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={compMusic}
+                      onChange={(e) => setCompMusic(e.target.checked)}
+                      className="accent-purple-500 w-4 h-4"
+                    />
+                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      Música de fondo
+                      <span className="chip ml-2" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', borderColor: 'rgba(245,158,11,0.2)', fontSize: '0.6rem' }}>
+                        +3 créd
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {compMusic && (
+                  <div>
+                    <label className="input-label">Estilo musical</label>
+                    <select
+                      value={compMusicStyle}
+                      onChange={(e) => setCompMusicStyle(e.target.value as typeof compMusicStyle)}
+                      className="input-field"
+                      style={{ maxWidth: '14rem' }}
+                    >
+                      <option value="upbeat">🎵 Upbeat / Alegre</option>
+                      <option value="calm">🎶 Calm / Relajado</option>
+                      <option value="corporate">🏢 Corporate / Profesional</option>
+                      <option value="energetic">⚡ Energetic / Dinámico</option>
+                      <option value="cinematic">🎬 Cinematic / Épico</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit */}
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={submitCompositor}
+                  disabled={!compImageIds.length || !compNarration.trim() || compSubmitting}
+                  className="btn-primary"
+                  style={{
+                    opacity: (!compImageIds.length || !compNarration.trim() || compSubmitting) ? 0.5 : 1,
+                    padding: '0.75rem 2rem',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {compSubmitting ? '⏳ Renderizando...' : `🎬 Crear Video (${compositorCost} créditos)`}
+                </button>
+                {compSubmitting && (
+                  <span className="text-xs animate-pulse" style={{ color: 'var(--color-text-muted)' }}>
+                    Esto puede tardar unos minutos...
+                  </span>
+                )}
               </div>
             </div>
           )}
 
-          {/* Available providers */}
-          <div className="glass-card p-5 animate-fade-in-delay-1">
-            <h3 className="font-semibold mb-3" style={{ color: 'var(--color-text)' }}>Proveedores Disponibles</h3>
-            <div className="flex gap-2 flex-wrap">
-              {providers.map((p) => {
-                const ts = tierStyles[p.tier] ?? { bg: 'rgba(255,255,255,0.05)', color: 'var(--color-text-secondary)', border: 'var(--color-border)' };
-                return (
-                  <span key={p.provider} className="chip" style={{ background: ts.bg, color: ts.color, borderColor: ts.border }}>
-                    {p.provider} ({p.tier})
+          {/* ═══════════════════════════════════════ */}
+          {/* TAB 2 — Kie AI Reels                   */}
+          {/* ═══════════════════════════════════════ */}
+          {tab === 'kie' && (
+            <div className="space-y-4 animate-fade-in">
+              <div className="glass-card p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>⚡ Kie AI — Kling 2.6</h3>
+                  <span className="chip" style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899', borderColor: 'rgba(236,72,153,0.3)' }}>
+                    20 créditos por video
                   </span>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Genera un video/reel completamente con IA a partir de un prompt de texto. Ideal para reels creativos y contenido visual impactante.
+                </p>
 
-          {/* New render form */}
-          <div className="glass-card p-5 space-y-3 animate-fade-in-delay-2">
-            <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Crear Video Render</h3>
-            <textarea
-              placeholder="Script del video..."
-              value={script}
-              onChange={(e) => setScript(e.target.value)}
-              className="input-field"
-              rows={3}
-            />
-            <div className="flex gap-4">
-              <div>
-                <label className="input-label">Tier</label>
-                <select value={tier} onChange={(e) => setTier(e.target.value)} className="input-field">
-                  <option value="MVP">MVP (1 crédito)</option>
-                  <option value="SELFHOST">Self-hosted (gratis)</option>
-                  <option value="PREMIUM">Premium (5 créditos)</option>
-                </select>
+                <div>
+                  <label className="input-label">Prompt</label>
+                  <textarea
+                    value={kiePrompt}
+                    onChange={(e) => setKiePrompt(e.target.value)}
+                    placeholder="Describe el video que quieres crear. Ej: Un atardecer en la playa con olas suaves, colores cálidos, movimiento de cámara lento..."
+                    className="input-field"
+                    rows={4}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="input-label">Duración</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setKieDuration(5)}
+                        className={kieDuration === 5 ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1 }}
+                      >
+                        5 segundos
+                      </button>
+                      <button
+                        onClick={() => setKieDuration(10)}
+                        className={kieDuration === 10 ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1 }}
+                      >
+                        10 segundos
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="input-label">Formato</label>
+                    <select
+                      value={kieAspect}
+                      onChange={(e) => setKieAspect(e.target.value as AspectRatio)}
+                      className="input-field"
+                    >
+                      <option value="9:16">9:16 (Reel/Story)</option>
+                      <option value="16:9">16:9 (Landscape)</option>
+                      <option value="1:1">1:1 (Cuadrado)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="input-label">Provider (opcional)</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)} className="input-field">
-                  <option value="">Auto</option>
-                  {providers.map((p) => (
-                    <option key={p.provider} value={p.provider}>{p.provider}</option>
-                  ))}
-                </select>
+
+              {/* Submit */}
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={submitKieReels}
+                  disabled={!kiePrompt.trim() || kieSubmitting}
+                  className="btn-primary"
+                  style={{
+                    opacity: (!kiePrompt.trim() || kieSubmitting) ? 0.5 : 1,
+                    padding: '0.75rem 2rem',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {kieSubmitting ? '⏳ Generando...' : '⚡ Generar Reel (20 créditos)'}
+                </button>
+                {kieSubmitting && (
+                  <span className="text-xs animate-pulse" style={{ color: 'var(--color-text-muted)' }}>
+                    La IA está generando tu video...
+                  </span>
+                )}
               </div>
             </div>
-            <button
-              onClick={submitRender}
-              disabled={!script.trim() || submitting}
-              className="btn-primary"
-              style={{ opacity: (!script.trim() || submitting) ? 0.5 : 1 }}
-            >
-              {submitting ? 'Enviando...' : '🎬 Iniciar Render'}
-            </button>
-          </div>
+          )}
 
-          {/* Render jobs */}
-          <div className="glass-card p-5 animate-fade-in-delay-3">
-            <h3 className="font-semibold mb-3" style={{ color: 'var(--color-text)' }}>Render Jobs</h3>
+          {/* ═══════════════════════════════════════ */}
+          {/* Render Jobs (shared)                    */}
+          {/* ═══════════════════════════════════════ */}
+          <div className="glass-card p-5 animate-fade-in-delay-2">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>📋 Render Jobs</h3>
+              <button onClick={loadData} className="btn-ghost text-xs" style={{ padding: '0.35rem 0.75rem' }}>
+                🔄 Actualizar
+              </button>
+            </div>
             {jobs.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-3 animate-float">🎬</div>
@@ -208,20 +543,28 @@ export default function VideoDashboardPage() {
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {jobs.map((j) => {
                   const ss = statusStyles[j.status] ?? { bg: 'rgba(255,255,255,0.05)', color: 'var(--color-text-secondary)', border: 'var(--color-border)' };
-                  const ts = tierStyles[j.tier] ?? { bg: 'rgba(255,255,255,0.05)', color: 'var(--color-text-secondary)', border: 'var(--color-border)' };
                   return (
                     <div key={j.id} className="flex items-center justify-between rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--color-border-subtle)' }}>
                       <div className="flex items-center gap-2">
-                        <span className="chip" style={{ background: ts.bg, color: ts.color, borderColor: ts.border }}>{j.tier}</span>
-                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{j.provider}</span>
-                        <span className="chip" style={{ background: ss.bg, color: ss.color, borderColor: ss.border }}>{j.status}</span>
+                        <span className="chip" style={{
+                          background: j.provider === 'COMPOSITOR' ? 'rgba(124,58,237,0.1)' : 'rgba(236,72,153,0.1)',
+                          color: j.provider === 'COMPOSITOR' ? 'var(--color-primary-light)' : '#ec4899',
+                          borderColor: j.provider === 'COMPOSITOR' ? 'rgba(124,58,237,0.2)' : 'rgba(236,72,153,0.2)',
+                        }}>
+                          {j.provider === 'COMPOSITOR' ? '🎬 Compositor' : j.provider === 'KIE' ? '⚡ Kie AI' : j.provider}
+                        </span>
+                        <span className="chip" style={{ background: ss.bg, color: ss.color, borderColor: ss.border }}>
+                          {j.status}
+                        </span>
+                        {j.creditsUsed && (
+                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{j.creditsUsed} créd</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        {j.renderTimeMs && <span>{(j.renderTimeMs / 1000).toFixed(1)}s</span>}
                         <span>{new Date(j.createdAt).toLocaleString()}</span>
                         {j.outputUrl && (
-                          <a href={j.outputUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary-light)' }}>
-                            Ver ↗
+                          <a href={j.outputUrl} target="_blank" rel="noreferrer" className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>
+                            ▶ Ver video
                           </a>
                         )}
                       </div>

@@ -2109,6 +2109,8 @@ enum VideoProvider {
   DID
   HEDRA
   MOCK
+  COMPOSITOR
+  KIE
 }
 
 enum VideoTier {
@@ -2123,6 +2125,7 @@ enum VideoInputType {
   SCRIPT_WITH_VOICE
   AVATAR_TALKING
   CAROUSEL_ANIMATION
+  COMPOSITOR
 }
 
 enum VideoJobStatus {
