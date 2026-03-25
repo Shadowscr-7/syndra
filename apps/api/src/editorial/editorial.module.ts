@@ -20,6 +20,6 @@ import { PlansModule } from '../plans/plans.module';
     EditorialCollaborationService,
     SchedulerService,
   ],
-  exports: [EditorialOrchestratorService, EditorialCollaborationService],
+  exports: [EditorialOrchestratorService, EditorialCollaborationService, SchedulerService],
 })
 export class EditorialModule {}

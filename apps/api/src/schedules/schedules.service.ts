@@ -10,12 +10,16 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SchedulerService } from '../editorial/scheduler.service';
 
 @Injectable()
 export class SchedulesService {
   private readonly logger = new Logger(SchedulesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly schedulerService: SchedulerService,
+  ) {}
 
   // ── Listar horarios del usuario ────────────────────────
 
@@ -107,6 +111,9 @@ export class SchedulesService {
       `Horario creado: ${schedule.id} ("${schedule.name}") con ${slotsToCreate.length} slots para usuario ${userId}`,
     );
 
+    // Re-sync dynamic cron jobs
+    await this.schedulerService.syncAllSlotJobs();
+
     return schedule;
   }
 
@@ -155,6 +162,9 @@ export class SchedulesService {
 
     this.logger.log(`Horario actualizado: ${id}`);
 
+    // Re-sync dynamic cron jobs (timezone, campaign, profile may have changed)
+    await this.schedulerService.syncAllSlotJobs();
+
     return updated;
   }
 
@@ -175,6 +185,9 @@ export class SchedulesService {
     await this.prisma.publishSchedule.delete({ where: { id } });
 
     this.logger.log(`Horario eliminado: ${id} ("${existing.name}")`);
+
+    // Re-sync dynamic cron jobs (removed slots)
+    await this.schedulerService.syncAllSlotJobs();
 
     return { deleted: true };
   }
@@ -221,6 +234,9 @@ export class SchedulesService {
       `Slot creado: ${slot.id} (${data.dayOfWeek} ${data.time}) en horario ${scheduleId}`,
     );
 
+    // Re-sync dynamic cron jobs
+    await this.schedulerService.syncAllSlotJobs();
+
     return slot;
   }
 
@@ -263,6 +279,9 @@ export class SchedulesService {
 
     this.logger.log(`Slot actualizado: ${slotId}`);
 
+    // Re-sync dynamic cron jobs (day/time may have changed)
+    await this.schedulerService.syncAllSlotJobs();
+
     return updated;
   }
 
@@ -284,6 +303,9 @@ export class SchedulesService {
     await this.prisma.scheduleSlot.delete({ where: { id: slotId } });
 
     this.logger.log(`Slot eliminado: ${slotId}`);
+
+    // Remove the cron job for this slot
+    this.schedulerService.removeSlotJob(slotId);
 
     return { deleted: true };
   }
@@ -315,6 +337,9 @@ export class SchedulesService {
     this.logger.log(
       `Horario ${id} ${updated.isActive ? 'activado' : 'desactivado'}`,
     );
+
+    // Re-sync dynamic cron jobs (activation state changed)
+    await this.schedulerService.syncAllSlotJobs();
 
     return updated;
   }
