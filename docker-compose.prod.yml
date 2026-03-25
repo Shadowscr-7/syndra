@@ -23,10 +23,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    # NO exponemos puerto al host — solo accesible internamente
-    # Si necesitas acceso directo, descomenta:
-    # ports:
-    #   - "5433:5432"  # Usa 5433+ para no pisar otros PostgreSQL
+    # Solo accesible desde localhost del servidor (para túnel SSH)
+    ports:
+      - "127.0.0.1:5433:5432"
 
   # ---- API (NestJS) ----
   api:
