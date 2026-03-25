@@ -38,17 +38,6 @@ export async function createEditorialRun(formData: FormData) {
   if (!res.ok) {
     const err = await res.text().catch(() => 'Unknown error');
     console.error('[createEditorialRun] API error:', err);
-    // Fallback: create the row directly so user sees something
-    await prisma.editorialRun.create({
-      data: {
-        workspaceId: session.workspaceId,
-        campaignId: campaignId || null,
-        origin: 'manual',
-        priority,
-        targetChannels: channels.length > 0 ? channels : ['instagram'],
-        status: 'PENDING',
-      },
-    });
   }
 
   revalidatePath('/dashboard/editorial');
@@ -124,6 +113,42 @@ export async function triggerPipeline(formData: FormData) {
   }
   revalidatePath(`/dashboard/editorial/${runId}`);
   revalidatePath('/dashboard/editorial');
+}
+
+export async function cancelEditorialRun(formData: FormData) {
+  const runId = formData.get('runId') as string;
+  const apiUrl = process.env.API_URL || 'http://localhost:3001';
+  try {
+    await fetch(`${apiUrl}/api/editorial/run/${runId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (e) {
+    console.error('[cancelEditorialRun] API unreachable:', e);
+    await prisma.editorialRun.update({
+      where: { id: runId },
+      data: { status: 'FAILED', errorMessage: 'Cancelado por el usuario' },
+    });
+  }
+  revalidatePath(`/dashboard/editorial/${runId}`);
+  revalidatePath('/dashboard/editorial');
+}
+
+export async function deleteEditorialRun(formData: FormData) {
+  const runId = formData.get('runId') as string;
+  const apiUrl = process.env.API_URL || 'http://localhost:3001';
+  try {
+    const res = await fetch(`${apiUrl}/api/editorial/run/${runId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      console.error('[deleteEditorialRun] API error:', await res.text().catch(() => ''));
+    }
+  } catch (e) {
+    console.error('[deleteEditorialRun] API unreachable:', e);
+  }
+  revalidatePath('/dashboard/editorial');
+  redirect('/dashboard/editorial');
 }
 
 // ── Content Theme ────────────────────────────────────

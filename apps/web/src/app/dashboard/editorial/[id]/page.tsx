@@ -1,7 +1,7 @@
 import { prisma } from '@automatismos/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { approveEditorialRun, rejectEditorialRun, triggerPipeline } from '@/lib/actions';
+import { approveEditorialRun, rejectEditorialRun, triggerPipeline, cancelEditorialRun, deleteEditorialRun } from '@/lib/actions';
 import { AutoRefresh } from '@/components/ui/auto-refresh';
 import { PublicationPreview } from './publication-preview';
 
@@ -106,6 +106,20 @@ export default async function EditorialRunDetailPage({
             </button>
           </form>
         )}
+        {['PENDING', 'RESEARCH', 'STRATEGY', 'CONTENT', 'MEDIA', 'COMPLIANCE'].includes(run.status) && (
+          <form action={cancelEditorialRun}>
+            <input type="hidden" name="runId" value={run.id} />
+            <button type="submit" className="btn-primary text-sm" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}>
+              ⛔ Detener
+            </button>
+          </form>
+        )}
+        <form action={deleteEditorialRun}>
+          <input type="hidden" name="runId" value={run.id} />
+          <button type="submit" className="btn-primary text-sm" style={{ background: 'linear-gradient(135deg, #64748b, #475569)' }}>
+            🗑️ Eliminar
+          </button>
+        </form>
       </div>
 
       {/* Error Message */}

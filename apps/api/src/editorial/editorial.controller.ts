@@ -150,6 +150,55 @@ export class EditorialController {
     return { data: result };
   }
 
+  /**
+   * POST /api/editorial/run/:id/cancel
+   * Cancela un run en progreso.
+   */
+  @Post('run/:id/cancel')
+  @HttpCode(200)
+  async cancelRun(@Param('id') id: string) {
+    const run = await this.prisma.editorialRun.findUniqueOrThrow({ where: { id } });
+    const cancellable = ['PENDING', 'RESEARCH', 'STRATEGY', 'CONTENT', 'MEDIA', 'COMPLIANCE'];
+    if (!cancellable.includes(run.status)) {
+      return { error: `No se puede cancelar un run en estado ${run.status}` };
+    }
+    await this.prisma.editorialRun.update({
+      where: { id },
+      data: { status: 'FAILED', errorMessage: 'Cancelado por el usuario' },
+    });
+    return { data: { status: 'cancelled' } };
+  }
+
+  /**
+   * DELETE /api/editorial/run/:id
+   * Elimina un run y todos sus datos relacionados.
+   */
+  @Delete('run/:id')
+  @HttpCode(200)
+  async deleteRun(@Param('id') id: string) {
+    const run = await this.prisma.editorialRun.findUnique({ where: { id } });
+    if (!run) return { error: 'Run no encontrado' };
+
+    // Delete related records first
+    await this.prisma.$transaction([
+      this.prisma.publication.deleteMany({ where: { editorialRunId: id } }),
+      this.prisma.approvalEvent.deleteMany({ where: { editorialRunId: id } }),
+      this.prisma.jobQueueLog.deleteMany({ where: { editorialRunId: id } }),
+      this.prisma.researchSnapshot.deleteMany({ where: { editorialRunId: id } }),
+    ]);
+
+    // Delete content brief + versions + media
+    const brief = await this.prisma.contentBrief.findUnique({ where: { editorialRunId: id } });
+    if (brief) {
+      await this.prisma.mediaAsset.deleteMany({ where: { contentVersion: { briefId: brief.id } } });
+      await this.prisma.contentVersion.deleteMany({ where: { briefId: brief.id } });
+      await this.prisma.contentBrief.delete({ where: { id: brief.id } });
+    }
+
+    await this.prisma.editorialRun.delete({ where: { id } });
+    return { data: { deleted: true } };
+  }
+
   // ── Collaboration: Comments ──────────────────────────
 
   @Get('run/:id/comments')

@@ -2,6 +2,7 @@ import { prisma } from '@automatismos/db';
 import Link from 'next/link';
 import { getSession } from '@/lib/session';
 import { AutoRefresh } from '@/components/ui/auto-refresh';
+import { deleteEditorialRun } from '@/lib/actions';
 import { ManualRunForm } from './manual-run-form';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -151,13 +152,21 @@ export default async function EditorialPage() {
                     </div>
                   </td>
                   <td>
-                    <Link
-                      href={`/dashboard/editorial/${run.id}`}
-                      className="text-sm font-semibold transition-colors hover:brightness-125"
-                      style={{ color: 'var(--color-primary)' }}
-                    >
-                      Ver detalle →
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/dashboard/editorial/${run.id}`}
+                        className="text-sm font-semibold transition-colors hover:brightness-125"
+                        style={{ color: 'var(--color-primary)' }}
+                      >
+                        Ver detalle →
+                      </Link>
+                      <form action={deleteEditorialRun}>
+                        <input type="hidden" name="runId" value={run.id} />
+                        <button type="submit" className="text-xs px-2 py-1 rounded-lg transition-colors hover:brightness-125" style={{ color: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)' }}>
+                          🗑️
+                        </button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
                 );
