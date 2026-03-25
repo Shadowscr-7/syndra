@@ -131,14 +131,14 @@ export class EditorialController {
 
   /**
    * POST /api/editorial/run/:id/restart
-   * Reinicia un run fallido o rechazado desde cero.
+   * Reinicia un run fallido, rechazado o pendiente desde cero.
    */
   @Post('run/:id/restart')
   @HttpCode(200)
   async restartRun(@Param('id') id: string) {
     const run = await this.prisma.editorialRun.findUniqueOrThrow({ where: { id } });
-    if (run.status !== 'FAILED' && run.status !== 'REJECTED') {
-      return { error: 'Solo se puede reiniciar un run en estado FAILED o REJECTED' };
+    if (run.status !== 'FAILED' && run.status !== 'REJECTED' && run.status !== 'PENDING') {
+      return { error: 'Solo se puede reiniciar un run en estado PENDING, FAILED o REJECTED' };
     }
     // Reset status and clear error
     await this.prisma.editorialRun.update({
