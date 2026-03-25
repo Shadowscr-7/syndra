@@ -13,6 +13,7 @@ import {
   OpenAIAdapter,
   AnthropicAdapter,
   fetchRSSFeed,
+  fetchRedditTrending,
   parseLLMJsonResponse,
   buildTrendDetectionPrompt,
   buildTrendEnrichmentPrompt,
@@ -102,12 +103,36 @@ export class TrendDetectionService {
 
     const feedResults = await Promise.allSettled(
       sources
-        .filter(s => s.type === 'RSS' || s.type === 'BLOG')
+        .filter(s => s.type === 'RSS' || s.type === 'BLOG' || s.type === 'GOOGLE_ALERT')
         .map(s => fetchRSSFeed(s.url, s.name)),
+    );
+
+    // Fetch Reddit sources in parallel
+    const redditResults = await Promise.allSettled(
+      sources
+        .filter(s => s.type === 'REDDIT')
+        .map(s => {
+          // URL is stored as subreddit name (e.g. "marketing" or "r/marketing")
+          const subreddit = s.url.replace(/^(https?:\/\/)?(www\.)?reddit\.com\/r\//, '').replace(/\/$/, '');
+          return fetchRedditTrending(subreddit, s.name, 'hot', 15);
+        }),
     );
 
     const allArticles: TrendDetectionInput['articles'] = [];
     for (const result of feedResults) {
+      if (result.status === 'fulfilled') {
+        for (const item of result.value) {
+          allArticles.push({
+            title: item.title,
+            source: item.source,
+            sourceUrl: item.link,
+            excerpt: (item.content || item.description)?.substring(0, 300),
+            publishedAt: item.pubDate ?? undefined,
+          });
+        }
+      }
+    }
+    for (const result of redditResults) {
       if (result.status === 'fulfilled') {
         for (const item of result.value) {
           allArticles.push({
@@ -288,6 +313,38 @@ export class TrendDetectionService {
       where: { id },
       data: { status },
     });
+  }
+
+  // ── Source management ────────────────────────────────────
+
+  async listSources(workspaceId: string) {
+    return this.prisma.researchSource.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createSource(workspaceId: string, data: { name: string; type: string; url: string }) {
+    return this.prisma.researchSource.create({
+      data: {
+        workspaceId,
+        name: data.name,
+        type: data.type as any,
+        url: data.url,
+        isActive: true,
+      },
+    });
+  }
+
+  async updateSource(id: string, data: { name?: string; url?: string; isActive?: boolean }) {
+    return this.prisma.researchSource.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteSource(id: string) {
+    return this.prisma.researchSource.delete({ where: { id } });
   }
 
   // ── Actions ──────────────────────────────────────────────

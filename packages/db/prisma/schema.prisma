@@ -392,6 +392,8 @@ enum SourceType {
   OFFER_CALENDAR
   FAQ
   TESTIMONIALS_SOURCE
+  REDDIT
+  GOOGLE_ALERT
 }
 
 model ResearchSnapshot {

@@ -2,7 +2,7 @@
 // TrendsController — API REST para tendencias detectadas
 // ============================================================
 
-import { Controller, Get, Post, Patch, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentWorkspace } from '../auth/decorators';
 import { TrendDetectionService } from './trend-detection.service';
@@ -29,13 +29,48 @@ export class TrendsController {
     return { data: trends };
   }
 
+  // ── Source management (before :id routes) ────────────────
+
   /**
-   * GET /trends/:id — Get a single trend
+   * GET /trends/sources — List all research sources for workspace
    */
-  @Get(':id')
-  async getTrend(@Param('id') id: string) {
-    const trend = await this.trendService.getTrend(id);
-    return { data: trend };
+  @Get('sources')
+  async listSources(@CurrentWorkspace() workspaceId: string) {
+    const sources = await this.trendService.listSources(workspaceId);
+    return { data: sources };
+  }
+
+  /**
+   * POST /trends/sources — Create a new research source (RSS, Reddit, Google Alert)
+   */
+  @Post('sources')
+  async createSource(
+    @CurrentWorkspace() workspaceId: string,
+    @Body() body: { name: string; type: string; url: string },
+  ) {
+    const source = await this.trendService.createSource(workspaceId, body);
+    return { data: source };
+  }
+
+  /**
+   * PATCH /trends/sources/:id — Update a research source
+   */
+  @Patch('sources/:id')
+  async updateSource(
+    @Param('id') id: string,
+    @Body() body: { name?: string; url?: string; isActive?: boolean },
+  ) {
+    const source = await this.trendService.updateSource(id, body);
+    return { data: source };
+  }
+
+  /**
+   * DELETE /trends/sources/:id — Delete a research source
+   */
+  @Delete('sources/:id')
+  async deleteSource(@Param('id') id: string) {
+    await this.trendService.deleteSource(id);
+    return { data: { deleted: true } };
   }
 
   /**
@@ -45,6 +80,17 @@ export class TrendsController {
   async detectTrends(@CurrentWorkspace() workspaceId: string) {
     const result = await this.trendService.detectTrends(workspaceId);
     return { data: result };
+  }
+
+  // ── Parameterized routes ─────────────────────────────────
+
+  /**
+   * GET /trends/:id — Get a single trend
+   */
+  @Get(':id')
+  async getTrend(@Param('id') id: string) {
+    const trend = await this.trendService.getTrend(id);
+    return { data: trend };
   }
 
   /**

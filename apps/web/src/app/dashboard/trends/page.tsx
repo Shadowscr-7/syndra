@@ -25,6 +25,16 @@ interface TrendSignal {
   createdAt: string;
 }
 
+interface ResearchSource {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+  isActive: boolean;
+  lastFetched: string | null;
+  createdAt: string;
+}
+
 type TabStatus = 'all' | 'NEW' | 'USED' | 'DISMISSED' | 'EXPIRED';
 
 /* ── Page Component ───────────────────────────────────────── */
@@ -36,6 +46,12 @@ export default function TrendsPage() {
   const [activeTab, setActiveTab] = useState<TabStatus>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'ok' | 'err' | 'warn'; text: string } | null>(null);
+
+  // Sources management
+  const [sources, setSources] = useState<ResearchSource[]>([]);
+  const [showSources, setShowSources] = useState(false);
+  const [newSource, setNewSource] = useState({ name: '', type: 'RSS' as string, url: '' });
+  const [addingSource, setAddingSource] = useState(false);
 
   const toast = (type: 'ok' | 'err' | 'warn', text: string) => {
     setToastMsg({ type, text });
@@ -58,6 +74,63 @@ export default function TrendsPage() {
   }, [activeTab]);
 
   useEffect(() => { fetchTrends(); }, [fetchTrends]);
+
+  const fetchSources = useCallback(async () => {
+    try {
+      const res = await fetch('/api/trends/sources', { credentials: 'include' });
+      const json = await res.json();
+      setSources(json?.data ?? []);
+    } catch (err) { console.error('Error fetching sources:', err); }
+  }, []);
+
+  useEffect(() => { if (showSources) fetchSources(); }, [showSources, fetchSources]);
+
+  // Load sources count on mount
+  useEffect(() => { fetchSources(); }, [fetchSources]);
+
+  const handleAddSource = async () => {
+    if (!newSource.name.trim() || !newSource.url.trim()) return;
+    setAddingSource(true);
+    try {
+      const res = await fetch('/api/trends/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(newSource),
+      });
+      if (res.ok) {
+        setNewSource({ name: '', type: 'RSS', url: '' });
+        toast('ok', '✅ Fuente agregada');
+        fetchSources();
+      } else {
+        toast('err', '❌ Error al agregar fuente');
+      }
+    } catch { toast('err', '❌ Error de conexión'); }
+    finally { setAddingSource(false); }
+  };
+
+  const handleToggleSource = async (id: string, isActive: boolean) => {
+    try {
+      await fetch(`/api/trends/sources/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isActive: !isActive }),
+      });
+      fetchSources();
+    } catch { toast('err', '❌ Error al actualizar fuente'); }
+  };
+
+  const handleDeleteSource = async (id: string) => {
+    try {
+      await fetch(`/api/trends/sources/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      toast('ok', '🗑️ Fuente eliminada');
+      fetchSources();
+    } catch { toast('err', '❌ Error al eliminar fuente'); }
+  };
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -158,17 +231,119 @@ export default function TrendsPage() {
             📈 Trend Detection
           </h1>
           <p className="text-gray-400 mt-1">
-            Tendencias emergentes detectadas automáticamente desde tus fuentes RSS
+            Tendencias emergentes detectadas automáticamente desde tus fuentes
           </p>
         </div>
-        <button
-          onClick={handleDetect}
-          disabled={detecting}
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 transition-all font-medium disabled:opacity-50"
-        >
-          {detecting ? '⏳ Analizando...' : '🔍 Detectar Tendencias'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowSources(!showSources)}
+            className="px-4 py-2.5 rounded-xl bg-[#1a1a2e] border border-gray-700 hover:border-purple-500/50 transition-all font-medium text-sm"
+          >
+            ⚙️ Fuentes ({sources.length || '…'})
+          </button>
+          <button
+            onClick={handleDetect}
+            disabled={detecting}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 transition-all font-medium disabled:opacity-50"
+          >
+            {detecting ? '⏳ Analizando...' : '🔍 Detectar Tendencias'}
+          </button>
+        </div>
       </div>
+
+      {/* Sources Management Panel */}
+      {showSources && (
+        <div className="bg-[#1a1a2e] rounded-2xl border border-purple-500/20 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-purple-300">⚙️ Fuentes de Detección</h2>
+            <button onClick={() => setShowSources(false)} className="text-gray-500 hover:text-white">✕</button>
+          </div>
+
+          {/* Add source form */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <select
+              value={newSource.type}
+              onChange={e => setNewSource(s => ({ ...s, type: e.target.value }))}
+              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+            >
+              <option value="RSS">📰 RSS Feed</option>
+              <option value="BLOG">📝 Blog</option>
+              <option value="REDDIT">🤖 Reddit</option>
+              <option value="GOOGLE_ALERT">🔔 Google Alert</option>
+            </select>
+            <input
+              value={newSource.name}
+              onChange={e => setNewSource(s => ({ ...s, name: e.target.value }))}
+              placeholder="Nombre (ej: TechCrunch)"
+              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+            />
+            <input
+              value={newSource.url}
+              onChange={e => setNewSource(s => ({ ...s, url: e.target.value }))}
+              placeholder={newSource.type === 'REDDIT' ? 'Subreddit (ej: marketing)' : 'URL del feed'}
+              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+            />
+            <button
+              onClick={handleAddSource}
+              disabled={addingSource || !newSource.name.trim() || !newSource.url.trim()}
+              className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-sm font-medium transition-all disabled:opacity-50"
+            >
+              {addingSource ? '...' : '+ Agregar'}
+            </button>
+          </div>
+
+          {/* Help text */}
+          <div className="text-xs text-gray-500 space-y-1">
+            <p>📰 <strong>RSS/Blog:</strong> URL del feed RSS (ej: https://techcrunch.com/feed/)</p>
+            <p>🤖 <strong>Reddit:</strong> Nombre del subreddit sin r/ (ej: marketing, socialmedia, entrepreneur)</p>
+            <p>🔔 <strong>Google Alert:</strong> Crea una alerta en <a href="https://www.google.com/alerts" target="_blank" rel="noopener" className="text-purple-400 hover:underline">google.com/alerts</a>, selecciona &quot;Feed RSS&quot; como método de entrega, y pega la URL del feed aquí</p>
+          </div>
+
+          {/* Source list */}
+          {sources.length > 0 ? (
+            <div className="space-y-2">
+              {sources.map(src => (
+                <div key={src.id} className="flex items-center justify-between bg-[#0a0a0f] rounded-lg px-4 py-3 border border-gray-800">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-lg shrink-0">
+                      {src.type === 'REDDIT' ? '🤖' : src.type === 'GOOGLE_ALERT' ? '🔔' : src.type === 'BLOG' ? '📝' : '📰'}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-white truncate">{src.name}</div>
+                      <div className="text-xs text-gray-500 truncate">{src.type} · {src.url}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {src.lastFetched && (
+                      <span className="text-xs text-gray-600 hidden md:inline">
+                        Último: {new Date(src.lastFetched).toLocaleDateString('es')}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleToggleSource(src.id, src.isActive)}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                        src.isActive
+                          ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                          : 'bg-gray-700/30 text-gray-500 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      {src.isActive ? '✓ Activa' : '○ Inactiva'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSource(src.id)}
+                      className="px-2 py-1 rounded text-xs text-red-400 hover:bg-red-500/20 transition-all"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 text-center py-4">No hay fuentes configuradas. Agrega feeds RSS, subreddits o Google Alerts.</p>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
