@@ -27,7 +27,7 @@ const COOKIE_OPTIONS = {
   path: '/',
 };
 
-const ACCESS_TOKEN_MAX_AGE = 15 * 60 * 1000;       // 15 min
+const ACCESS_TOKEN_MAX_AGE = 24 * 60 * 60 * 1000;  // 24h (matches JWT expiry)
 const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 @Controller('auth')
@@ -65,7 +65,10 @@ export class AuthController {
     }
 
     const result = await this.authService.register(body);
-    this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
+    this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken, {
+      id: result.user.id,
+      email: result.user.email,
+    });
 
     return {
       user: result.user,
@@ -90,7 +93,11 @@ export class AuthController {
     }
 
     const result = await this.authService.login(body);
-    this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
+    this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken, {
+      id: result.user.id,
+      email: result.user.email,
+      workspaceId: result.user.workspaces?.[0]?.workspaceId || result.user.workspaceId,
+    });
 
     return {
       user: result.user,
@@ -230,7 +237,12 @@ export class AuthController {
 
   // ── Helpers ───────────────────────────────────────────
 
-  private setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
+  private setTokenCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+    user?: { id?: string; email?: string; workspaceId?: string },
+  ) {
     res.cookie('access-token', accessToken, {
       ...COOKIE_OPTIONS,
       maxAge: ACCESS_TOKEN_MAX_AGE,
@@ -244,5 +256,22 @@ export class AuthController {
       ...COOKIE_OPTIONS,
       maxAge: REFRESH_TOKEN_MAX_AGE,
     });
+
+    // Session cookies for Next.js server components (getSession)
+    const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const sessionCookieOptions = {
+      ...COOKIE_OPTIONS,
+      httpOnly: false, // Must be readable by client-side JS
+      maxAge: SESSION_MAX_AGE,
+    };
+    if (user?.id) {
+      res.cookie('auth-user-id', user.id, sessionCookieOptions);
+    }
+    if (user?.email) {
+      res.cookie('auth-email', user.email, sessionCookieOptions);
+    }
+    if (user?.workspaceId) {
+      res.cookie('workspace-id', user.workspaceId, sessionCookieOptions);
+    }
   }
 }

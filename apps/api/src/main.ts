@@ -12,6 +12,9 @@ async function bootstrap() {
   });
   const logger = new Logger('Bootstrap');
 
+  // Trust reverse proxy (Traefik) — needed for req.ip, req.protocol, secure cookies
+  app.set('trust proxy', true);
+
   // Cookie parser — required for JWT cookie-based auth
   app.use(cookieParser());
 

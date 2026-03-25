@@ -39,6 +39,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
 
+# API URL — client-side code uses relative /api paths, so empty string works
+# Server components can override via runtime env
+ARG NEXT_PUBLIC_API_URL=""
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Build Next.js in standalone mode
 WORKDIR /app/apps/web
 RUN npx next build

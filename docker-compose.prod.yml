@@ -105,6 +105,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://syndra.aivanguardlabs.com/api
     container_name: syndra-web
     restart: unless-stopped
     depends_on:
