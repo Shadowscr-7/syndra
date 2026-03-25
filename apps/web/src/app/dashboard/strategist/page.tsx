@@ -136,12 +136,18 @@ export default function StrategistPage() {
   const handleCreateCampaign = async (planId: string) => {
     setActionLoading('campaign');
     try {
-      await fetch(`/api/strategist/plan/${planId}/create-campaign`, {
+      const res = await fetch(`/api/strategist/plan/${planId}/create-campaign`, {
         method: 'POST', credentials: 'include',
       });
-      toast('ok', '🎪 Campaña creada exitosamente');
+      if (res.ok) {
+        toast('ok', '🎪 Campaña creada — visible en la sección Campañas');
+      } else {
+        const json = await res.json().catch(() => null);
+        toast('err', `❌ Error al crear campaña: ${json?.message ?? res.statusText}`);
+      }
     } catch (err) {
       console.error(err);
+      toast('err', '❌ Error de conexión al crear campaña');
     } finally { setActionLoading(null); }
   };
 

@@ -618,16 +618,52 @@ export class StrategyPlanService {
     const themeMix = (plan.recommendedThemeMix as any[]) ?? [];
     const topTheme = themeMix[0]?.theme ?? 'Estrategia IA';
 
+    const ws = await this.prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { activeChannels: true },
+    });
+
+    // Normalize objective to valid CampaignObjective enum (uppercase)
+    const validObjectives = new Set([
+      'AUTHORITY', 'TRAFFIC', 'LEAD_CAPTURE', 'SALE', 'COMMUNITY',
+      'ENGAGEMENT', 'PROMOTION', 'PRODUCT_LAUNCH', 'SEASONAL_SALE',
+      'BRAND_AWARENESS', 'CATALOG',
+    ]);
+    const rawObjective = (plan.objective ?? 'ENGAGEMENT').toUpperCase();
+    const objective = validObjectives.has(rawObjective) ? rawObjective : 'ENGAGEMENT';
+
     const campaign = await this.prisma.campaign.create({
       data: {
         workspaceId,
         name: `Plan ${plan.periodType === 'WEEKLY' ? 'Semanal' : 'Mensual'} — ${topTheme}`,
-        objective: (plan.objective as any) ?? 'AUTHORITY',
+        objective: objective as any,
         startDate: plan.startDate,
         endDate: plan.endDate,
+        targetChannels: ws.activeChannels,
         isActive: true,
       },
     });
+
+    // Link workspace themes matching the plan's theme mix
+    const themeNames = themeMix.map((t: any) => (t.theme as string)?.toLowerCase()).filter(Boolean);
+    if (themeNames.length > 0) {
+      const matchingThemes = await this.prisma.contentTheme.findMany({
+        where: {
+          workspaceId,
+          isActive: true,
+          name: { in: themeNames, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (matchingThemes.length > 0) {
+        await this.prisma.campaignTheme.createMany({
+          data: matchingThemes.map(t => ({
+            campaignId: campaign.id,
+            themeId: t.id,
+          })),
+        });
+      }
+    }
 
     this.logger.log(`Campaign ${campaign.id} created from plan ${planId}`);
     return campaign;
