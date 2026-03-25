@@ -179,21 +179,13 @@ export class EditorialController {
     const run = await this.prisma.editorialRun.findUnique({ where: { id } });
     if (!run) return { error: 'Run no encontrado' };
 
-    // Delete related records first
-    await this.prisma.$transaction([
-      this.prisma.publication.deleteMany({ where: { editorialRunId: id } }),
-      this.prisma.approvalEvent.deleteMany({ where: { editorialRunId: id } }),
-      this.prisma.jobQueueLog.deleteMany({ where: { editorialRunId: id } }),
-      this.prisma.researchSnapshot.deleteMany({ where: { editorialRunId: id } }),
-    ]);
-
-    // Delete content brief + versions + media
-    const brief = await this.prisma.contentBrief.findUnique({ where: { editorialRunId: id } });
-    if (brief) {
-      await this.prisma.mediaAsset.deleteMany({ where: { contentVersion: { briefId: brief.id } } });
-      await this.prisma.contentVersion.deleteMany({ where: { briefId: brief.id } });
-      await this.prisma.contentBrief.delete({ where: { id: brief.id } });
-    }
+    // Nullify non-cascading FK references
+    await Promise.all([
+      this.prisma.jobQueueLog.updateMany({ where: { editorialRunId: id }, data: { editorialRunId: null } }),
+      this.prisma.videoRenderJob.updateMany({ where: { editorialRunId: id }, data: { editorialRunId: null } }),
+      this.prisma.learningDecisionLog.updateMany({ where: { editorialRunId: id }, data: { editorialRunId: null } }),
+      this.prisma.contentExperiment.updateMany({ where: { editorialRunId: id }, data: { editorialRunId: null } }),
+    ]).catch(() => {});
 
     await this.prisma.editorialRun.delete({ where: { id } });
     return { data: { deleted: true } };

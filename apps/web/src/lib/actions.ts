@@ -112,10 +112,18 @@ export async function cancelEditorialRun(formData: FormData) {
   const runId = formData.get('runId') as string;
   const apiUrl = process.env.API_URL || 'http://localhost:3001';
   try {
-    await fetch(`${apiUrl}/api/editorial/run/${runId}/cancel`, {
+    const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
+    if (!res.ok) {
+      console.error('[cancelEditorialRun] API error:', await res.text().catch(() => ''));
+      // Fallback: update DB directly
+      await prisma.editorialRun.update({
+        where: { id: runId },
+        data: { status: 'FAILED', errorMessage: 'Cancelado por el usuario' },
+      });
+    }
   } catch (e) {
     console.error('[cancelEditorialRun] API unreachable:', e);
     await prisma.editorialRun.update({
@@ -130,16 +138,35 @@ export async function cancelEditorialRun(formData: FormData) {
 export async function deleteEditorialRun(formData: FormData) {
   const runId = formData.get('runId') as string;
   const apiUrl = process.env.API_URL || 'http://localhost:3001';
+  let deleted = false;
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}`, {
       method: 'DELETE',
     });
-    if (!res.ok) {
+    if (res.ok) {
+      deleted = true;
+    } else {
       console.error('[deleteEditorialRun] API error:', await res.text().catch(() => ''));
     }
   } catch (e) {
-    console.error('[deleteEditorialRun] API unreachable:', e);
+    console.error('[deleteEditorialRun] API unreachable, deleting via DB:', e);
   }
+
+  // Fallback: delete directly from DB if API failed
+  if (!deleted) {
+    try {
+      await Promise.all([
+        prisma.jobQueueLog.updateMany({ where: { editorialRunId: runId }, data: { editorialRunId: null } }),
+        prisma.videoRenderJob.updateMany({ where: { editorialRunId: runId }, data: { editorialRunId: null } }),
+        prisma.learningDecisionLog.updateMany({ where: { editorialRunId: runId }, data: { editorialRunId: null } }),
+        prisma.contentExperiment.updateMany({ where: { editorialRunId: runId }, data: { editorialRunId: null } }),
+      ]).catch(() => {});
+      await prisma.editorialRun.delete({ where: { id: runId } });
+    } catch (e2) {
+      console.error('[deleteEditorialRun] DB fallback failed:', e2);
+    }
+  }
+
   revalidatePath('/dashboard/editorial');
   redirect('/dashboard/editorial');
 }
