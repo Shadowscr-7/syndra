@@ -329,7 +329,7 @@ export default function ApprovalsPage() {
       {/* Header */}
       <div className="page-header animate-fade-in">
         <h1 className="page-title">✅ Aprobaciones</h1>
-        <p className="page-subtitle">Revisa, edita y aprueba las publicaciones generadas por el planificador semanal.</p>
+        <p className="page-subtitle">Revisa, edita y aprueba las publicaciones generadas por el planificador semanal y las corridas editoriales.</p>
       </div>
 
       {/* KPIs */}
@@ -399,8 +399,8 @@ export default function ApprovalsPage() {
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
             {filter === 'pending'
-              ? 'Todas las publicaciones están al día. Las nuevas aparecerán aquí cuando el planificador genere contenido.'
-              : 'Las publicaciones generadas por el planificador semanal aparecerán aquí.'}
+              ? 'Todas las publicaciones están al día. Las nuevas aparecerán aquí cuando se genere contenido.'
+              : 'Las publicaciones del planificador semanal y las corridas editoriales aparecerán aquí.'}
           </p>
         </div>
       ) : (

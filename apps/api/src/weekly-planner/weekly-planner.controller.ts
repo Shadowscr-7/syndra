@@ -62,6 +62,12 @@ export class WeeklyPlannerController {
     return { data };
   }
 
+  @Get('approvals/count')
+  async countPendingApprovals(@Req() req: any) {
+    const count = await this.weeklyPlanner.countPendingApprovals(req.workspaceId);
+    return { data: { count } };
+  }
+
   @Get('batches')
   async getBatches(@Req() req: any, @Query('limit') limit?: string) {
     const data = await this.weeklyPlanner.getBatches(

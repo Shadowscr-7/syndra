@@ -138,6 +138,35 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
   const { isAtLeast, loading: planLoading, planName } = usePlan();
   const { runningCount, setShowPanel } = useBackgroundTasks();
 
+  // ── Badge counts for alerts & approvals ──
+  const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const fetchBadges = async () => {
+      try {
+        const [alertsRes, approvalsRes] = await Promise.all([
+          fetch('/api/alerts/count', { credentials: 'include' }),
+          fetch('/api/weekly-planner/approvals/count', { credentials: 'include' }),
+        ]);
+        const counts: Record<string, number> = {};
+        if (alertsRes.ok) {
+          const j = await alertsRes.json();
+          const c = j.data?.count ?? j.count ?? 0;
+          if (c > 0) counts['/dashboard/alerts'] = c;
+        }
+        if (approvalsRes.ok) {
+          const j = await approvalsRes.json();
+          const c = j.data?.count ?? j.count ?? 0;
+          if (c > 0) counts['/dashboard/approvals'] = c;
+        }
+        setBadgeCounts(counts);
+      } catch { /* ignore */ }
+    };
+    fetchBadges();
+    const interval = setInterval(fetchBadges, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const sections = useMemo(
     () => allSections.filter((s) => !s.roles || s.roles.includes(userRole)),
     [userRole],
@@ -299,7 +328,18 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
                           {item.icon}
                         </span>
                         <span>{item.name}</span>
-                        {isActive && (
+                        {badgeCounts[item.href] > 0 && (
+                          <span
+                            className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center"
+                            style={{
+                              background: item.href === '/dashboard/alerts' ? 'rgba(239,68,68,0.25)' : 'rgba(249,115,22,0.25)',
+                              color: item.href === '/dashboard/alerts' ? '#ef4444' : '#f97316',
+                            }}
+                          >
+                            {badgeCounts[item.href]}
+                          </span>
+                        )}
+                        {isActive && !badgeCounts[item.href] && (
                           <span
                             className="absolute right-3 w-1.5 h-1.5 rounded-full animate-pulse-glow"
                             style={{ backgroundColor: '#7c3aed', boxShadow: '0 0 6px #7c3aed' }}

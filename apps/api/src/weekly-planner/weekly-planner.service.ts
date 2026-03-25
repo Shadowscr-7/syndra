@@ -142,7 +142,7 @@ export class WeeklyPlannerService {
 
   // ── Batch & Items ────────────────────────────────────
 
-  /** Get planned publications for the approvals panel */
+  /** Get planned publications + direct editorial runs for the approvals panel */
   async getApprovals(workspaceId: string, status?: string) {
     const where: any = {
       batch: { workspaceId },
@@ -151,7 +151,7 @@ export class WeeklyPlannerService {
       where.status = { in: ['PENDING_REVIEW', 'MODIFIED'] };
     }
 
-    return this.prisma.plannedPublication.findMany({
+    const plannedPubs = await this.prisma.plannedPublication.findMany({
       where,
       include: {
         batch: {
@@ -178,6 +178,86 @@ export class WeeklyPlannerService {
       },
       orderBy: { scheduledDate: 'desc' },
     });
+
+    // Also include editorial runs at REVIEW that don't have a PlannedPublication
+    const directRunWhere: any = {
+      workspaceId,
+      plannedPublication: null,
+    };
+    if (status === 'pending') {
+      directRunWhere.status = 'REVIEW';
+    } else {
+      directRunWhere.status = { in: ['REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED'] };
+    }
+
+    const directRuns = await this.prisma.editorialRun.findMany({
+      where: directRunWhere,
+      include: {
+        contentBrief: {
+          select: {
+            format: true,
+            angle: true,
+            contentVersions: {
+              where: { isMain: true },
+              orderBy: { version: 'desc' },
+              take: 1,
+              include: { mediaAssets: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Map direct runs to a compatible shape
+    const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const mappedRuns = directRuns.map((run) => ({
+      id: `run:${run.id}`,
+      scheduledDate: run.date.toISOString(),
+      scheduledTime: run.date.toTimeString().slice(0, 5),
+      dayOfWeek: DAYS_OF_WEEK[run.date.getDay()],
+      status: run.status === 'REVIEW' ? 'PENDING_REVIEW' : run.status,
+      createdAt: run.createdAt.toISOString(),
+      sortOrder: 0,
+      batchId: null,
+      editorialRunId: run.id,
+      batch: {
+        id: 'direct',
+        weekLabel: run.origin === 'trend' ? 'Tendencia' : run.origin === 'campaign' ? 'Campaña' : 'Manual',
+        config: {
+          name: run.origin === 'trend' ? 'Desde tendencia' : run.origin === 'campaign' ? 'Desde campaña' : 'Corrida manual',
+          approvalMode: 'panel',
+          targetChannels: run.targetChannels,
+        },
+      },
+      editorialRun: {
+        id: run.id,
+        status: run.status,
+        contentBrief: run.contentBrief,
+      },
+    }));
+
+    return [...plannedPubs, ...mappedRuns];
+  }
+
+  /** Count pending approvals (planned + direct runs at REVIEW) */
+  async countPendingApprovals(workspaceId: string) {
+    const [plannedCount, directCount] = await Promise.all([
+      this.prisma.plannedPublication.count({
+        where: {
+          batch: { workspaceId },
+          status: { in: ['PENDING_REVIEW', 'MODIFIED'] },
+        },
+      }),
+      this.prisma.editorialRun.count({
+        where: {
+          workspaceId,
+          status: 'REVIEW',
+          plannedPublication: null,
+        },
+      }),
+    ]);
+    return plannedCount + directCount;
   }
 
   async getBatches(workspaceId: string, limit = 10) {
@@ -245,6 +325,17 @@ export class WeeklyPlannerService {
   // ── Approve / Reject items ───────────────────────────
 
   async approveItem(itemId: string, workspaceId: string) {
+    // Handle direct editorial runs (id starts with "run:")
+    if (itemId.startsWith('run:')) {
+      const runId = itemId.slice(4);
+      const run = await this.prisma.editorialRun.findFirst({
+        where: { id: runId, workspaceId, status: 'REVIEW' },
+      });
+      if (!run) throw new ForbiddenException('Run editorial no encontrado');
+      await this.orchestrator.onApproved(runId);
+      return;
+    }
+
     const item = await this.prisma.plannedPublication.findFirst({
       where: { id: itemId, batch: { workspaceId } },
     });
@@ -267,6 +358,20 @@ export class WeeklyPlannerService {
   }
 
   async rejectItem(itemId: string, workspaceId: string) {
+    // Handle direct editorial runs (id starts with "run:")
+    if (itemId.startsWith('run:')) {
+      const runId = itemId.slice(4);
+      const run = await this.prisma.editorialRun.findFirst({
+        where: { id: runId, workspaceId },
+      });
+      if (!run) throw new ForbiddenException('Run editorial no encontrado');
+      await this.prisma.editorialRun.update({
+        where: { id: runId },
+        data: { status: 'REJECTED' },
+      });
+      return;
+    }
+
     const item = await this.prisma.plannedPublication.findFirst({
       where: { id: itemId, batch: { workspaceId } },
     });
@@ -316,8 +421,31 @@ export class WeeklyPlannerService {
 
   // ── Item Actions (approval panel) ────────────────────
 
-  /** Get the main content version ID for a planned publication */
+  /** Get the main content version ID for a planned publication or direct run */
   private async getMainVersionId(itemId: string, workspaceId: string) {
+    // Handle direct editorial runs (id starts with "run:")
+    if (itemId.startsWith('run:')) {
+      const runId = itemId.slice(4);
+      const run = await this.prisma.editorialRun.findFirst({
+        where: { id: runId, workspaceId },
+        include: {
+          contentBrief: {
+            include: {
+              contentVersions: {
+                where: { isMain: true },
+                orderBy: { version: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+      if (!run) throw new ForbiddenException('Run editorial no encontrado');
+      const version = run.contentBrief?.contentVersions?.[0];
+      if (!version) throw new ForbiddenException('Sin contenido generado');
+      return { item: null, versionId: version.id, editorialRunId: run.id, isDirect: true, batchId: null };
+    }
+
     const item = await this.prisma.plannedPublication.findFirst({
       where: { id: itemId, batch: { workspaceId } },
       include: {
@@ -340,71 +468,66 @@ export class WeeklyPlannerService {
     if (!item.editorialRunId) throw new ForbiddenException('Sin run editorial asociado');
     const version = item.editorialRun?.contentBrief?.contentVersions?.[0];
     if (!version) throw new ForbiddenException('Sin contenido generado');
-    return { item, versionId: version.id, editorialRunId: item.editorialRunId };
+    return { item, versionId: version.id, editorialRunId: item.editorialRunId, isDirect: false, batchId: item.batchId };
   }
 
   /** Edit text: apply manual correction via AI */
   async editText(itemId: string, workspaceId: string, feedback: string) {
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     const result = await this.contentService.applyCorrection(versionId, feedback, workspaceId);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
   /** Rewrite: regenerate text content */
   async rewriteText(itemId: string, workspaceId: string) {
-    const { editorialRunId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { editorialRunId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     await this.orchestrator.processStage(editorialRunId, 'CONTENT', workspaceId);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return { regenerated: true };
   }
 
   /** Change tone of the text */
   async changeTone(itemId: string, workspaceId: string, tone: string) {
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     const result = await this.contentService.changeTone(versionId, tone, workspaceId);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
   /** Change content format (POST, CAROUSEL, REEL, STORY, THREAD) */
   async changeFormat(itemId: string, workspaceId: string, format: string) {
-    const { item } = await this.getMainVersionId(itemId, workspaceId);
-    const briefId = item.editorialRun?.contentBrief?.id;
-    if (!briefId) throw new ForbiddenException('Sin brief asociado');
+    const { isDirect, batchId, editorialRunId } = await this.getMainVersionId(itemId, workspaceId);
+    const brief = await this.prisma.contentBrief.findFirst({ where: { editorialRunId } });
+    if (!brief) throw new ForbiddenException('Sin brief asociado');
     await this.prisma.contentBrief.update({
-      where: { id: briefId },
+      where: { id: brief.id },
       data: { format: format.toUpperCase() as any },
     });
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return { format: format.toUpperCase() };
   }
 
   /** Regenerate image with optional custom prompt */
   async regenerateImage(itemId: string, workspaceId: string, customPrompt?: string) {
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     const result = await this.mediaEngine.regenerateImage(versionId, customPrompt);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
@@ -423,13 +546,12 @@ export class WeeklyPlannerService {
         itemId,
       );
     }
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     const result = await this.mediaEngine.regenerateImagePro(versionId, customPrompt, modelId as any);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
@@ -442,33 +564,27 @@ export class WeeklyPlannerService {
       itemId,
     );
 
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     const result = await this.mediaEngine.generateBackgroundMusic(versionId, style, prompt);
 
-    // If item was GENERATING_MUSIC (auto-batch), move to PENDING_REVIEW (now ready for approval)
-    // If it was already reviewed/modified (manual music gen), keep as MODIFIED
-    const currentItem = await this.prisma.plannedPublication.findUnique({ where: { id: itemId } });
-    const newStatus = currentItem?.status === 'GENERATING_MUSIC' ? 'PENDING_REVIEW' : 'MODIFIED';
-
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: newStatus },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      const currentItem = await this.prisma.plannedPublication.findUnique({ where: { id: itemId } });
+      const newStatus = currentItem?.status === 'GENERATING_MUSIC' ? 'PENDING_REVIEW' : 'MODIFIED';
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: newStatus } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
   /** Replace media asset with an uploaded image URL */
   async replaceImage(itemId: string, workspaceId: string, imageUrl: string) {
-    const { versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
 
-    // Find current main asset
     const currentAsset = await this.prisma.mediaAsset.findFirst({
       where: { contentVersionId: versionId, type: 'IMAGE' },
       orderBy: { createdAt: 'desc' },
     });
 
-    // Create new asset with the uploaded URL
     const newAsset = await this.prisma.mediaAsset.create({
       data: {
         contentVersionId: versionId,
@@ -479,7 +595,6 @@ export class WeeklyPlannerService {
       },
     });
 
-    // Mark the old asset as replaced
     if (currentAsset) {
       await this.prisma.mediaAsset.update({
         where: { id: currentAsset.id },
@@ -487,17 +602,16 @@ export class WeeklyPlannerService {
       });
     }
 
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return { mediaAssetId: newAsset.id };
   }
 
   /** Convert publication to video */
   async convertToVideo(itemId: string, workspaceId: string, videoType?: 'slides' | 'video' | 'avatar', slideCount?: number) {
-    const { editorialRunId, versionId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { editorialRunId, versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
 
     // Charge credits based on video type (slides=0, video=15, avatar=25)
     if (videoType) {
@@ -530,23 +644,21 @@ export class WeeklyPlannerService {
     const result = await this.videoService.convertToVideo(editorialRunId, {
       videoType: videoType as any,
     });
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'MODIFIED' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return result;
   }
 
   /** Redo: restart the entire editorial run from scratch */
   async redoItem(itemId: string, workspaceId: string) {
-    const { editorialRunId, item } = await this.getMainVersionId(itemId, workspaceId);
+    const { editorialRunId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
     await this.orchestrator.restartRun(editorialRunId, workspaceId);
-    await this.prisma.plannedPublication.update({
-      where: { id: itemId },
-      data: { status: 'GENERATING' },
-    });
-    await this.updateBatchStatus(item.batchId);
+    if (!isDirect) {
+      await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'GENERATING' } });
+      await this.updateBatchStatus(batchId!);
+    }
     return { restarted: true };
   }
 
