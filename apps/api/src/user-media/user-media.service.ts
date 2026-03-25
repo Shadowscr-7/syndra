@@ -149,6 +149,7 @@ export class UserMediaService {
     userId: string,
     id: string,
     data: {
+      filename?: string;
       tags?: string[];
       category?: string;
       folderId?: string;
@@ -182,6 +183,7 @@ export class UserMediaService {
     }
 
     const updateData: any = {};
+    if (data.filename !== undefined) updateData.filename = data.filename;
     if (data.tags !== undefined) updateData.tags = data.tags;
     if (data.category !== undefined) updateData.category = data.category;
     if (data.folderId !== undefined) updateData.folderId = data.folderId;

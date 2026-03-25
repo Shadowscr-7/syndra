@@ -59,6 +59,10 @@ export default function MediaPage() {
   const [editingFile, setEditingFile] = useState<MediaFile | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState('OTHER');
+  const [uploadFilename, setUploadFilename] = useState('');
 
   const toast = (type: 'ok' | 'err', text: string) => {
     setToastMsg({ type, text });
@@ -144,32 +148,49 @@ export default function MediaPage() {
     }
   };
 
-  // ── Upload file (URL-based, not raw upload) ──
+  // ── Upload file (multipart) ──
+
+  const handleFileSelect = (file: File) => {
+    setSelectedFile(file);
+    setUploadFilename(file.name.replace(/\.[^/.]+$/, ''));
+  };
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!selectedFile) return;
     setUploading(true);
-    const form = new FormData(e.currentTarget);
     try {
-      const body = {
-        filename: form.get('filename') as string,
-        url: form.get('url') as string,
-        thumbnailUrl: (form.get('thumbnailUrl') as string) || undefined,
-        mimeType: (form.get('mimeType') as string) || 'image/jpeg',
-        sizeBytes: Number(form.get('sizeBytes')) || 0,
-        category: (form.get('category') as string) || 'OTHER',
-        tags: (form.get('tags') as string).split(',').map(t => t.trim()).filter(Boolean),
-        folderId: currentFolder || undefined,
-      };
-      const res = await fetch('/api/user-media', {
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      fd.append('category', uploadCategory);
+      if (currentFolder) fd.append('folderId', currentFolder);
+
+      const res = await fetch('/api/user-media/file', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: fd,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Error al subir');
-      toast('ok', 'Archivo añadido');
+
+      // Update filename if user changed it
+      const userFilename = uploadFilename.trim();
+      if (userFilename && data.data?.id) {
+        const ext = selectedFile.name.includes('.') ? selectedFile.name.substring(selectedFile.name.lastIndexOf('.')) : '';
+        const finalName = userFilename + ext;
+        if (finalName !== selectedFile.name) {
+          await fetch(`/api/user-media/${data.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: finalName }),
+          }).catch(() => {});
+        }
+      }
+
+      toast('ok', 'Archivo subido correctamente');
       setShowUpload(false);
+      setSelectedFile(null);
+      setUploadFilename('');
+      setUploadCategory('OTHER');
       await fetchAll();
     } catch (err: any) {
       toast('err', err.message);
@@ -260,7 +281,7 @@ export default function MediaPage() {
 
       {/* Actions Bar */}
       <div className="flex flex-wrap items-center gap-3 animate-fade-in-delay-1">
-        <button onClick={() => setShowUpload(true)} className="btn-primary text-sm">➕ Añadir archivo</button>
+        <button onClick={() => { setShowUpload(true); setSelectedFile(null); setUploadFilename(''); setUploadCategory('OTHER'); }} className="btn-primary text-sm">📤 Subir archivo</button>
         <button onClick={() => setShowFolderForm(true)} className="btn-ghost text-sm">📁 Nueva carpeta</button>
 
         <div className="flex-1" />
@@ -322,45 +343,83 @@ export default function MediaPage() {
       {/* Upload Form */}
       {showUpload && (
         <div className="glass-card p-5 animate-fade-in">
-          <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--color-text)' }}>📎 Añadir archivo por URL</h3>
-          <form onSubmit={handleUpload} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="input-label">Nombre del archivo *</label>
-              <input name="filename" required className="input-field text-sm" placeholder="mi-logo.png" />
+          <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--color-text)' }}>� Subir archivo</h3>
+          <form onSubmit={handleUpload} className="space-y-4">
+            {/* Drop zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={e => {
+                e.preventDefault();
+                setDragActive(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) handleFileSelect(f);
+              }}
+              onClick={() => document.getElementById('file-upload-input')?.click()}
+              className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all"
+              style={{
+                borderColor: dragActive ? 'var(--color-primary)' : selectedFile ? 'rgba(124,58,237,0.3)' : 'var(--color-border)',
+                backgroundColor: dragActive ? 'rgba(124,58,237,0.08)' : selectedFile ? 'rgba(124,58,237,0.04)' : 'transparent',
+              }}
+            >
+              <input
+                id="file-upload-input"
+                type="file"
+                className="hidden"
+                accept="image/*,video/*,audio/*,.pdf,.txt"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFileSelect(f);
+                }}
+              />
+              {selectedFile ? (
+                <div>
+                  <p className="text-2xl mb-2">{selectedFile.type.startsWith('image/') ? '🖼️' : selectedFile.type.startsWith('video/') ? '🎬' : selectedFile.type.startsWith('audio/') ? '🎵' : '📄'}</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{selectedFile.name}</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB — Click para cambiar</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-3xl mb-2">📁</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Arrastrá un archivo aquí o hacé click para seleccionar</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Imágenes, videos, audio, PDF — Máx. 50 MB</p>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="input-label">URL del archivo *</label>
-              <input name="url" required type="url" className="input-field text-sm" placeholder="https://..." />
-            </div>
-            <div>
-              <label className="input-label">URL thumbnail</label>
-              <input name="thumbnailUrl" className="input-field text-sm" placeholder="https://... (opcional)" />
-            </div>
-            <div>
-              <label className="input-label">Tipo MIME</label>
-              <input name="mimeType" defaultValue="image/jpeg" className="input-field text-sm" />
-            </div>
-            <div>
-              <label className="input-label">Tamaño (bytes)</label>
-              <input name="sizeBytes" type="number" defaultValue="0" className="input-field text-sm" />
-            </div>
-            <div>
-              <label className="input-label">Categoría</label>
-              <select name="category" className="input-field text-sm">
-                {CATEGORIES.filter(c => c.value).map(c => (
-                  <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="input-label">Tags (separados por coma)</label>
-              <input name="tags" className="input-field text-sm" placeholder="logo, marca, principal" />
-            </div>
-            <div className="md:col-span-2 flex gap-2">
-              <button type="submit" disabled={uploading} className="btn-primary text-sm">
-                {uploading ? '⏳ Añadiendo...' : '💾 Añadir'}
+
+            {/* Name + Category */}
+            {selectedFile && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="input-label">Nombre</label>
+                  <input
+                    value={uploadFilename}
+                    onChange={e => setUploadFilename(e.target.value)}
+                    className="input-field text-sm"
+                    placeholder="Nombre del archivo"
+                  />
+                </div>
+                <div>
+                  <label className="input-label">Tipo</label>
+                  <select
+                    value={uploadCategory}
+                    onChange={e => setUploadCategory(e.target.value)}
+                    className="input-field text-sm"
+                  >
+                    {CATEGORIES.filter(c => c.value).map(c => (
+                      <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button type="submit" disabled={uploading || !selectedFile} className="btn-primary text-sm">
+                {uploading ? '⏳ Subiendo...' : '📤 Subir'}
               </button>
-              <button type="button" onClick={() => setShowUpload(false)} className="btn-ghost text-sm">Cancelar</button>
+              <button type="button" onClick={() => { setShowUpload(false); setSelectedFile(null); }} className="btn-ghost text-sm">Cancelar</button>
             </div>
           </form>
         </div>
@@ -406,7 +465,7 @@ export default function MediaPage() {
               <p className="text-4xl mb-3">📂</p>
               <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>No hay archivos aquí</p>
               <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                Añadí archivos por URL o creá una carpeta para empezar.
+                Subí archivos o creá una carpeta para empezar.
               </p>
             </div>
           ) : (

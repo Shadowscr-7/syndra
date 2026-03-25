@@ -141,6 +141,7 @@ export class UserMediaController {
     @Req() req: any,
     @Param('id') id: string,
     @Body() body: {
+      filename?: string;
       tags?: string[];
       category?: string;
       folderId?: string;
