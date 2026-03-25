@@ -107,6 +107,18 @@ export class OnboardingController {
   }
 
   /**
+   * POST /api/onboarding/bulk-create — Create a theme or source during onboarding
+   */
+  @Post('bulk-create')
+  async bulkCreate(
+    @CurrentWorkspace() workspaceId: string,
+    @Body() body: { entity: 'theme' | 'source'; data: Record<string, unknown> },
+  ) {
+    const result = await this.onboarding.bulkCreate(workspaceId, body.entity, body.data);
+    return { data: result };
+  }
+
+  /**
    * POST /api/onboarding/dismiss-nudge — Dismiss the onboarding banner
    */
   @Post('dismiss-nudge')

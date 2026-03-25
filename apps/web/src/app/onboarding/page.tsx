@@ -2,6 +2,21 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import type { OnboardingState, OnboardingMode } from './steps/types';
+import StepMode from './steps/StepMode';
+import StepBusiness from './steps/StepBusiness';
+import StepBrand from './steps/StepBrand';
+import StepWebsite from './steps/StepWebsite';
+import StepCreatorProfile from './steps/StepCreatorProfile';
+import StepPersona from './steps/StepPersona';
+import StepContentProfile from './steps/StepContentProfile';
+import StepVisualStyle from './steps/StepVisualStyle';
+import StepThemes from './steps/StepThemes';
+import StepSources from './steps/StepSources';
+import StepMedia from './steps/StepMedia';
+import StepCampaigns from './steps/StepCampaigns';
+import StepSocial from './steps/StepSocial';
+import StepConfirm from './steps/StepConfirm';
 
 // ── Types ──────────────────────────────────────────────
 interface Industry {
@@ -10,8 +25,6 @@ interface Industry {
   icon: string;
   description?: string;
 }
-
-type OnboardingMode = 'business' | 'creator' | null;
 
 const FALLBACK_INDUSTRIES: Industry[] = [
   { id: 'ecommerce', name: 'E-commerce', icon: '🛒' },
@@ -23,49 +36,37 @@ const FALLBACK_INDUSTRIES: Industry[] = [
   { id: 'generic', name: 'Otro', icon: '🏢' },
 ];
 
-const BUSINESS_STEPS = ['Tipo', 'Negocio', 'Marca', 'Sitio web', 'Canales', 'Confirmar'];
-const CREATOR_STEPS = ['Tipo', 'Perfil', 'Temas y fuentes', 'Confirmar'];
+// Business:  Mode → Negocio → Marca → Web → Temas → Fuentes → Media → Campañas → Redes → Confirmar
+const BUSINESS_STEPS = ['Tipo', 'Negocio', 'Marca', 'Sitio web', 'Temas', 'Fuentes', 'Media', 'Campañas', 'Redes', 'Confirmar'];
+// Creator:   Mode → Perfil → Persona → Perfil Cont. → Estilo Visual → Temas → Fuentes → Media → Campañas → Redes → Confirmar
+const CREATOR_STEPS = ['Tipo', 'Perfil', 'AI Persona', 'Perfil contenido', 'Estilo visual', 'Temas', 'Fuentes', 'Media', 'Campañas', 'Redes', 'Confirmar'];
 
-const CREATOR_CATEGORIES = [
-  { id: 'lifestyle', name: 'Lifestyle', icon: '✨' },
-  { id: 'tech', name: 'Tech & Gaming', icon: '🎮' },
-  { id: 'fitness', name: 'Fitness & Salud', icon: '💪' },
-  { id: 'food', name: 'Cocina & Recetas', icon: '🍳' },
-  { id: 'education', name: 'Educación', icon: '📚' },
-  { id: 'entertainment', name: 'Entretenimiento', icon: '🎬' },
-  { id: 'travel', name: 'Viajes', icon: '✈️' },
-  { id: 'art', name: 'Arte & Diseño', icon: '🎨' },
-  { id: 'finance', name: 'Finanzas', icon: '💰' },
-  { id: 'music', name: 'Música', icon: '🎵' },
-  { id: 'other', name: 'Otro', icon: '🌟' },
-];
+// ── Initial State ──────────────────────────────────────
+const INITIAL_STATE: OnboardingState = {
+  mode: null,
+  workspaceName: '', slug: '', industry: '',
+  brandName: '', brandDescription: '', brandVoice: 'Profesional', websiteUrl: '',
+  creatorName: '', creatorCategory: '',
+  themes: [], sources: [], mediaFiles: [], campaigns: [],
+  persona: { brandName: '', brandDescription: '', tone: '', expertise: '', targetAudience: '', avoidTopics: '', languageStyle: '', examplePhrases: '', visualStyle: '' },
+  contentProfile: { name: '', tone: 'didáctico', contentLength: 'MEDIUM', audience: '', language: 'es', hashtags: '', postingGoal: '' },
+  visualStyle: { name: '', style: 'MINIMALIST', colorPalette: '', primaryFont: '', secondaryFont: '', logoUrl: '', preferredImageProvider: 'huggingface', customPromptPrefix: '' },
+  metaConnected: false, metaInfo: '',
+};
+
+// ── Helpers ────────────────────────────────────────────
+function getStepIndex(mode: OnboardingMode, stepName: string): number {
+  const steps = mode === 'creator' ? CREATOR_STEPS : BUSINESS_STEPS;
+  return steps.indexOf(stepName);
+}
 
 // ── Main Page ──────────────────────────────────────────
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [mode, setMode] = useState<OnboardingMode>(null);
+  const [state, setState] = useState<OnboardingState>(INITIAL_STATE);
   const [loading, setLoading] = useState(false);
   const [industries, setIndustries] = useState<Industry[]>(FALLBACK_INDUSTRIES);
-  const [metaConnected, setMetaConnected] = useState(false);
-  const [metaInfo, setMetaInfo] = useState('');
-  const [websiteLoading, setWebsiteLoading] = useState(false);
-  const [websiteResult, setWebsiteResult] = useState<string | null>(null);
-
-  const [data, setData] = useState({
-    workspaceName: '',
-    slug: '',
-    industry: '',
-    brandName: '',
-    brandDescription: '',
-    brandVoice: 'Profesional',
-    websiteUrl: '',
-    // Creator fields
-    creatorName: '',
-    creatorCategory: '',
-    creatorTopics: '',
-    creatorSources: '',
-  });
 
   useEffect(() => {
     fetch('/api/onboarding/industries', { credentials: 'include' })
@@ -90,118 +91,205 @@ export default function OnboardingPage() {
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'meta-oauth-complete') {
-        setMetaConnected(true);
-        setMetaInfo(e.data.instagramUsername || e.data.pageName || 'Conectado');
+        setState((s) => ({ ...s, metaConnected: true, metaInfo: e.data.instagramUsername || e.data.pageName || 'Conectado' }));
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
 
-  const updateField = (field: string, value: string) => {
-    setData((prev) => ({ ...prev, [field]: value }));
-    if (field === 'workspaceName' || field === 'creatorName') {
-      setData((prev) => ({
-        ...prev,
-        slug: value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, ''),
-      }));
-    }
-  };
-
-  const steps = mode === 'creator' ? CREATOR_STEPS : BUSINESS_STEPS;
-
-  const canProceed = () => {
-    if (step === 0) return mode !== null;
-    if (mode === 'business') {
-      switch (step) {
-        case 1: return !!data.workspaceName && !!data.industry;
-        case 2: return true;
-        case 3: return true;
-        case 4: return true;
-        case 5: return true;
-        default: return false;
+  const updateField = useCallback((field: string, value: string) => {
+    setState((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'workspaceName' || field === 'creatorName') {
+        next.slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       }
-    } else {
-      switch (step) {
-        case 1: return !!data.creatorName && !!data.creatorCategory;
-        case 2: return true;
-        case 3: return true;
-        default: return false;
-      }
+      return next;
+    });
+  }, []);
+
+  const steps = state.mode === 'creator' ? CREATOR_STEPS : BUSINESS_STEPS;
+
+  const canProceed = (): boolean => {
+    if (step === 0) return state.mode !== null;
+    const stepName = steps[step];
+    switch (stepName) {
+      case 'Negocio': return !!state.workspaceName && !!state.industry;
+      case 'Perfil': return !!state.creatorName && !!state.creatorCategory;
+      case 'AI Persona': return !!state.persona.brandName;
+      case 'Perfil contenido': return !!state.contentProfile.name;
+      case 'Estilo visual': return !!state.visualStyle.name;
+      default: return true;
     }
   };
 
   const isLastStep = step === steps.length - 1;
 
-  const handleConnectMeta = () => {
+  const handleConnectMeta = useCallback(() => {
     const w = 600, h = 700;
     const left = window.screenX + (window.innerWidth - w) / 2;
     const top = window.screenY + (window.innerHeight - h) / 2;
-    window.open(
-      '/api/auth/meta?from=onboarding&popup=1',
-      'meta-oauth',
-      `width=${w},height=${h},left=${left},top=${top}`,
-    );
-  };
+    window.open('/api/auth/meta?from=onboarding&popup=1', 'meta-oauth', `width=${w},height=${h},left=${left},top=${top}`);
+  }, []);
 
-  const handleExtractFromWeb = useCallback(async () => {
-    if (!data.websiteUrl.trim()) return;
-    setWebsiteLoading(true);
-    setWebsiteResult(null);
-    try {
-      let url = data.websiteUrl.trim();
-      if (!url.startsWith('http')) url = `https://${url}`;
-      const res = await fetch('/api/business-profile/extract-from-web', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ urls: [url] }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const profile = json.data?.profile;
-        if (profile) {
-          setData((prev) => ({
-            ...prev,
-            brandName: prev.brandName || profile.businessName || '',
-            brandDescription: prev.brandDescription || profile.description || '',
-            workspaceName: prev.workspaceName || profile.businessName || '',
-            industry: prev.industry || profile.businessType || prev.industry,
-          }));
-          setWebsiteResult(`✅ Se extrajeron datos de tu sitio web`);
-        } else {
-          setWebsiteResult('⚠️ No se pudieron extraer datos del sitio');
-        }
-      } else {
-        setWebsiteResult('⚠️ Error al analizar el sitio web');
-      }
-    } catch {
-      setWebsiteResult('⚠️ Error de conexión');
-    } finally {
-      setWebsiteLoading(false);
-    }
-  }, [data.websiteUrl]);
+  const handleWebExtracted = useCallback((profile: Record<string, string>) => {
+    setState((prev) => ({
+      ...prev,
+      brandName: prev.brandName || profile.businessName || '',
+      brandDescription: prev.brandDescription || profile.description || '',
+      workspaceName: prev.workspaceName || profile.businessName || '',
+      industry: prev.industry || profile.businessType || prev.industry,
+    }));
+  }, []);
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const payload: Record<string, unknown> = {
-        ...data,
-        mode,
-      };
-      if (mode === 'creator') {
-        payload.workspaceName = data.creatorName;
-        payload.industry = data.creatorCategory;
-      }
+      const isBusiness = state.mode === 'business';
+
+      // 1. Complete onboarding (workspace + brand + plan)
       await fetch('/api/onboarding/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          workspaceName: isBusiness ? state.workspaceName : state.creatorName,
+          slug: state.slug,
+          industry: isBusiness ? state.industry : state.creatorCategory,
+          brandName: isBusiness ? state.brandName : state.persona.brandName,
+          brandDescription: isBusiness ? state.brandDescription : state.persona.brandDescription,
+          brandVoice: state.brandVoice,
+          websiteUrl: state.websiteUrl,
+          mode: state.mode,
+        }),
       });
+
+      // 2. Create content themes
+      for (const theme of state.themes) {
+        await fetch('/api/onboarding/bulk-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            entity: 'theme',
+            data: {
+              name: theme.name,
+              keywords: theme.keywords.split(',').map((k) => k.trim()).filter(Boolean),
+              audience: theme.audience,
+              priority: theme.priority,
+              type: theme.type,
+              preferredFormats: theme.formats,
+            },
+          }),
+        });
+      }
+
+      // 3. Create research sources
+      for (const source of state.sources) {
+        await fetch('/api/onboarding/bulk-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            entity: 'source',
+            data: { name: source.name, type: source.type, url: source.url },
+          }),
+        });
+      }
+
+      // 4. Upload media files
+      for (const media of state.mediaFiles) {
+        const formData = new FormData();
+        formData.append('file', media.file);
+        formData.append('category', media.category);
+        await fetch('/api/user-media/file', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+      }
+
+      // 5. Creator-only: persona, content profile, visual style
+      if (!isBusiness) {
+        if (state.persona.brandName) {
+          await fetch('/api/personas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              brandName: state.persona.brandName,
+              brandDescription: state.persona.brandDescription,
+              tone: state.persona.tone.split(',').map((s) => s.trim()).filter(Boolean),
+              expertise: state.persona.expertise.split(',').map((s) => s.trim()).filter(Boolean),
+              targetAudience: state.persona.targetAudience,
+              avoidTopics: state.persona.avoidTopics.split(',').map((s) => s.trim()).filter(Boolean),
+              languageStyle: state.persona.languageStyle,
+              examplePhrases: state.persona.examplePhrases.split(',').map((s) => s.trim()).filter(Boolean),
+              visualStyle: state.persona.visualStyle,
+            }),
+          });
+        }
+
+        if (state.contentProfile.name) {
+          await fetch('/api/profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: state.contentProfile.name,
+              tone: state.contentProfile.tone,
+              contentLength: state.contentProfile.contentLength,
+              audience: state.contentProfile.audience,
+              language: state.contentProfile.language,
+              hashtags: state.contentProfile.hashtags.split(',').map((s) => s.trim()).filter(Boolean),
+              postingGoal: state.contentProfile.postingGoal,
+              isDefault: true,
+            }),
+          });
+        }
+
+        if (state.visualStyle.name) {
+          await fetch('/api/visual-styles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: state.visualStyle.name,
+              style: state.visualStyle.style,
+              colorPalette: state.visualStyle.colorPalette.split(',').map((s) => s.trim()).filter(Boolean),
+              primaryFont: state.visualStyle.primaryFont || null,
+              secondaryFont: state.visualStyle.secondaryFont || null,
+              logoUrl: state.visualStyle.logoUrl || null,
+              preferredImageProvider: state.visualStyle.preferredImageProvider,
+              customPromptPrefix: state.visualStyle.customPromptPrefix || null,
+            }),
+          });
+        }
+      }
+
+      // 6. Create campaigns
+      for (const campaign of state.campaigns) {
+        await fetch('/api/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: campaign.name,
+            objective: campaign.objective,
+            targetChannels: campaign.targetChannels,
+            channelFormats: campaign.channelFormats,
+            startDate: campaign.startDate,
+            endDate: campaign.endDate || null,
+            offer: campaign.offer || null,
+            landingUrl: campaign.landingUrl || null,
+            kpiTarget: campaign.kpiTarget || null,
+            musicEnabled: campaign.musicEnabled,
+            musicStyle: campaign.musicStyle,
+            musicPrompt: campaign.musicPrompt || null,
+          }),
+        });
+      }
+
       router.push('/dashboard');
     } catch (err) {
       console.error('Onboarding error:', err);
@@ -210,11 +298,57 @@ export default function OnboardingPage() {
     }
   };
 
+  // ── Resolve which component to render per step ─────────
+  const renderStep = () => {
+    if (step === 0) {
+      return <StepMode mode={state.mode} onSelect={(m) => setState((s) => ({ ...s, mode: m }))} />;
+    }
+
+    const stepName = steps[step];
+
+    switch (stepName) {
+      // Business-only
+      case 'Negocio':
+        return <StepBusiness workspaceName={state.workspaceName} slug={state.slug} industry={state.industry} industries={industries} onChange={updateField} />;
+      case 'Marca':
+        return <StepBrand brandName={state.brandName} brandDescription={state.brandDescription} brandVoice={state.brandVoice} onChange={updateField} />;
+      case 'Sitio web':
+        return <StepWebsite websiteUrl={state.websiteUrl} onChange={updateField} onExtracted={handleWebExtracted} />;
+
+      // Creator-only
+      case 'Perfil':
+        return <StepCreatorProfile creatorName={state.creatorName} slug={state.slug} creatorCategory={state.creatorCategory} onChange={updateField} />;
+      case 'AI Persona':
+        return <StepPersona persona={state.persona} onChange={(p) => setState((s) => ({ ...s, persona: p }))} />;
+      case 'Perfil contenido':
+        return <StepContentProfile profile={state.contentProfile} onChange={(p) => setState((s) => ({ ...s, contentProfile: p }))} />;
+      case 'Estilo visual':
+        return <StepVisualStyle style={state.visualStyle} onChange={(v) => setState((s) => ({ ...s, visualStyle: v }))} />;
+
+      // Shared
+      case 'Temas':
+        return <StepThemes themes={state.themes} onChange={(t) => setState((s) => ({ ...s, themes: t }))} />;
+      case 'Fuentes':
+        return <StepSources sources={state.sources} onChange={(src) => setState((s) => ({ ...s, sources: src }))} />;
+      case 'Media':
+        return <StepMedia files={state.mediaFiles} onChange={(f) => setState((s) => ({ ...s, mediaFiles: f }))} />;
+      case 'Campañas':
+        return <StepCampaigns campaigns={state.campaigns} onChange={(c) => setState((s) => ({ ...s, campaigns: c }))} />;
+      case 'Redes':
+        return <StepSocial metaConnected={state.metaConnected} metaInfo={state.metaInfo} onConnect={handleConnectMeta} />;
+      case 'Confirmar':
+        return <StepConfirm state={state} />;
+
+      default:
+        return null;
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-bg)' }}>
       <div
-        className="w-full max-w-2xl rounded-2xl border p-8 space-y-8"
+        className="w-full max-w-2xl rounded-2xl border p-8 space-y-8 max-h-[90vh] overflow-y-auto"
         style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
       >
         {/* Header */}
@@ -228,7 +362,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* Progress bar */}
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           {steps.map((_, i) => (
             <div
               key={i}
@@ -240,390 +374,7 @@ export default function OnboardingPage() {
 
         {/* Step Content */}
         <div className="min-h-[320px]">
-          {/* ═══ STEP 0: Choose mode ═══ */}
-          {step === 0 && (
-            <div className="space-y-6">
-              <p className="text-center" style={{ color: 'var(--color-text-secondary)' }}>
-                ¿Cómo vas a usar Syndra?
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setMode('business')}
-                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all"
-                  style={{
-                    backgroundColor: mode === 'business' ? 'rgba(124,58,237,0.12)' : 'var(--color-bg-tertiary)',
-                    borderColor: mode === 'business' ? 'var(--color-primary)' : 'var(--color-border)',
-                    color: 'var(--color-text)',
-                  }}
-                >
-                  <span className="text-4xl">🏢</span>
-                  <span className="text-lg font-semibold">Empresa / Negocio</span>
-                  <span className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
-                    Gestiona la presencia digital de tu marca o empresa
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('creator')}
-                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all"
-                  style={{
-                    backgroundColor: mode === 'creator' ? 'rgba(124,58,237,0.12)' : 'var(--color-bg-tertiary)',
-                    borderColor: mode === 'creator' ? 'var(--color-primary)' : 'var(--color-border)',
-                    color: 'var(--color-text)',
-                  }}
-                >
-                  <span className="text-4xl">🎨</span>
-                  <span className="text-lg font-semibold">Creador de contenido</span>
-                  <span className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
-                    Crea y publica contenido para tu audiencia personal
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ═══════════════════════════════════════════════
-               BUSINESS FLOW
-             ═══════════════════════════════════════════════ */}
-          {mode === 'business' && step === 1 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Nombre del negocio *
-                </label>
-                <input
-                  type="text"
-                  value={data.workspaceName}
-                  onChange={(e) => updateField('workspaceName', e.target.value)}
-                  placeholder="Mi Empresa"
-                  className="w-full px-4 py-3 rounded-lg border text-sm"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-                {data.slug && (
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                    URL: syndra.app/{data.slug}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text)' }}>
-                  Industria *
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {industries.map((ind) => (
-                    <button
-                      key={ind.id}
-                      type="button"
-                      onClick={() => updateField('industry', ind.id)}
-                      className="flex items-center gap-2 p-3 rounded-lg border text-sm transition-colors"
-                      style={{
-                        backgroundColor: data.industry === ind.id ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                        borderColor: data.industry === ind.id ? 'var(--color-primary)' : 'var(--color-border)',
-                        color: data.industry === ind.id ? 'white' : 'var(--color-text)',
-                      }}
-                    >
-                      <span className="text-lg">{ind.icon}</span>
-                      {ind.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {mode === 'business' && step === 2 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Nombre de marca
-                </label>
-                <input
-                  type="text"
-                  value={data.brandName}
-                  onChange={(e) => updateField('brandName', e.target.value)}
-                  placeholder="Nombre visible de tu marca"
-                  className="w-full px-4 py-3 rounded-lg border text-sm"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Descripción
-                </label>
-                <textarea
-                  value={data.brandDescription}
-                  onChange={(e) => updateField('brandDescription', e.target.value)}
-                  placeholder="¿A qué se dedica tu marca?"
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Tono de voz
-                </label>
-                <select
-                  value={data.brandVoice}
-                  onChange={(e) => updateField('brandVoice', e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border text-sm"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                >
-                  <option>Profesional</option>
-                  <option>Casual</option>
-                  <option>Divertido</option>
-                  <option>Inspiracional</option>
-                  <option>Educativo</option>
-                  <option>Motivacional</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {mode === 'business' && step === 3 && (
-            <div className="space-y-6">
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Si tenés un sitio web, podemos analizar automáticamente tu negocio para crear un perfil y briefs de contenido.
-              </p>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  URL de tu sitio web
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={data.websiteUrl}
-                    onChange={(e) => updateField('websiteUrl', e.target.value)}
-                    placeholder="https://miempresa.com"
-                    className="flex-1 px-4 py-3 rounded-lg border text-sm"
-                    style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleExtractFromWeb}
-                    disabled={!data.websiteUrl.trim() || websiteLoading}
-                    className="px-4 py-3 rounded-lg text-sm font-medium text-white whitespace-nowrap"
-                    style={{
-                      backgroundColor: data.websiteUrl.trim() && !websiteLoading ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                      color: data.websiteUrl.trim() && !websiteLoading ? 'white' : 'var(--color-text-muted)',
-                      opacity: websiteLoading ? 0.7 : 1,
-                    }}
-                  >
-                    {websiteLoading ? '⏳ Analizando...' : '🔍 Analizar'}
-                  </button>
-                </div>
-                {websiteResult && (
-                  <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-                    {websiteResult}
-                  </p>
-                )}
-              </div>
-              <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  💡 Syndra analizará tu sitio web para extraer información del negocio, productos y servicios.
-                  Esto generará automáticamente briefs de contenido que puedes editar después.
-                  <br /><br />
-                  Podés omitir este paso y configurarlo después desde <strong>Mi Negocio</strong>.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {mode === 'business' && step === 4 && (
-            <div className="space-y-6">
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Conectá tus redes sociales para publicar contenido automáticamente. Podés hacerlo después desde Credenciales.
-              </p>
-
-              {/* Meta/Instagram OAuth Card */}
-              <div
-                className="p-5 rounded-xl border transition-all"
-                style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: metaConnected ? '#22c55e' : 'var(--color-border)' }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">📸</span>
-                    <div>
-                      <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>
-                        Instagram / Facebook
-                      </h3>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        {metaConnected
-                          ? `✅ Conectado: ${metaInfo}`
-                          : 'Conectá tu cuenta de Instagram y Facebook para publicar'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleConnectMeta}
-                    disabled={metaConnected}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    style={{
-                      backgroundColor: metaConnected ? '#22c55e' : 'var(--color-primary)',
-                      color: 'white',
-                      opacity: metaConnected ? 0.8 : 1,
-                    }}
-                  >
-                    {metaConnected ? '✓ Conectado' : 'Conectar'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  💡 Al conectar, se abrirá una ventana de Facebook/Instagram donde autorizarás a Syndra
-                  a publicar en tu página. Necesitás una página de Facebook con Instagram Business vinculado.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {mode === 'business' && step === 5 && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-                Resumen de configuración
-              </h2>
-              <div className="space-y-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
-                <SummaryRow label="Tipo" value="🏢 Empresa / Negocio" />
-                <SummaryRow label="Negocio" value={data.workspaceName} />
-                <SummaryRow label="Industria" value={industries.find((i) => i.id === data.industry)?.name || '-'} />
-                <SummaryRow label="Marca" value={data.brandName || '(pendiente)'} />
-                <SummaryRow label="Tono" value={data.brandVoice} />
-                <SummaryRow label="Sitio web" value={data.websiteUrl || '(no configurado)'} />
-                <SummaryRow label="Instagram/Facebook" value={metaConnected ? `✅ ${metaInfo}` : '⏳ Pendiente'} />
-              </div>
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Se crearán automáticamente temas de contenido basados en tu industria.
-                Podrás personalizar todo después desde el dashboard.
-              </p>
-            </div>
-          )}
-
-          {/* ═══════════════════════════════════════════════
-               CREATOR FLOW
-             ═══════════════════════════════════════════════ */}
-          {mode === 'creator' && step === 1 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Tu nombre o nombre de creador *
-                </label>
-                <input
-                  type="text"
-                  value={data.creatorName}
-                  onChange={(e) => updateField('creatorName', e.target.value)}
-                  placeholder="Tu nombre artístico o personal"
-                  className="w-full px-4 py-3 rounded-lg border text-sm"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-                {data.slug && (
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                    URL: syndra.app/{data.slug}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text)' }}>
-                  Categoría principal *
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {CREATOR_CATEGORIES.map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => updateField('creatorCategory', cat.id)}
-                      className="flex items-center gap-2 p-3 rounded-lg border text-sm transition-colors"
-                      style={{
-                        backgroundColor: data.creatorCategory === cat.id ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                        borderColor: data.creatorCategory === cat.id ? 'var(--color-primary)' : 'var(--color-border)',
-                        color: data.creatorCategory === cat.id ? 'white' : 'var(--color-text)',
-                      }}
-                    >
-                      <span className="text-lg">{cat.icon}</span>
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {mode === 'creator' && step === 2 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Temas de contenido
-                </label>
-                <textarea
-                  value={data.creatorTopics}
-                  onChange={(e) => updateField('creatorTopics', e.target.value)}
-                  placeholder="¿Sobre qué temas creas contenido? Ej: recetas veganas, rutinas de ejercicio, reviews de gadgets..."
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  Syndra usará estos temas para generar ideas y contenido automático.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Fuentes de inspiración
-                </label>
-                <textarea
-                  value={data.creatorSources}
-                  onChange={(e) => updateField('creatorSources', e.target.value)}
-                  placeholder="Blogs, canales de YouTube, cuentas que seguís, sitios web de referencia..."
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                />
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  Usaremos estas fuentes para investigar tendencias y generar contenido relevante.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-                  Tono de voz
-                </label>
-                <select
-                  value={data.brandVoice}
-                  onChange={(e) => updateField('brandVoice', e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border text-sm"
-                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                >
-                  <option>Casual</option>
-                  <option>Profesional</option>
-                  <option>Divertido</option>
-                  <option>Inspiracional</option>
-                  <option>Educativo</option>
-                  <option>Motivacional</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {mode === 'creator' && step === 3 && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-                Resumen de configuración
-              </h2>
-              <div className="space-y-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
-                <SummaryRow label="Tipo" value="🎨 Creador de contenido" />
-                <SummaryRow label="Nombre" value={data.creatorName} />
-                <SummaryRow label="Categoría" value={CREATOR_CATEGORIES.find((c) => c.id === data.creatorCategory)?.name || '-'} />
-                <SummaryRow label="Tono" value={data.brandVoice} />
-                <SummaryRow label="Temas" value={data.creatorTopics || '(pendiente)'} />
-                <SummaryRow label="Fuentes" value={data.creatorSources || '(pendiente)'} />
-              </div>
-              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Se crearán campañas y temas basados en tu categoría.
-                Podrás conectar tus redes sociales y personalizar todo desde el dashboard.
-              </p>
-            </div>
-          )}
+          {renderStep()}
         </div>
 
         {/* Navigation Buttons */}
@@ -661,20 +412,11 @@ export default function OnboardingPage() {
               className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
               style={{ backgroundColor: 'var(--color-primary)', opacity: loading ? 0.7 : 1 }}
             >
-              {loading ? 'Configurando...' : '🚀 Completar configuración'}
+              {loading ? '⏳ Guardando...' : '🚀 Completar configuración'}
             </button>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-sm">
-      <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-      <span className="font-medium" style={{ color: 'var(--color-text)' }}>{value}</span>
     </div>
   );
 }

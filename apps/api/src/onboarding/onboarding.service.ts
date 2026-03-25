@@ -647,4 +647,35 @@ export class OnboardingService {
       return workspace;
     });
   }
+
+  // ── Bulk-create entities during onboarding ───────────
+  async bulkCreate(workspaceId: string, entity: 'theme' | 'source', data: Record<string, unknown>) {
+    if (entity === 'theme') {
+      return this.prisma.contentTheme.create({
+        data: {
+          workspaceId,
+          name: data.name as string,
+          keywords: (data.keywords as string[]) || [],
+          audience: (data.audience as string) || '',
+          priority: (data.priority as number) || 5,
+          type: (data.type as any) || 'TRENDING',
+          preferredFormats: (data.preferredFormats as string[]) || [],
+        },
+      });
+    }
+
+    if (entity === 'source') {
+      return this.prisma.researchSource.create({
+        data: {
+          workspaceId,
+          name: data.name as string,
+          type: (data.type as any) || 'CUSTOM',
+          url: (data.url as string) || '',
+          isActive: true,
+        },
+      });
+    }
+
+    throw new Error(`Unknown entity: ${entity}`);
+  }
 }
