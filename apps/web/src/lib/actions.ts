@@ -2,6 +2,7 @@
 
 import { prisma } from '@automatismos/db';
 import { getSession } from '@/lib/session';
+import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -11,6 +12,15 @@ async function requireSession() {
   const session = await getSession();
   if (!session) throw new Error('No autenticado');
   return session;
+}
+
+/** Build headers with auth token for server-action → API calls */
+async function apiHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('access_token')?.value || cookieStore.get('access-token')?.value;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
 }
 
 // ── Editorial Run ────────────────────────────────────
@@ -28,7 +38,7 @@ export async function createEditorialRun(
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
       body: JSON.stringify({
         workspaceId: session.workspaceId,
         campaignId: campaignId || undefined,
@@ -58,7 +68,7 @@ export async function approveEditorialRun(formData: FormData) {
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
     });
     if (!res.ok) {
       console.error('[approveEditorialRun] API error:', await res.text().catch(() => ''));
@@ -78,7 +88,7 @@ export async function rejectEditorialRun(formData: FormData) {
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/reject`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
       body: JSON.stringify({ reason }),
     });
     if (!res.ok) {
@@ -98,7 +108,7 @@ export async function triggerPipeline(formData: FormData) {
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/restart`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -122,7 +132,7 @@ export async function cancelEditorialRun(formData: FormData) {
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}/cancel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
     });
     if (!res.ok) {
       console.error('[cancelEditorialRun] API error:', await res.text().catch(() => ''));
@@ -150,6 +160,7 @@ export async function deleteEditorialRun(formData: FormData) {
   try {
     const res = await fetch(`${apiUrl}/api/editorial/run/${runId}`, {
       method: 'DELETE',
+      headers: await apiHeaders(),
     });
     if (res.ok) {
       deleted = true;
