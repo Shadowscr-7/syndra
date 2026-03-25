@@ -8,6 +8,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
+import { EditorialOrchestratorService } from '../editorial/editorial-orchestrator.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -42,6 +43,7 @@ export class TrendDetectionService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    private readonly orchestrator: EditorialOrchestratorService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
@@ -303,7 +305,7 @@ export class TrendDetectionService {
       select: { activeChannels: true },
     });
 
-    // Create editorial run with trend context in researchSummary
+    // Pre-populate researchSummary so the research stage is skipped
     const trendResearch = JSON.stringify({
       dominantTheme: trend.themeLabel,
       summary: trend.excerpt,
@@ -317,15 +319,14 @@ export class TrendDetectionService {
       ],
     });
 
-    const run = await this.prisma.editorialRun.create({
-      data: {
-        workspaceId,
-        status: 'STRATEGY', // Skip research since we already have the trend data
-        origin: 'trend',
-        priority: Math.min(10, Math.round(trend.finalScore * 10) + 2), // Higher priority for high-score trends
-        targetChannels: ws.activeChannels,
-        researchSummary: trendResearch,
-      },
+    // Create editorial run via orchestrator (triggers full pipeline)
+    const priority = Math.min(10, Math.round(trend.finalScore * 10) + 2);
+    const { editorialRunId } = await this.orchestrator.createRun({
+      workspaceId,
+      origin: 'trend',
+      priority,
+      targetChannels: ws.activeChannels,
+      researchSummary: trendResearch,
     });
 
     // Mark trend as used
@@ -334,8 +335,8 @@ export class TrendDetectionService {
       data: { status: 'USED' },
     });
 
-    this.logger.log(`Created editorial run ${run.id} from trend "${trend.themeLabel}"`);
-    return run;
+    this.logger.log(`Created editorial run ${editorialRunId} from trend "${trend.themeLabel}"`);
+    return { id: editorialRunId, workspaceId };
   }
 
   /**

@@ -45,6 +45,7 @@ export class EditorialOrchestratorService {
     targetChannels?: string[];
     contentProfileId?: string;
     userPersonaId?: string;
+    researchSummary?: string;
   }): Promise<{ editorialRunId: string }> {
     // If campaign provided, inherit settings from it
     let resolvedChannels = params.targetChannels ?? ['instagram'];
@@ -109,6 +110,7 @@ export class EditorialOrchestratorService {
         contentProfileId: resolvedProfileId,
         userPersonaId: resolvedPersonaId,
         status: 'PENDING',
+        ...(params.researchSummary ? { researchSummary: params.researchSummary } : {}),
       },
     });
 
@@ -245,13 +247,19 @@ export class EditorialOrchestratorService {
             data: { status: 'RESEARCH' },
           });
 
-          // Check origin: weekly-planner-business → force internal research
+          // Check origin: if researchSummary already populated (e.g. trend origin), skip research
           const run = await this.prisma.editorialRun.findUniqueOrThrow({
             where: { id: editorialRunId },
-            select: { origin: true },
+            select: { origin: true, researchSummary: true },
           });
 
-          if (run.origin === 'weekly-planner-business') {
+          if (run.researchSummary) {
+            this.logger.log(`Run ${editorialRunId} already has researchSummary (origin: ${run.origin}) → skipping research`);
+            await this.prisma.editorialRun.update({
+              where: { id: editorialRunId },
+              data: { status: 'STRATEGY' },
+            });
+          } else if (run.origin === 'weekly-planner-business') {
             this.logger.log('Origin is weekly-planner-business → using internal business research');
             await this.researchService.executeInternalResearch(
               editorialRunId,

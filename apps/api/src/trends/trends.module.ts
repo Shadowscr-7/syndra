@@ -5,9 +5,10 @@ import { TrendCronService } from './trend-cron.service';
 import { CredentialsModule } from '../credentials/credentials.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { AuthModule } from '../auth/auth.module';
+import { EditorialModule } from '../editorial/editorial.module';
 
 @Module({
-  imports: [CredentialsModule, forwardRef(() => TelegramModule), AuthModule],
+  imports: [CredentialsModule, forwardRef(() => TelegramModule), AuthModule, EditorialModule],
   controllers: [TrendsController],
   providers: [TrendDetectionService, TrendCronService],
   exports: [TrendDetectionService],

@@ -8,6 +8,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CredentialsService } from '../credentials/credentials.service';
+import { EditorialOrchestratorService } from '../editorial/editorial-orchestrator.service';
 import {
   OpenAIAdapter,
   AnthropicAdapter,
@@ -44,6 +45,7 @@ export class StrategyPlanService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly credentialsService: CredentialsService,
+    private readonly orchestrator: EditorialOrchestratorService,
   ) {
     const provider = this.config.get<string>('LLM_PROVIDER', 'openai');
     const apiKey = this.config.get<string>('LLM_API_KEY', '');
@@ -669,19 +671,16 @@ export class StrategyPlanService {
       ];
     }
 
-    // Create editorial runs
+    // Create editorial runs via orchestrator (triggers full pipeline)
     const runs = [];
     for (const brief of briefs) {
-      const run = await this.prisma.editorialRun.create({
-        data: {
-          workspaceId,
-          status: 'PENDING',
-          origin: 'strategist',
-          priority: brief.priority ?? 5,
-          targetChannels: ws.activeChannels,
-        },
+      const { editorialRunId } = await this.orchestrator.createRun({
+        workspaceId,
+        origin: 'strategist',
+        priority: brief.priority ?? 5,
+        targetChannels: ws.activeChannels,
       });
-      runs.push(run);
+      runs.push({ id: editorialRunId });
     }
 
     this.logger.log(`Generated ${runs.length} editorial runs from plan ${planId}`);
