@@ -89,7 +89,7 @@ export default function MediaPage() {
       const storageData = await storageRes.json();
 
       setFiles(filesData.data?.items ?? filesData.data ?? []);
-      setTotalCount(filesData.data?.total ?? 0);
+      setTotalCount(filesData.meta?.total ?? filesData.data?.length ?? 0);
       setFolders(foldersData.data ?? []);
       setStorage(storageData.data ?? storageData);
     } catch {

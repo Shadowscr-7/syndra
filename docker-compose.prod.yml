@@ -98,6 +98,11 @@ services:
       - "traefik.http.routers.syndra-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.syndra-api.priority=20"
       - "traefik.http.services.syndra-api.loadbalancer.server.port=3001"
+      # Router para archivos estáticos /uploads
+      - "traefik.http.routers.syndra-uploads.rule=Host(`syndra.aivanguardlabs.com`) && PathPrefix(`/uploads`)"
+      - "traefik.http.routers.syndra-uploads.entrypoints=websecure"
+      - "traefik.http.routers.syndra-uploads.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.syndra-uploads.priority=25"
 
   # ---- Web (Next.js) ----
   web:
