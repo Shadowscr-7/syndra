@@ -237,6 +237,7 @@ export class AuthService {
     return {
       user: this.sanitizeUser(result.user),
       tokens,
+      workspaceId: result.workspace.id,
       subscription: {
         planId: result.subscription.planId,
         planName: result.subscription.plan.displayName,

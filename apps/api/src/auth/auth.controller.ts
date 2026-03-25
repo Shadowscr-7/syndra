@@ -68,6 +68,7 @@ export class AuthController {
     this.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken, {
       id: result.user.id,
       email: result.user.email,
+      workspaceId: result.workspaceId,
     });
 
     return {
