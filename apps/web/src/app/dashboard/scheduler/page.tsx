@@ -1701,6 +1701,39 @@ function ScheduleForm({
   const [timezone, setTimezone] = useState(initial?.timezone ?? 'America/Mexico_City');
   const [contentProfileId, setContentProfileId] = useState(initial?.contentProfileId ?? '');
   const [campaignId, setCampaignId] = useState(initial?.campaignId ?? '');
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    initial?.slots?.map(s => s.dayOfWeek).filter((v, i, a) => a.indexOf(v) === i) ?? []
+  );
+  const [time, setTime] = useState(initial?.slots?.[0]?.time ?? '10:00');
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(
+    initial?.slots?.[0]?.socialAccountIds ?? ['instagram']
+  );
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+  };
+
+  const toggleChannel = (ch: string) => {
+    setSelectedChannels(prev => prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch]);
+  };
+
+  const handleSave = () => {
+    const base: any = {
+      name: name || 'Mi horario',
+      timezone,
+      contentProfileId: contentProfileId || undefined,
+      campaignId: campaignId || undefined,
+    };
+    // Al crear, incluir slots según los días seleccionados
+    if (!initial && selectedDays.length > 0) {
+      base.slots = selectedDays.map(day => ({
+        dayOfWeek: day,
+        time,
+        socialAccountIds: selectedChannels,
+      }));
+    }
+    onSave(base);
+  };
 
   return (
     <div className="glass-card p-5 animate-fade-in">
@@ -1736,9 +1769,71 @@ function ScheduleForm({
           </select>
         </div>
       </div>
+
+      {/* Días, hora y canales — solo en creación */}
+      {!initial && (
+        <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.1)' }}>
+          <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--color-primary)' }}>📅 Días y hora de publicación</h4>
+          <div className="space-y-3">
+            <div>
+              <label className="input-label">Días</label>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {DAYS.map(day => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    className="text-xs px-3 py-1.5 rounded-lg transition-all"
+                    style={{
+                      backgroundColor: selectedDays.includes(day.value) ? 'rgba(124,58,237,0.2)' : 'rgba(100,116,139,0.1)',
+                      color: selectedDays.includes(day.value) ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                      border: `1px solid ${selectedDays.includes(day.value) ? 'rgba(124,58,237,0.4)' : 'transparent'}`,
+                      fontWeight: selectedDays.includes(day.value) ? 600 : 400,
+                    }}
+                  >
+                    {day.full}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="input-label">Hora</label>
+                <input type="time" value={time} onChange={e => setTime(e.target.value)} className="input-field text-sm" />
+              </div>
+              <div>
+                <label className="input-label">Canales</label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {CHANNELS.map(ch => (
+                    <button
+                      key={ch.value}
+                      type="button"
+                      onClick={() => toggleChannel(ch.value)}
+                      className="text-xs px-2.5 py-1 rounded-lg transition-all"
+                      style={{
+                        backgroundColor: selectedChannels.includes(ch.value) ? 'rgba(124,58,237,0.15)' : 'rgba(100,116,139,0.1)',
+                        color: selectedChannels.includes(ch.value) ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                        border: `1px solid ${selectedChannels.includes(ch.value) ? 'rgba(124,58,237,0.3)' : 'transparent'}`,
+                      }}
+                    >
+                      {ch.icon} {ch.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {selectedDays.length > 0 && (
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                Se crearán {selectedDays.length} slot{selectedDays.length > 1 ? 's' : ''}: {selectedDays.map(d => DAYS.find(dd => dd.value === d)?.label).join(', ')} a las {time}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2 mt-4">
         <button
-          onClick={() => onSave({ name: name || 'Mi horario', timezone, contentProfileId: contentProfileId || undefined, campaignId: campaignId || undefined })}
+          onClick={handleSave}
           className="btn-primary text-sm"
         >💾 {initial ? 'Guardar' : 'Crear'}</button>
         <button onClick={onCancel} className="btn-ghost text-sm">Cancelar</button>
