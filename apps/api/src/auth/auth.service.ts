@@ -78,7 +78,7 @@ export class AuthService {
 
   // ── Registration ────────────────────────────────────────
 
-  async register(dto: RegisterDto): Promise<{ user: any; tokens: TokenPair; subscription: any }> {
+  async register(dto: RegisterDto): Promise<{ user: any; tokens: TokenPair; workspaceId: string; subscription: any }> {
     // Check if email already exists
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase().trim() },
