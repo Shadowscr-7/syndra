@@ -98,7 +98,7 @@ export class SchedulerService implements OnModuleInit {
       // Not found, proceed to register
     }
 
-    const [hourStr, minuteStr] = slot.time.split(':');
+    const [hourStr = '', minuteStr = ''] = slot.time.split(':');
     const hour = parseInt(hourStr, 10);
     const minute = parseInt(minuteStr, 10);
     const dayNum = DAY_MAP[slot.dayOfWeek];
