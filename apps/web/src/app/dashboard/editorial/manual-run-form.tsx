@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { createEditorialRun } from '@/lib/actions';
 
 interface Campaign {
@@ -16,8 +18,18 @@ const CHANNEL_ICONS: Record<string, string> = {
   discord: '💜',
 };
 
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="btn-primary w-full text-sm disabled:opacity-50">
+      {pending ? '⏳ Creando corrida…' : '🚀 Crear corrida'}
+    </button>
+  );
+}
+
 export function ManualRunForm({ campaigns }: { campaigns: Campaign[] }) {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [state, formAction] = useActionState(createEditorialRun, null);
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId);
   const hasCampaign = !!selectedCampaign;
 
@@ -27,9 +39,14 @@ export function ManualRunForm({ campaigns }: { campaigns: Campaign[] }) {
         🚀 Nueva corrida manual
       </summary>
       <form
-        action={createEditorialRun}
+        action={formAction}
         className="glass-card p-6 mt-4 space-y-4"
       >
+        {state?.error && (
+          <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+            ❌ {state.error}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Campaign select */}
           <div>
@@ -90,9 +107,7 @@ export function ManualRunForm({ campaigns }: { campaigns: Campaign[] }) {
             </div>
           )}
         </div>
-        <button type="submit" className="btn-primary w-full text-sm">
-          🚀 Crear corrida
-        </button>
+        <SubmitButton />
       </form>
     </details>
   );

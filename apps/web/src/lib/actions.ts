@@ -15,29 +15,37 @@ async function requireSession() {
 
 // ── Editorial Run ────────────────────────────────────
 
-export async function createEditorialRun(formData: FormData) {
+export async function createEditorialRun(
+  _prevState: { error?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string } | null> {
   const session = await requireSession();
   const campaignId = formData.get('campaignId') as string || undefined;
   const channels = formData.getAll('channels') as string[];
   const priority = parseInt(formData.get('priority') as string) || 5;
 
-  // Call the API orchestrator to create AND start the pipeline
   const apiUrl = process.env.API_URL || 'http://localhost:3001';
-  const res = await fetch(`${apiUrl}/api/editorial/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      workspaceId: session.workspaceId,
-      campaignId: campaignId || undefined,
-      origin: 'manual',
-      priority,
-      targetChannels: channels.length > 0 ? channels : ['instagram'],
-    }),
-  });
+  try {
+    const res = await fetch(`${apiUrl}/api/editorial/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: session.workspaceId,
+        campaignId: campaignId || undefined,
+        origin: 'manual',
+        priority,
+        targetChannels: channels.length > 0 ? channels : ['instagram'],
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => 'Unknown error');
-    console.error('[createEditorialRun] API error:', err);
+    if (!res.ok) {
+      const err = await res.text().catch(() => 'Unknown error');
+      console.error('[createEditorialRun] API error:', res.status, err);
+      return { error: `Error del servidor (${res.status}): ${err}` };
+    }
+  } catch (err) {
+    console.error('[createEditorialRun] fetch failed:', err);
+    return { error: `No se pudo conectar con la API: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   revalidatePath('/dashboard/editorial');
