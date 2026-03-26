@@ -20,6 +20,8 @@ export interface SynthesizedAudio {
   durationMs: number;
   provider: string;
   voiceId: string;
+  /** WebVTT word-level subtitles (if supported by provider) */
+  subtitlesVtt?: string;
 }
 
 export interface VoiceInfo {

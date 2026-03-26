@@ -107,10 +107,13 @@ export class VideoCompositorService {
         throw new BadRequestException('Máximo 10 imágenes por video');
       }
 
-      // 4. Generate TTS audio
+      // 4. Generate TTS audio (with word-level subtitle timing)
       let ttsAudioUrl: string | undefined;
+      let ttsVtt: string | undefined;
       if (input.narrationText?.trim()) {
-        ttsAudioUrl = await this.generateTTS(input);
+        const ttsResult = await this.generateTTS(input);
+        ttsAudioUrl = ttsResult.url;
+        ttsVtt = ttsResult.subtitlesVtt;
       }
 
       // 5. Generate music (Suno via Kie)
@@ -119,10 +122,16 @@ export class VideoCompositorService {
         musicAudioUrl = await this.generateMusic(input.musicStyle ?? 'upbeat');
       }
 
-      // 6. Generate SRT subtitles
+      // 6. Generate SRT subtitles — prefer real timing from TTS, fallback to estimated
       let srtContent: string | undefined;
       if (input.enableSubtitles && input.narrationText?.trim()) {
-        srtContent = this.generateSRT(input.narrationText);
+        if (ttsVtt) {
+          srtContent = this.vttToGroupedSRT(ttsVtt);
+          this.logger.log(`Using word-level VTT subtitles (${srtContent.split('\n\n').length} segments)`);
+        } else {
+          srtContent = this.generateSRT(input.narrationText);
+          this.logger.log('Using estimated SRT subtitles (no VTT available)');
+        }
       }
 
       // 7. Resolve logo URL
@@ -141,7 +150,7 @@ export class VideoCompositorService {
         };
       }
 
-      // 9. Render with ProVideoRenderer
+      // 9. Render with ProVideoRenderer — duration follows narration length
       const renderer = new ProVideoRenderer();
       const result = await renderer.render({
         imageUrls,
@@ -152,7 +161,6 @@ export class VideoCompositorService {
         srtContent,
         logoUrl,
         productOverlay,
-        maxDuration: 60,
       });
 
       // 10. Upload to Cloudinary or save locally
@@ -260,11 +268,11 @@ export class VideoCompositorService {
 
   // ── TTS ──
 
-  private async generateTTS(input: CompositorInput): Promise<string> {
+  private async generateTTS(input: CompositorInput): Promise<{ url: string; subtitlesVtt?: string }> {
     const voiceId = input.voiceId ?? 'es-AR-ElenaNeural';
     const adapter = new EdgeTTSAdapter(voiceId);
 
-    const text = input.narrationText!.slice(0, 1000);
+    const text = input.narrationText!.slice(0, 2000);
 
     // Map speed: slow=0.85, normal=1.0, fast=1.2
     let speed = 1.0;
@@ -280,7 +288,7 @@ export class VideoCompositorService {
     const audio = await adapter.synthesize(text, { voiceId, speed, pitch });
 
     if (!audio.url) throw new Error('TTS generation failed: no audio URL returned');
-    return audio.url; // data:audio/mp3;base64,...
+    return { url: audio.url, subtitlesVtt: audio.subtitlesVtt };
   }
 
   // ── Music (Suno via Kie) ──
@@ -317,6 +325,51 @@ export class VideoCompositorService {
   }
 
   // ── Subtitles (SRT) ──
+
+  /**
+   * Convert edge-tts VTT (word-level cues) to grouped SRT (3-5 words per caption).
+   * This creates an animated caption effect synced with actual speech timing.
+   */
+  private vttToGroupedSRT(vtt: string): string {
+    // Parse VTT cues: each line has a timestamp range and one or more words
+    const cueRegex = /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\s*\n(.+)/g;
+    const cues: { start: string; end: string; text: string }[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = cueRegex.exec(vtt)) !== null) {
+      cues.push({ start: match[1]!, end: match[2]!, text: match[3]!.trim() });
+    }
+
+    if (cues.length === 0) return '';
+
+    // Group cues into chunks of 3-5 words for readability
+    const WORDS_PER_GROUP = 4;
+    const groups: { start: string; end: string; text: string }[] = [];
+    let currentWords: string[] = [];
+    let groupStart = cues[0]!.start;
+
+    for (let i = 0; i < cues.length; i++) {
+      const cue = cues[i]!;
+      const words = cue.text.split(/\s+/);
+      currentWords.push(...words);
+
+      if (currentWords.length >= WORDS_PER_GROUP || i === cues.length - 1) {
+        groups.push({
+          start: groupStart,
+          end: cue.end,
+          text: currentWords.join(' '),
+        });
+        currentWords = [];
+        if (i + 1 < cues.length) groupStart = cues[i + 1]!.start;
+      }
+    }
+
+    // Convert to SRT format (timestamps: HH:MM:SS,mmm)
+    return groups.map((g, i) => {
+      const srtStart = g.start.replace('.', ',');
+      const srtEnd = g.end.replace('.', ',');
+      return `${i + 1}\n${srtStart} --> ${srtEnd}\n${g.text}`;
+    }).join('\n\n') + '\n';
+  }
 
   private generateSRT(text: string): string {
     // Split text into sentences

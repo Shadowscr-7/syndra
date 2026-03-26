@@ -1,7 +1,7 @@
 // ============================================================
 // Pro Video Renderer — FFmpeg compositor profesional
-// Genera videos con: imágenes, TTS, subtítulos, música, overlays
-// Máximo 60 segundos. Gratis en terms de API externa.
+// Genera videos con: imágenes (Ken Burns), TTS, subtítulos animados,
+// música, overlays. Duración adaptativa según narración.
 // ============================================================
 
 import { execFile } from 'child_process';
@@ -20,7 +20,7 @@ export interface ProVideoInput {
   aspectRatio?: '9:16' | '16:9' | '1:1';
   /** Duration per slide in seconds (auto-calculated if audio) */
   slideDuration?: number;
-  /** Crossfade transition duration (default: 0.8) */
+  /** Crossfade transition duration (default: 1.0) */
   transitionDuration?: number;
 
   // Audio
@@ -34,7 +34,7 @@ export interface ProVideoInput {
   // Subtitles
   /** SRT subtitle content */
   srtContent?: string;
-  /** Subtitle font size (default: 24) */
+  /** Subtitle font size (default: 22) */
   subtitleFontSize?: number;
 
   // Product mode overlays
@@ -46,9 +46,6 @@ export interface ProVideoInput {
     price?: string;
     cta?: string;
   };
-
-  /** Max total duration in seconds (default: 60) */
-  maxDuration?: number;
 }
 
 export interface ProVideoResult {
@@ -66,21 +63,27 @@ const ASPECT_DIMENSIONS: Record<string, { w: number; h: number }> = {
   '1:1': { w: 1080, h: 1080 },
 };
 
+// Varied xfade transitions for visual interest
+const XFADE_TRANSITIONS = [
+  'fade', 'slideright', 'slideleft', 'slideup', 'slidedown',
+  'smoothleft', 'smoothright', 'circlecrop', 'dissolve',
+  'vertopen', 'horzopen',
+];
+
 export class ProVideoRenderer {
 
   async render(input: ProVideoInput): Promise<ProVideoResult> {
     const {
       imageUrls,
       aspectRatio = '9:16',
-      transitionDuration = 0.8,
+      transitionDuration = 1.0,
       ttsAudioUrl,
       musicAudioUrl,
       musicVolume = 0.25,
       srtContent,
-      subtitleFontSize = 24,
+      subtitleFontSize = 22,
       logoUrl,
       productOverlay,
-      maxDuration = 60,
     } = input;
 
     if (!imageUrls.length) {
@@ -114,19 +117,18 @@ export class ProVideoRenderer {
         ttsDuration = await this.getAudioDuration(ttsPath);
       }
 
-      // 5. Calculate slide durations
+      // 5. Calculate slide durations — NO hard cap, duration follows narration
       const n = imagePaths.length;
       const totalTransitions = (n - 1) * transitionDuration;
       let slideDuration = input.slideDuration ?? 4;
 
       if (ttsDuration > 0) {
-        // Distribute slides across TTS duration
-        const targetDuration = Math.min(ttsDuration + 1, maxDuration);
+        // Add 1.5s breathing room after narration
+        const targetDuration = ttsDuration + 1.5;
         slideDuration = Math.max(2, (targetDuration + totalTransitions) / n);
       }
 
-      const rawDuration = n * slideDuration - totalTransitions;
-      const totalDuration = Math.min(rawDuration, maxDuration);
+      const totalDuration = n * slideDuration - totalTransitions;
 
       // 6. Save SRT subtitles
       let srtPath: string | undefined;
@@ -283,10 +285,10 @@ export class ProVideoRenderer {
       const args: string[] = ['-y'];
       const n = imagePaths.length;
       let inputIndex = 0;
+      const fps = 30;
 
       // --- Inputs ---
-
-      // Images
+      // Each image gets zoompan (Ken Burns) as input
       for (const imgPath of imagePaths) {
         args.push('-loop', '1', '-t', String(slideDuration), '-i', imgPath);
         inputIndex++;
@@ -306,35 +308,41 @@ export class ProVideoRenderer {
 
       // --- Filter graph ---
       const filters: string[] = [];
+      const framesPerSlide = Math.round(slideDuration * fps);
 
-      // 1. Scale + pad each image
+      // 1. Scale + Ken Burns (zoompan) for each image
       for (let i = 0; i < n; i++) {
+        const kb = this.getKenBurnsEffect(i, framesPerSlide);
         filters.push(
-          `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,` +
+          `[${i}:v]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=decrease,` +
+          `pad=${width * 2}:${height * 2}:(ow-iw)/2:(oh-ih)/2:black,` +
+          `zoompan=${kb}:d=${framesPerSlide}:s=${width}x${height}:fps=${fps},` +
           `setsar=1,format=yuv420p[v${i}]`,
         );
       }
 
-      // 2. Crossfade transitions
+      // 2. Crossfade transitions (varied types)
       if (n === 1) {
         filters.push(`[v0]null[vslides]`);
       } else if (n === 2) {
         const offset = slideDuration - transitionDuration;
+        const trans = XFADE_TRANSITIONS[0]!;
         filters.push(
-          `[v0][v1]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}[vslides]`,
+          `[v0][v1]xfade=transition=${trans}:duration=${transitionDuration}:offset=${offset}[vslides]`,
         );
       } else {
         let offset = slideDuration - transitionDuration;
+        const t0 = XFADE_TRANSITIONS[0 % XFADE_TRANSITIONS.length]!;
         filters.push(
-          `[v0][v1]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}[xf0]`,
+          `[v0][v1]xfade=transition=${t0}:duration=${transitionDuration}:offset=${offset}[xf0]`,
         );
         for (let i = 2; i < n; i++) {
           offset += slideDuration - transitionDuration;
+          const trans = XFADE_TRANSITIONS[(i - 1) % XFADE_TRANSITIONS.length]!;
           const prevLabel = `xf${i - 2}`;
           const outLabel = i === n - 1 ? 'vslides' : `xf${i - 1}`;
           filters.push(
-            `[${prevLabel}][v${i}]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}[${outLabel}]`,
+            `[${prevLabel}][v${i}]xfade=transition=${trans}:duration=${transitionDuration}:offset=${offset}[${outLabel}]`,
           );
         }
       }
@@ -391,25 +399,24 @@ export class ProVideoRenderer {
         }
       }
 
-      // 5. Subtitles (burn-in)
+      // 5. Subtitles (burn-in with styled font)
       if (srtPath) {
         const escapedPath = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+        // Use bold, rounded style with background box for readability
         filters.push(
           `[${videoLabel}]subtitles='${escapedPath}':` +
-          `force_style='FontSize=${subtitleFontSize},PrimaryColour=&HFFFFFF,` +
-          `OutlineColour=&H000000,BorderStyle=3,Outline=2,Shadow=1,` +
-          `Alignment=2,MarginV=60'[vsub]`,
+          `force_style='FontName=Noto Sans,FontSize=${subtitleFontSize},Bold=1,` +
+          `PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,` +
+          `BorderStyle=4,Outline=1,Shadow=0,Alignment=2,MarginV=80,MarginL=40,MarginR=40'[vsub]`,
         );
         videoLabel = 'vsub';
       }
 
       // Final video label
       if (videoLabel !== 'vsub' && videoLabel !== 'vtext' && videoLabel !== 'vlogo') {
-        // No post-processing, rename
         filters.push(`[${videoLabel}]null[vfinal]`);
         videoLabel = 'vfinal';
       } else {
-        // Rename to vfinal
         const lastFilter = filters[filters.length - 1]!;
         const currentLabel = lastFilter.match(/\[(\w+)\]$/)?.[1];
         if (currentLabel && currentLabel !== 'vfinal') {
@@ -424,7 +431,6 @@ export class ProVideoRenderer {
       // 6. Audio mixing (TTS + Music)
       let audioLabel: string | undefined;
       if (ttsInputIdx >= 0 && musicInputIdx >= 0) {
-        // Mix TTS (full volume) + music (reduced)
         filters.push(
           `[${musicInputIdx}:a]volume=${musicVolume}[musiclow]`,
         );
@@ -455,19 +461,20 @@ export class ProVideoRenderer {
         args.push('-c:a', 'aac', '-b:a', '192k');
       }
 
+      // No hard duration cap — let the video run its full length
       args.push(
         '-c:v', 'libx264',
         '-preset', 'medium',
         '-crf', '20',
         '-pix_fmt', 'yuv420p',
-        '-t', String(Math.min(totalDuration, 60)),
+        '-t', String(Math.ceil(totalDuration)),
         '-movflags', '+faststart',
         outputPath,
       );
 
-      console.log(`[ProVideo] FFmpeg: ${n} images, tts=${!!ttsPath}, music=${!!musicPath}, srt=${!!srtPath}, logo=${!!logoPath}, duration=${totalDuration}s`);
+      console.log(`[ProVideo] FFmpeg: ${n} images, tts=${!!ttsPath}, music=${!!musicPath}, srt=${!!srtPath}, logo=${!!logoPath}, duration=${totalDuration.toFixed(1)}s`);
 
-      execFile('ffmpeg', args, { timeout: 180_000 }, (error, _stdout, stderr) => {
+      execFile('ffmpeg', args, { timeout: 600_000 }, (error, _stdout, stderr) => {
         if (error) {
           console.error(`[ProVideo] FFmpeg error:`, error.message);
           console.error(`[ProVideo] FFmpeg stderr:`, stderr?.slice(-800));
@@ -478,6 +485,26 @@ export class ProVideoRenderer {
         }
       });
     });
+  }
+
+  /**
+   * Generate Ken Burns (zoompan) effect parameters.
+   * Alternates between zoom-in, zoom-out, pan-left, pan-right for variety.
+   */
+  private getKenBurnsEffect(index: number, frames: number): string {
+    const effects = [
+      // Slow zoom in (center)
+      `z='min(zoom+0.0015,1.25)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+      // Slow zoom out
+      `z='if(eq(on,1),1.25,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+      // Pan left to right + slight zoom
+      `z='min(zoom+0.0008,1.15)':x='if(eq(on,1),0,min(x+2,iw-iw/zoom))':y='ih/2-(ih/zoom/2)'`,
+      // Pan right to left + slight zoom
+      `z='min(zoom+0.0008,1.15)':x='if(eq(on,1),iw/2,max(x-2,0))':y='ih/2-(ih/zoom/2)'`,
+      // Zoom in top-left to center
+      `z='min(zoom+0.0012,1.2)':x='if(eq(on,1),0,(iw/2-(iw/zoom/2))*on/${frames})':y='if(eq(on,1),0,(ih/2-(ih/zoom/2))*on/${frames})'`,
+    ];
+    return effects[index % effects.length]!;
   }
 
   private escapeFFmpegText(text: string): string {
