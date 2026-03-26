@@ -410,15 +410,27 @@ export class VideoCompositorService {
    * Groups words into 3-5 word segments with precise ms timing.
    */
   private vttToSubtitleGroups(vtt: string): SubtitleGroupInput[] {
-    const cueRegex = /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\s*\n(.+)/g;
+    // Normalize line endings (edge-tts may use \r\n)
+    const normalized = vtt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // Match cues: timestamp --> timestamp \n text (handle optional cue ids and extra whitespace)
+    const cueRegex = /(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})[^\n]*\n([^\n]+)/g;
     const cues: { startMs: number; endMs: number; text: string }[] = [];
     let match: RegExpExecArray | null;
-    while ((match = cueRegex.exec(vtt)) !== null) {
+    while ((match = cueRegex.exec(normalized)) !== null) {
+      const text = match[3]!.trim().replace(/<[^>]+>/g, ''); // Strip HTML tags from VTT
+      if (!text) continue;
       cues.push({
-        startMs: this.timeToMs(match[1]!),
-        endMs: this.timeToMs(match[2]!),
-        text: match[3]!.trim(),
+        startMs: this.timeToMs(match[1]!.replace(',', '.')),
+        endMs: this.timeToMs(match[2]!.replace(',', '.')),
+        text,
       });
+    }
+
+    this.logger.log(`VTT parsing: ${normalized.length} chars, ${cues.length} cues found`);
+    if (cues.length === 0 && normalized.length > 0) {
+      // Log first 300 chars for debugging
+      this.logger.warn(`VTT content (first 300 chars): ${normalized.slice(0, 300)}`);
     }
 
     if (cues.length === 0) return [];
