@@ -27,7 +27,7 @@ export interface RemotionRenderInput {
   musicAudioUrl?: string;         // HTTP URL
   musicVolume?: number;
   subtitleGroups?: SubtitleGroupInput[];
-  subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal';
+  subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon';
   overlayTheme?: 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
   logoUrl?: string;
   productOverlay?: { name?: string; price?: string; cta?: string };
