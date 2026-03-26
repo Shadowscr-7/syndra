@@ -1,9 +1,14 @@
 // ============================================================
 // Edge TTS Voice Adapter — Microsoft Edge TTS (gratis, sin API key)
-// Usa el endpoint público de Microsoft Edge para síntesis de voz
+// Usa el CLI edge-tts (pip) o el endpoint público de Microsoft Edge
 // ============================================================
 
 import type { VoiceSynthesisAdapter, VoiceSynthesisOptions, SynthesizedAudio, VoiceInfo } from './voice-synthesis';
+import { execFile } from 'child_process';
+import { readFile as fsReadFile, unlink } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
 
 // Voces de Edge TTS disponibles en español
 const EDGE_VOICES: VoiceInfo[] = [
@@ -36,8 +41,21 @@ export class EdgeTTSAdapter implements VoiceSynthesisAdapter {
   async synthesize(text: string, options?: VoiceSynthesisOptions): Promise<SynthesizedAudio> {
     const voiceId = options?.voiceId ?? this.defaultVoice;
     const speed = options?.speed ?? 1.0;
+    const words = text.split(/\s+/).length;
+    const durationMs = Math.round((words / (150 * speed)) * 60 * 1000);
 
-    // Build SSML
+    // 1. Try edge-tts CLI (most reliable in Docker containers)
+    try {
+      const audioBuffer = await this.synthesizeViaCLI(text, voiceId, speed);
+      if (audioBuffer && audioBuffer.byteLength > 0) {
+        const base64 = Buffer.from(audioBuffer).toString('base64');
+        return { url: `data:audio/mp3;base64,${base64}`, durationMs, provider: 'edge-tts-cli', voiceId };
+      }
+    } catch {
+      // CLI not available, try REST
+    }
+
+    // 2. Try REST API fallback
     const ratePercent = Math.round((speed - 1) * 100);
     const rateStr = ratePercent >= 0 ? `+${ratePercent}%` : `${ratePercent}%`;
     const ssml = `
@@ -51,36 +69,33 @@ export class EdgeTTSAdapter implements VoiceSynthesisAdapter {
     `.trim();
 
     try {
-      // Intentar usar el endpoint REST de Azure Cognitive Services (free tier)
-      // Este es el mismo backend que usa Edge TTS
       const audioBuffer = await this.synthesizeViaRest(ssml);
-
       if (audioBuffer && audioBuffer.byteLength > 0) {
         const base64 = Buffer.from(audioBuffer).toString('base64');
-        const words = text.split(/\s+/).length;
-        const durationMs = Math.round((words / (150 * speed)) * 60 * 1000);
-
-        return {
-          url: `data:audio/mp3;base64,${base64}`,
-          durationMs,
-          provider: 'edge-tts',
-          voiceId,
-        };
+        return { url: `data:audio/mp3;base64,${base64}`, durationMs, provider: 'edge-tts', voiceId };
       }
     } catch {
-      // Fallback silencioso
+      // REST also failed
     }
 
-    // Fallback: generar URL placeholder que indica que Edge TTS necesita el CLI
-    const words = text.split(/\s+/).length;
-    const durationMs = Math.round((words / (150 * speed)) * 60 * 1000);
+    throw new Error(`Edge TTS synthesis failed for voice ${voiceId} — both CLI and REST unavailable`);
+  }
 
-    return {
-      url: `edge-tts://${voiceId}?text=${encodeURIComponent(text.slice(0, 200))}`,
-      durationMs,
-      provider: 'edge-tts',
-      voiceId,
-    };
+  private synthesizeViaCLI(text: string, voiceId: string, speed: number): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const outFile = join(tmpdir(), `tts-${randomUUID()}.mp3`);
+      const rateStr = speed >= 1 ? `+${Math.round((speed - 1) * 100)}%` : `${Math.round((speed - 1) * 100)}%`;
+      const args = ['--voice', voiceId, '--rate', rateStr, '--text', text.slice(0, 2000), '--write-media', outFile];
+
+      execFile('edge-tts', args, { timeout: 60_000 }, async (err) => {
+        if (err) { reject(err); return; }
+        try {
+          const buf = await fsReadFile(outFile);
+          await unlink(outFile).catch(() => {});
+          resolve(buf);
+        } catch (e) { reject(e); }
+      });
+    });
   }
 
   private async synthesizeViaRest(ssml: string): Promise<ArrayBuffer | null> {
