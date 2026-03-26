@@ -431,39 +431,44 @@ export class VideoCompositorService {
       modelId: 'ideogram/v3-text-to-image',
     });
 
-    // Map aspect ratio
+    // Map aspect ratio to Ideogram V3 image_size values
     const sizeMap: Record<string, string> = {
-      '9:16': 'ASPECT_9_16',
-      '16:9': 'ASPECT_16_9',
-      '1:1': 'ASPECT_1_1',
+      '9:16': 'portrait_16_9',
+      '16:9': 'landscape_16_9',
+      '1:1': 'square_hd',
     };
 
-    this.logger.log(`Generating image: prompt="${opts.prompt.slice(0, 80)}...", lang=${opts.language}, text=${opts.includeText}`);
+    this.logger.log(`Generating image: user=${opts.userId}, ws=${opts.workspaceId}, prompt="${opts.prompt.slice(0, 80)}...", lang=${opts.language}, text=${opts.includeText}`);
 
-    const result = await adapter.generate(finalPrompt, {
-      imageSize: sizeMap[opts.aspectRatio] || 'ASPECT_9_16',
-    });
+    try {
+      const result = await adapter.generate(finalPrompt, {
+        imageSize: sizeMap[opts.aspectRatio] || 'square_hd',
+      });
 
-    if (!result.url) throw new BadRequestException('La generación de imagen falló');
+      if (!result.url) throw new BadRequestException('La generación de imagen falló — sin URL');
 
-    // Save as UserMedia
-    const userMedia = await this.prisma.userMedia.create({
-      data: {
-        userId: opts.userId,
-        filename: `ideogram_${Date.now()}.png`,
-        url: result.url,
-        thumbnailUrl: result.url,
-        mimeType: 'image/png',
-        sizeBytes: 0,
-        category: 'BACKGROUND' as any,
-        tags: ['video-compositor', 'ai-generated'],
-      },
-    });
+      // Save as UserMedia
+      const userMedia = await this.prisma.userMedia.create({
+        data: {
+          userId: opts.userId,
+          filename: `ideogram_${Date.now()}.png`,
+          url: result.url,
+          thumbnailUrl: result.url,
+          mimeType: 'image/png',
+          sizeBytes: 0,
+          category: 'BACKGROUND' as any,
+          tags: ['video-compositor', 'ai-generated'],
+        },
+      });
 
-    // Consume credits
-    await this.credits.consumeCredits(opts.workspaceId, 'VIDEO_COMPOSITOR', 'Ideogram image for compositor');
+      // Consume credits
+      await this.credits.consumeCredits(opts.workspaceId, 'VIDEO_COMPOSITOR', 'Ideogram image for compositor');
 
-    return { success: true, imageUrl: result.url, userMediaId: userMedia.id };
+      return { success: true, imageUrl: result.url, userMediaId: userMedia.id };
+    } catch (error: any) {
+      this.logger.error(`Image generation failed: ${error.message}`, error.stack);
+      throw new BadRequestException(`Error generando imagen: ${error.message}`);
+    }
   }
 
   // ── Improve narration with AI ──
