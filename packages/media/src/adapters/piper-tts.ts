@@ -38,7 +38,7 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
   private readonly defaultVoice: string;
 
   constructor(options?: { piperBin?: string; modelsDir?: string; defaultVoice?: string }) {
-    this.piperBin = options?.piperBin ?? process.env.PIPER_BIN ?? '/usr/bin/piper';
+    this.piperBin = options?.piperBin ?? process.env.PIPER_BIN ?? '/opt/piper/piper';
     this.modelsDir = options?.modelsDir ?? process.env.PIPER_MODELS_DIR ?? '/opt/piper-models';
     this.defaultVoice = options?.defaultVoice ?? 'es_ES-sharvard-medium';
   }
@@ -47,7 +47,7 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
    * Check if Piper binary and at least one model are available.
    */
   static isAvailable(): boolean {
-    const piperBin = process.env.PIPER_BIN ?? '/usr/bin/piper';
+    const piperBin = process.env.PIPER_BIN ?? '/opt/piper/piper';
     const modelsDir = process.env.PIPER_MODELS_DIR ?? '/opt/piper-models';
     return existsSync(piperBin) && existsSync(modelsDir);
   }
