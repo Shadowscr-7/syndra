@@ -27,6 +27,8 @@ ENV PIPER_MODELS_DIR=/opt/piper-models
 ENV LD_LIBRARY_PATH=/opt/piper
 
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium-browser
 
 # ---- Stage 1: Install dependencies ----
 FROM base AS deps

@@ -117,10 +117,16 @@ export class RemotionVideoRenderer {
 
       const { renderMedia, selectComposition } = await import('@remotion/renderer');
 
+      const chromiumPath = this.findChromium();
+
       const composition = await selectComposition({
         serveUrl: bundleUrl,
         id: 'VideoCompositor',
         inputProps,
+        browserExecutable: chromiumPath,
+        chromiumOptions: {
+          enableMultiProcessOnLinux: true,
+        },
       });
 
       await renderMedia({
@@ -139,7 +145,7 @@ export class RemotionVideoRenderer {
         chromiumOptions: {
           enableMultiProcessOnLinux: true,
         },
-        browserExecutable: this.findChromium(),
+        browserExecutable: chromiumPath,
       });
 
       console.log(`[Remotion] Render complete: ${outputPath} (${durationSeconds.toFixed(1)}s, ${durationInFrames} frames)`);
