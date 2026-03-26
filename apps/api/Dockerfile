@@ -1,34 +1,49 @@
 # ============================================================
 # Dockerfile — API (NestJS 11)
 # Multi-stage build: install → build → production
+# Debian Bookworm for native glibc (Piper/ONNX Runtime need it)
 # ============================================================
 
-FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl netcat-openbsd ffmpeg python3 py3-pip \
-    fontconfig font-noto font-noto-emoji ttf-dejavu \
-    chromium nss freetype harfbuzz ca-certificates
+FROM node:20-bookworm-slim AS base
+
+# System dependencies (Debian equivalents)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl netcat-openbsd ffmpeg python3 python3-pip \
+    fontconfig fonts-noto fonts-noto-color-emoji fonts-dejavu-core \
+    chromium libnss3 libfreetype6 libharfbuzz0b ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --break-system-packages edge-tts
 RUN fc-cache -f
 
 # Install Piper TTS (offline, natural-sounding voices)
-# Extract full piper directory (binary + shared libs: libespeak-ng, libpiper_phonemize, libonnxruntime)
-RUN mkdir -p /opt/piper-models /opt/piper && \
+# glibc binary — works natively on Debian (failed on Alpine/musl)
+RUN mkdir -p /opt/piper-models && \
     wget -q https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz -O /tmp/piper.tar.gz && \
     tar xzf /tmp/piper.tar.gz -C /opt/ && \
     ln -sf /opt/piper/piper /usr/local/bin/piper && \
-    rm /tmp/piper.tar.gz || true
+    rm /tmp/piper.tar.gz
 
-# Download Spanish Piper voice model (sharvard-medium, ~60MB)
-RUN wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx -O /opt/piper-models/es_ES-sharvard-medium.onnx && \
-    wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json -O /opt/piper-models/es_ES-sharvard-medium.onnx.json || true
+# Download Spanish Piper voice models
+RUN wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx \
+      -O /opt/piper-models/es_ES-sharvard-medium.onnx && \
+    wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json \
+      -O /opt/piper-models/es_ES-sharvard-medium.onnx.json
+
+# Download Mexican Spanish voice model
+RUN wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_MX/ald/medium/es_MX-ald-medium.onnx \
+      -O /opt/piper-models/es_MX-ald-medium.onnx && \
+    wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_MX/ald/medium/es_MX-ald-medium.onnx.json \
+      -O /opt/piper-models/es_MX-ald-medium.onnx.json
 
 ENV PIPER_BIN=/opt/piper/piper
 ENV PIPER_MODELS_DIR=/opt/piper-models
 ENV LD_LIBRARY_PATH=/opt/piper
 
-ENV CHROMIUM_PATH=/usr/bin/chromium-browser
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium-browser
+# Chromium in Debian is at /usr/bin/chromium (no -browser suffix)
+ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium
 
 # ---- Stage 1: Install dependencies ----
 FROM base AS deps

@@ -79,8 +79,13 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
       const mp3Data = await fsReadFile(mp3Path);
       const base64 = mp3Data.toString('base64');
 
-      // 4. Estimate duration (Piper doesn't provide exact timestamps)
-      const durationMs = await this.estimateAudioDuration(wavPath);
+      // 4. Get accurate audio duration via ffprobe
+      let durationMs: number;
+      try {
+        durationMs = await this.getAudioDurationMs(mp3Path);
+      } catch {
+        durationMs = await this.estimateAudioDuration(wavPath);
+      }
 
       // 5. Generate estimated subtitle timing
       const subtitlesVtt = this.generateEstimatedVtt(text, durationMs);
@@ -133,6 +138,7 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
     return new Promise((resolve, reject) => {
       const lengthScale = speed > 0 ? (1 / speed) : 1.0;
 
+      let stderrData = '';
       const proc = execFile(
         this.piperBin,
         [
@@ -142,10 +148,15 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
         ],
         { timeout: 60000, maxBuffer: 10 * 1024 * 1024 },
         (error) => {
-          if (error) reject(new Error(`Piper failed: ${error.message}`));
+          if (error) reject(new Error(`Piper failed: ${error.message}${stderrData ? ` | stderr: ${stderrData.slice(0, 500)}` : ''}`));
           else resolve();
         },
       );
+
+      // Capture stderr for diagnostics
+      if (proc.stderr) {
+        proc.stderr.on('data', (chunk: Buffer) => { stderrData += chunk.toString(); });
+      }
 
       // Pipe text to stdin
       if (proc.stdin) {
@@ -166,6 +177,24 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
       ], { timeout: 30000 }, (error) => {
         if (error) reject(new Error(`FFmpeg wav→mp3 failed: ${error.message}`));
         else resolve();
+      });
+    });
+  }
+
+  private getAudioDurationMs(filePath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      execFile('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ], { timeout: 10_000 }, (err, stdout) => {
+        if (err || !stdout.trim()) {
+          // Fallback: estimate from WAV header
+          reject(err ?? new Error('no duration'));
+        } else {
+          resolve(Math.round(parseFloat(stdout.trim()) * 1000));
+        }
       });
     });
   }
