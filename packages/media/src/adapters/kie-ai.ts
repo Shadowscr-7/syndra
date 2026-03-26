@@ -141,6 +141,17 @@ export class KieMusicAdapter {
         duration = sunoData[0].duration;
       }
 
+      // FIRST_SUCCESS without audioUrl means audio is still processing — keep polling
+      if (!audioUrl && status === 'FIRST_SUCCESS') {
+        console.log('[KIE-MUSIC] FIRST_SUCCESS but no audioUrl yet, continuing poll...');
+        return {
+          taskId,
+          status: 'processing',
+          provider: 'kie-suno',
+          metadata: { raw: data },
+        };
+      }
+
       return {
         taskId,
         status: 'completed',

@@ -143,7 +143,7 @@ export class RemotionVideoRenderer {
         codec: 'h264',
         outputLocation: outputPath,
         inputProps,
-        concurrency: 2,
+        concurrency: 4,
         chromiumOptions: {
           enableMultiProcessOnLinux: true,
         },

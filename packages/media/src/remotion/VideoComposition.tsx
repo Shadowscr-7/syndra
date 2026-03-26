@@ -438,7 +438,7 @@ const GradientOverlay: React.FC<{ theme: OverlayTheme }> = ({ theme }) => {
 };
 
 // Floating particles effect
-const FloatingParticles: React.FC<{ theme: OverlayTheme; count?: number }> = ({ theme, count = 12 }) => {
+const FloatingParticles: React.FC<{ theme: OverlayTheme; count?: number }> = ({ theme, count = 6 }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   if (theme === 'none' || theme === 'minimal') return null;
