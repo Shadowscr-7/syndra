@@ -21,6 +21,17 @@ const PIPER_VOICES: VoiceInfo[] = [
   { id: 'en_US-lessac-medium', name: 'Lessac (US English)', language: 'en-US', gender: 'male' },
 ];
 
+// Map Edge TTS voice IDs to Piper model names by language prefix
+const EDGE_TO_PIPER_MAP: Record<string, string> = {
+  'es-AR': 'es_ES-sharvard-medium',
+  'es-MX': 'es_MX-ald-medium',
+  'es-ES': 'es_ES-sharvard-medium',
+  'es-CO': 'es_ES-sharvard-medium',
+  'es-CL': 'es_ES-sharvard-medium',
+  'en-US': 'en_US-amy-medium',
+  'en-GB': 'en_US-lessac-medium',
+};
+
 export class PiperTTSAdapter implements VoiceSynthesisAdapter {
   private readonly piperBin: string;
   private readonly modelsDir: string;
@@ -42,8 +53,11 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
   }
 
   async synthesize(text: string, options?: VoiceSynthesisOptions): Promise<SynthesizedAudio> {
-    const voiceId = options?.voiceId ?? this.defaultVoice;
+    const rawVoiceId = options?.voiceId ?? this.defaultVoice;
     const speed = options?.speed ?? 1.0;
+
+    // Resolve Edge TTS voice IDs (e.g. "es-AR-ElenaNeural") to Piper model names
+    const voiceId = this.resolvePiperVoice(rawVoiceId);
 
     const modelPath = join(this.modelsDir, `${voiceId}.onnx`);
     if (!existsSync(modelPath)) {
@@ -91,6 +105,28 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
       const modelPath = join(this.modelsDir, `${v.id}.onnx`);
       return existsSync(modelPath);
     });
+  }
+
+  /**
+   * Resolve an Edge TTS voice ID (e.g. "es-AR-ElenaNeural") to a Piper model name.
+   * If already a Piper model name (contains underscore), returns as-is.
+   */
+  private resolvePiperVoice(voiceId: string): string {
+    // Already a Piper voice (e.g. "es_ES-sharvard-medium")
+    if (voiceId.includes('_')) return voiceId;
+
+    // Try mapping by language prefix (e.g. "es-AR" from "es-AR-ElenaNeural")
+    const parts = voiceId.split('-');
+    if (parts.length >= 2) {
+      const langPrefix = `${parts[0]}-${parts[1]}`;
+      if (EDGE_TO_PIPER_MAP[langPrefix]) return EDGE_TO_PIPER_MAP[langPrefix];
+    }
+
+    // Fallback by first segment (es → Spanish, en → English)
+    if (parts[0] === 'es') return 'es_ES-sharvard-medium';
+    if (parts[0] === 'en') return 'en_US-amy-medium';
+
+    return this.defaultVoice;
   }
 
   private runPiper(text: string, voiceId: string, modelPath: string, outputPath: string, speed: number): Promise<void> {
