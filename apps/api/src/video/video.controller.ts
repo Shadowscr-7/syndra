@@ -7,6 +7,7 @@ import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
 import { VideoCompositorService, AVAILABLE_VOICES } from './video-compositor.service';
+import { VIDEO_PRESETS } from './video-presets';
 import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
 import { UseCredits, CreditGuard } from '../credits/credit.guard';
 import { CreditInterceptor } from '../credits/credit.interceptor';
@@ -141,6 +142,42 @@ export class VideoController {
     return { data: AVAILABLE_VOICES };
   }
 
+  /**
+   * GET /api/videos/compositor/presets — Presets de video disponibles
+   */
+  @Get('compositor/presets')
+  getPresets() {
+    return { data: VIDEO_PRESETS };
+  }
+
+  /**
+   * POST /api/videos/compositor/generate-script — Genera guión completo con IA
+   */
+  @Post('compositor/generate-script')
+  async generateScript(
+    @Body() body: {
+      topic: string;
+      intent: string;
+      targetPlatform: 'reels' | 'tiktok' | 'stories' | 'youtube-shorts';
+      duration?: number;
+      language?: string;
+      productInfo?: { name?: string; price?: string; features?: string };
+    },
+  ) {
+    if (!body.topic?.trim()) {
+      throw new BadRequestException('Se requiere un tema (topic)');
+    }
+    this.logger.log(`Generate script: topic="${body.topic}", platform=${body.targetPlatform}, intent=${body.intent}`);
+    return this.compositor.generateScript({
+      topic: body.topic.trim(),
+      intent: body.intent ?? 'informar',
+      targetPlatform: body.targetPlatform ?? 'reels',
+      duration: body.duration,
+      language: body.language,
+      productInfo: body.productInfo,
+    });
+  }
+
   // ── Rutas con parámetro dinámico (al final de los GET) ────────────
 
   /**
@@ -257,12 +294,23 @@ export class VideoController {
     @Body() body: {
       imageIds?: string[];
       imageUrls?: string[];
+      imageSlides?: Array<{
+        mediaId?: string;
+        url?: string;
+        role?: 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
+        order?: number;
+        durationMs?: number;
+        animation?: 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
+        caption?: string;
+      }>;
       aspectRatio?: '9:16' | '16:9' | '1:1';
       narrationText?: string;
       voiceId?: string;
       voiceSpeed?: 'slow' | 'normal' | 'fast';
       voiceTone?: 'low' | 'normal' | 'high';
+      voiceEngine?: 'edge' | 'piper';
       enableSubtitles?: boolean;
+      subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke';
       enableMusic?: boolean;
       musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
       mode?: 'general' | 'product';
@@ -276,11 +324,11 @@ export class VideoController {
     const userId = req.user?.sub;
     const workspaceId = req.workspaceId;
 
-    if (!body.imageIds?.length && !body.imageUrls?.length) {
+    if (!body.imageIds?.length && !body.imageUrls?.length && !body.imageSlides?.length) {
       throw new Error('Se necesita al menos una imagen');
     }
 
-    this.logger.log(`Compositor render: ${body.imageIds?.length ?? 0} images, mode=${body.mode ?? 'general'}`);
+    this.logger.log(`Compositor render: ${body.imageSlides?.length ?? body.imageIds?.length ?? 0} images, mode=${body.mode ?? 'general'}`);
 
     return this.compositor.render({
       workspaceId,

@@ -10,6 +10,20 @@ RUN apk add --no-cache libc6-compat openssl netcat-openbsd ffmpeg python3 py3-pi
 RUN pip3 install --break-system-packages edge-tts
 RUN fc-cache -f
 
+# Install Piper TTS (offline, natural-sounding voices)
+RUN mkdir -p /opt/piper-models && \
+    wget -q https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz -O /tmp/piper.tar.gz && \
+    tar xzf /tmp/piper.tar.gz -C /usr/local/bin/ --strip-components=1 piper/piper && \
+    chmod +x /usr/local/bin/piper && \
+    rm /tmp/piper.tar.gz || true
+
+# Download Spanish Piper voice model (sharvard-medium, ~60MB)
+RUN wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx -O /opt/piper-models/es_ES-sharvard-medium.onnx && \
+    wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json -O /opt/piper-models/es_ES-sharvard-medium.onnx.json || true
+
+ENV PIPER_BIN=/usr/local/bin/piper
+ENV PIPER_MODELS_DIR=/opt/piper-models
+
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
 # ---- Stage 1: Install dependencies ----

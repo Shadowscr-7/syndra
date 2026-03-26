@@ -8,6 +8,18 @@ import { UserMediaPicker } from '@/components/media-picker';
 
 type Tab = 'compositor' | 'kie';
 type AspectRatio = '9:16' | '16:9' | '1:1';
+type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
+type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
+
+interface StoryboardSlideUI {
+  mediaId: string;
+  thumbnailUrl?: string;
+  role: SlideRole;
+  order: number;
+  durationMs?: number;
+  animation: SlideAnimation;
+  caption: string;
+}
 
 interface Voice {
   id: string;
@@ -31,6 +43,20 @@ interface Credits {
   unlimited: boolean;
   totalPurchased: number;
   totalConsumed: number;
+}
+
+interface VideoPreset {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  slideRoles: Array<{ role: string; label: string; suggested?: boolean }>;
+  defaultAnimation: string;
+  musicStyle: string;
+  subtitleStyle: string;
+  narrationPlaceholder: string;
+  narrationIntent: string;
+  slideDurationsMs?: number[];
 }
 
 interface ImagePromptEntry {
@@ -69,6 +95,7 @@ export default function VideoPipelinePage() {
   const [tab, setTab] = useState<Tab>('compositor');
   const [credits, setCredits] = useState<Credits | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [presets, setPresets] = useState<VideoPreset[]>([]);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -81,6 +108,7 @@ export default function VideoPipelinePage() {
   const [compSubtitles, setCompSubtitles] = useState(true);
   const [compMusic, setCompMusic] = useState(false);
   const [compMusicStyle, setCompMusicStyle] = useState<'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic'>('upbeat');
+  const [compVoiceEngine, setCompVoiceEngine] = useState<'edge' | 'piper'>('edge');
   const [compMode, setCompMode] = useState<'general' | 'product'>('general');
   const [compLogoIds, setCompLogoIds] = useState<string[]>([]);
   const [compProductImageIds, setCompProductImageIds] = useState<string[]>([]);
@@ -88,6 +116,11 @@ export default function VideoPipelinePage() {
   const [compProductPrice, setCompProductPrice] = useState('');
   const [compProductCta, setCompProductCta] = useState('');
   const [compSubmitting, setCompSubmitting] = useState(false);
+
+  // ── Storyboard state ──
+  const [storyboardEnabled, setStoryboardEnabled] = useState(false);
+  const [storyboardSlides, setStoryboardSlides] = useState<StoryboardSlideUI[]>([]);
+  const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke'>('pill');
 
   // ── AI Image Generation state ──
   const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
@@ -99,6 +132,18 @@ export default function VideoPipelinePage() {
   const [improveIntent, setImproveIntent] = useState('');
   const [improving, setImproving] = useState(false);
 
+  // ── AI Script Generator state ──
+  const [showScriptGen, setShowScriptGen] = useState(false);
+  const [scriptTopic, setScriptTopic] = useState('');
+  const [scriptIntent, setScriptIntent] = useState('informar');
+  const [scriptPlatform, setScriptPlatform] = useState<'reels' | 'tiktok' | 'stories' | 'youtube-shorts'>('reels');
+  const [scriptDuration, setScriptDuration] = useState(30);
+  const [scriptLang, setScriptLang] = useState<'es' | 'en'>('es');
+  const [scriptProductName, setScriptProductName] = useState('');
+  const [scriptProductPrice, setScriptProductPrice] = useState('');
+  const [scriptProductFeatures, setScriptProductFeatures] = useState('');
+  const [generatingScript, setGeneratingScript] = useState(false);
+
   // ── Kie AI state (Option 2) ──
   const [kiePrompt, setKiePrompt] = useState('');
   const [kieDuration, setKieDuration] = useState<5 | 10>(5);
@@ -109,10 +154,11 @@ export default function VideoPipelinePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [credRes, voicesRes, jobsRes] = await Promise.all([
+      const [credRes, voicesRes, jobsRes, presetsRes] = await Promise.all([
         apiFetch<Credits>('/credits/balance').catch(() => null),
         apiFetch<{ data: Voice[] }>('/videos/compositor/voices').catch(() => ({ data: [] })),
         apiFetch<RenderJob[]>('/videos/render').catch(() => []),
+        apiFetch<{ data: VideoPreset[] }>('/videos/compositor/presets').catch(() => ({ data: [] })),
       ]);
       if (credRes) setCredits(credRes);
       const voiceList = voicesRes?.data ?? [];
@@ -120,6 +166,7 @@ export default function VideoPipelinePage() {
       if (voiceList.length > 0 && !compVoiceId && voiceList[0]) {
         setCompVoiceId(voiceList[0].id);
       }
+      setPresets(presetsRes?.data ?? []);
       setJobs(Array.isArray(jobsRes) ? jobsRes : []);
     } catch (e) {
       console.error('Error loading video pipeline data:', e);
@@ -129,6 +176,21 @@ export default function VideoPipelinePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Sync storyboard slides with selected images ──
+  useEffect(() => {
+    if (!storyboardEnabled) return;
+    setStoryboardSlides(prev => {
+      const existingMap = new Map(prev.map(s => [s.mediaId, s]));
+      return compImageIds.map((id, i) => existingMap.get(id) ?? {
+        mediaId: id,
+        role: 'slide' as SlideRole,
+        order: i,
+        animation: 'auto' as SlideAnimation,
+        caption: '',
+      });
+    });
+  }, [compImageIds, storyboardEnabled]);
 
   // ── AI Image Generation ──
   const addImagePrompt = () => {
@@ -202,6 +264,102 @@ export default function VideoPipelinePage() {
     }
   };
 
+  // ── Apply Preset ──
+  const applyPreset = (preset: VideoPreset) => {
+    setCompNarration(preset.narrationPlaceholder);
+    setCompMusicStyle(preset.musicStyle as typeof compMusicStyle);
+    setCompMusic(true);
+    setCompSubtitleStyle(preset.subtitleStyle as 'pill' | 'minimal');
+    setStoryboardEnabled(true);
+    setImproveIntent(preset.narrationIntent);
+  };
+
+  // ── AI Script Generator ──
+  const generateFullScript = async () => {
+    if (!scriptTopic.trim()) return;
+    setGeneratingScript(true);
+    try {
+      const body: Record<string, unknown> = {
+        topic: scriptTopic.trim(),
+        intent: scriptIntent,
+        targetPlatform: scriptPlatform,
+        duration: scriptDuration,
+        language: scriptLang,
+      };
+      if (scriptProductName.trim()) {
+        body.productInfo = {
+          name: scriptProductName.trim(),
+          price: scriptProductPrice.trim() || undefined,
+          features: scriptProductFeatures.trim() || undefined,
+        };
+      }
+      const res = await apiFetch<{
+        narration: string;
+        imagePrompts: string[];
+        musicStyle: string;
+        subtitleStyle: string;
+        preset: string;
+      }>('/videos/compositor/generate-script', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      // Apply narration
+      setCompNarration(res.narration);
+
+      // Apply music style
+      const validMusic = ['upbeat', 'calm', 'corporate', 'energetic', 'cinematic'];
+      if (validMusic.includes(res.musicStyle)) {
+        setCompMusicStyle(res.musicStyle as typeof compMusicStyle);
+        setCompMusic(true);
+      }
+
+      // Apply subtitle style
+      const validSubs = ['pill', 'minimal', 'word-by-word', 'karaoke'];
+      if (validSubs.includes(res.subtitleStyle)) {
+        setCompSubtitleStyle(res.subtitleStyle as typeof compSubtitleStyle);
+      }
+
+      // Apply preset intent
+      const matchedPreset = presets.find(p => p.id === res.preset);
+      if (matchedPreset) {
+        setImproveIntent(matchedPreset.narrationIntent);
+      }
+
+      // Fill image prompts
+      if (res.imagePrompts.length > 0) {
+        setImagePrompts(res.imagePrompts.map((prompt, i) => ({
+          id: `ai_${Date.now()}_${i}`,
+          prompt,
+          status: 'pending' as const,
+        })));
+      }
+
+      setStoryboardEnabled(true);
+      setShowScriptGen(false);
+    } catch (e: any) {
+      console.error('Error generating script:', e);
+      alert('Error al generar guión: ' + (e.message || 'Error desconocido'));
+    } finally {
+      setGeneratingScript(false);
+    }
+  };
+
+  // ── Storyboard helpers ──
+  const updateSlide = (mediaId: string, patch: Partial<StoryboardSlideUI>) => {
+    setStoryboardSlides(prev => prev.map(s => s.mediaId === mediaId ? { ...s, ...patch } : s));
+  };
+
+  const moveSlide = (idx: number, direction: -1 | 1) => {
+    setStoryboardSlides(prev => {
+      const arr = [...prev];
+      const target = idx + direction;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target]!, arr[idx]!];
+      return arr.map((s, i) => ({ ...s, order: i }));
+    });
+  };
+
   // ── Submit Compositor ──
   const submitCompositor = async () => {
     if (!compNarration.trim()) return;
@@ -211,25 +369,42 @@ export default function VideoPipelinePage() {
 
     setCompSubmitting(true);
     try {
+      const body: Record<string, unknown> = {
+        aspectRatio: compAspect,
+        narrationText: compNarration,
+        voiceId: compVoiceId,
+        voiceSpeed: compVoiceSpeed,
+        voiceEngine: compVoiceEngine,
+        enableSubtitles: compSubtitles,
+        subtitleStyle: compSubtitleStyle,
+        enableMusic: compMusic,
+        musicStyle: compMusic ? compMusicStyle : undefined,
+        mode: compMode,
+        logoId: compMode === 'product' ? compLogoIds[0] : undefined,
+        productImageId: compMode === 'product' ? compProductImageIds[0] : undefined,
+        productName: compMode === 'product' ? compProductName : undefined,
+        productPrice: compMode === 'product' ? compProductPrice : undefined,
+        productCta: compMode === 'product' ? compProductCta : undefined,
+      };
+
+      if (storyboardEnabled && storyboardSlides.length > 0) {
+        body.imageSlides = storyboardSlides.map((s, i) => ({
+          mediaId: s.mediaId,
+          role: s.role,
+          order: i,
+          durationMs: s.durationMs || undefined,
+          animation: s.animation,
+          caption: s.caption || undefined,
+        }));
+      } else if (compImageIds.length) {
+        body.imageIds = compImageIds;
+      } else {
+        body.imageUrls = generatedUrls;
+      }
+
       await apiFetch('/videos/compositor/render', {
         method: 'POST',
-        body: {
-          imageIds: compImageIds.length ? compImageIds : undefined,
-          imageUrls: generatedUrls.length && !compImageIds.length ? generatedUrls : undefined,
-          aspectRatio: compAspect,
-          narrationText: compNarration,
-          voiceId: compVoiceId,
-          voiceSpeed: compVoiceSpeed,
-          enableSubtitles: compSubtitles,
-          enableMusic: compMusic,
-          musicStyle: compMusic ? compMusicStyle : undefined,
-          mode: compMode,
-          logoId: compMode === 'product' ? compLogoIds[0] : undefined,
-          productImageId: compMode === 'product' ? compProductImageIds[0] : undefined,
-          productName: compMode === 'product' ? compProductName : undefined,
-          productPrice: compMode === 'product' ? compProductPrice : undefined,
-          productCta: compMode === 'product' ? compProductCta : undefined,
-        },
+        body,
       });
       setCompNarration('');
       setCompImageIds([]);
@@ -327,6 +502,160 @@ export default function VideoPipelinePage() {
           {/* ═══════════════════════════════════════ */}
           {tab === 'compositor' && (
             <div className="space-y-4 animate-fade-in">
+              {/* AI Script Generator */}
+              <div className="glass-card p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    ✨ Generador de Guión con IA
+                  </h3>
+                  <button
+                    onClick={() => setShowScriptGen(!showScriptGen)}
+                    className="btn-primary"
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                  >
+                    {showScriptGen ? '✕ Cerrar' : '✨ Generar guión completo'}
+                  </button>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Ingresá un tema y la IA genera: narración, prompts de imágenes, música y estilo de subtítulos.
+                </p>
+
+                {showScriptGen && (
+                  <div className="space-y-3 mt-3" style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+                    {/* Topic */}
+                    <div>
+                      <label className="text-xs font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>Tema del video</label>
+                      <textarea
+                        value={scriptTopic}
+                        onChange={e => setScriptTopic(e.target.value)}
+                        placeholder="Ej: Los 5 beneficios del café para la productividad..."
+                        className="input w-full"
+                        rows={2}
+                        style={{ fontSize: '0.85rem' }}
+                      />
+                    </div>
+
+                    {/* Platform + Intent + Duration + Language */}
+                    <div className="grid grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-xs font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>Plataforma</label>
+                        <select
+                          value={scriptPlatform}
+                          onChange={e => setScriptPlatform(e.target.value as typeof scriptPlatform)}
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          <option value="reels">📱 Reels</option>
+                          <option value="tiktok">🎵 TikTok</option>
+                          <option value="stories">📸 Stories</option>
+                          <option value="youtube-shorts">▶️ YouTube Shorts</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>Intención</label>
+                        <select
+                          value={scriptIntent}
+                          onChange={e => setScriptIntent(e.target.value)}
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          {NARRATION_INTENTS.map(ni => (
+                            <option key={ni.id} value={ni.id}>{ni.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>Duración (s)</label>
+                        <input
+                          type="number"
+                          value={scriptDuration}
+                          onChange={e => setScriptDuration(Math.max(10, Math.min(60, Number(e.target.value))))}
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                          min={10}
+                          max={60}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>Idioma</label>
+                        <select
+                          value={scriptLang}
+                          onChange={e => setScriptLang(e.target.value as 'es' | 'en')}
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          <option value="es">🇪🇸 Español</option>
+                          <option value="en">🇺🇸 English</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Product info (optional) */}
+                    <details className="text-xs">
+                      <summary className="cursor-pointer font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                        🛍️ Info de producto (opcional)
+                      </summary>
+                      <div className="grid grid-cols-3 gap-3 mt-2">
+                        <input
+                          value={scriptProductName}
+                          onChange={e => setScriptProductName(e.target.value)}
+                          placeholder="Nombre del producto"
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        <input
+                          value={scriptProductPrice}
+                          onChange={e => setScriptProductPrice(e.target.value)}
+                          placeholder="Precio (ej: $29.99)"
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        <input
+                          value={scriptProductFeatures}
+                          onChange={e => setScriptProductFeatures(e.target.value)}
+                          placeholder="Features clave"
+                          className="input w-full"
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                      </div>
+                    </details>
+
+                    {/* Generate button */}
+                    <button
+                      onClick={generateFullScript}
+                      disabled={generatingScript || !scriptTopic.trim()}
+                      className="btn-primary w-full"
+                      style={{ padding: '0.65rem' }}
+                    >
+                      {generatingScript ? '🔄 Generando guión...' : '✨ Generar guión completo'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Presets */}
+              {presets.length > 0 && (
+                <div className="glass-card p-5 space-y-3">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    🎭 Presets Rápidos
+                    <span className="text-xs font-normal ml-2" style={{ color: 'var(--color-text-muted)' }}>1 click para configurar todo</span>
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {presets.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => applyPreset(p)}
+                        className="btn-ghost text-left"
+                        style={{ padding: '0.6rem 0.75rem' }}
+                      >
+                        <div className="font-medium text-sm">{p.icon} {p.name}</div>
+                        <div className="text-[0.65rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{p.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Mode selector */}
               <div className="glass-card p-5 space-y-4">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Modo de video</h3>
@@ -364,9 +693,76 @@ export default function VideoPipelinePage() {
                   max={10}
                 />
                 {compImageIds.length > 0 && (
-                  <p className="text-xs" style={{ color: '#10b981' }}>{compImageIds.length} imagen(es) seleccionada(s)</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs" style={{ color: '#10b981' }}>{compImageIds.length} imagen(es) seleccionada(s)</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={storyboardEnabled}
+                        onChange={(e) => setStoryboardEnabled(e.target.checked)}
+                        className="accent-purple-500 w-4 h-4"
+                      />
+                      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>🎬 Storyboard</span>
+                    </label>
+                  </div>
                 )}
               </div>
+
+              {/* Storyboard Panel */}
+              {storyboardEnabled && storyboardSlides.length > 0 && (
+                <div className="glass-card p-5 space-y-3">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    🎬 Storyboard
+                    <span className="text-xs font-normal ml-2" style={{ color: 'var(--color-text-muted)' }}>Configura cada slide</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {storyboardSlides.map((slide, idx) => (
+                      <div key={slide.mediaId} className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col gap-0.5">
+                            <button onClick={() => moveSlide(idx, -1)} disabled={idx === 0} className="btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                            <button onClick={() => moveSlide(idx, 1)} disabled={idx === storyboardSlides.length - 1} className="btn-ghost" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', opacity: idx === storyboardSlides.length - 1 ? 0.3 : 1 }}>▼</button>
+                          </div>
+                          <span className="text-xs font-mono" style={{ color: 'var(--color-text-muted)', minWidth: '1.5rem' }}>{idx + 1}</span>
+                          <div className="flex-1 grid grid-cols-4 gap-2">
+                            <div>
+                              <label className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>Rol</label>
+                              <select value={slide.role} onChange={e => updateSlide(slide.mediaId, { role: e.target.value as SlideRole })} className="input-field" style={{ padding: '0.25rem 0.4rem', fontSize: '0.7rem' }}>
+                                <option value="slide">📷 Slide</option>
+                                <option value="intro">🎬 Intro</option>
+                                <option value="outro">🏁 Outro</option>
+                                <option value="logo">🏷️ Logo</option>
+                                <option value="product">🛍️ Producto</option>
+                                <option value="background">🖼️ Fondo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>Animación</label>
+                              <select value={slide.animation} onChange={e => updateSlide(slide.mediaId, { animation: e.target.value as SlideAnimation })} className="input-field" style={{ padding: '0.25rem 0.4rem', fontSize: '0.7rem' }}>
+                                <option value="auto">🔄 Auto</option>
+                                <option value="ken-burns-in">🔍 Zoom In</option>
+                                <option value="ken-burns-out">🔎 Zoom Out</option>
+                                <option value="pan-left">⬅️ Pan Izq</option>
+                                <option value="pan-right">➡️ Pan Der</option>
+                                <option value="zoom-pulse">💫 Pulso</option>
+                                <option value="none">⏹️ Estático</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>Duración (s)</label>
+                              <input type="number" min={1} max={30} step={0.5} value={slide.durationMs ? slide.durationMs / 1000 : ''} placeholder="Auto" onChange={e => updateSlide(slide.mediaId, { durationMs: e.target.value ? Number(e.target.value) * 1000 : undefined })} className="input-field" style={{ padding: '0.25rem 0.4rem', fontSize: '0.7rem' }} />
+                            </div>
+                            <div>
+                              <label className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>Caption</label>
+                              <input type="text" value={slide.caption} placeholder="Texto overlay..." onChange={e => updateSlide(slide.mediaId, { caption: e.target.value })} className="input-field" style={{ padding: '0.25rem 0.4rem', fontSize: '0.7rem' }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* AI Image Generation */}
               <div className="glass-card p-5 space-y-3">
@@ -613,7 +1009,7 @@ export default function VideoPipelinePage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div>
                     <label className="input-label">Voz</label>
                     <select
@@ -625,6 +1021,17 @@ export default function VideoPipelinePage() {
                       {voices.map((v) => (
                         <option key={v.id} value={v.id}>{v.label} ({v.gender === 'F' ? '♀' : '♂'})</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="input-label">Motor</label>
+                    <select
+                      value={compVoiceEngine}
+                      onChange={(e) => setCompVoiceEngine(e.target.value as 'edge' | 'piper')}
+                      className="input-field"
+                    >
+                      <option value="edge">🔊 Edge TTS</option>
+                      <option value="piper">🎙️ Piper (Natural)</option>
                     </select>
                   </div>
                   <div>
@@ -657,7 +1064,7 @@ export default function VideoPipelinePage() {
               {/* Options: Subtitles + Music */}
               <div className="glass-card p-5 space-y-4">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>⚙️ Opciones</h3>
-                <div className="flex gap-6">
+                <div className="flex gap-6 flex-wrap">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -669,6 +1076,22 @@ export default function VideoPipelinePage() {
                       Subtítulos automáticos
                     </span>
                   </label>
+                  {compSubtitles && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Estilo:</label>
+                      <select
+                        value={compSubtitleStyle}
+                        onChange={(e) => setCompSubtitleStyle(e.target.value as typeof compSubtitleStyle)}
+                        className="input-field"
+                        style={{ maxWidth: '10rem', padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}
+                      >
+                        <option value="pill">💊 Píldora</option>
+                        <option value="minimal">✏️ Minimal</option>
+                        <option value="word-by-word">💬 Palabra×Palabra</option>
+                        <option value="karaoke">🎤 Karaoke</option>
+                      </select>
+                    </div>
+                  )}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"

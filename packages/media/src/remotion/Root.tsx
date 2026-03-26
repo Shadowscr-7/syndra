@@ -12,9 +12,10 @@ export const RemotionRoot: React.FC = () => {
       width={1080}
       height={1920}
       defaultProps={{
-        images: [],
+        slides: [],
         musicVolume: 0.25,
         subtitleGroups: [],
+        subtitleStyle: 'pill',
       }}
     />
   );

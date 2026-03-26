@@ -10,13 +10,24 @@ import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 
+export interface ImageSlideInput {
+  url: string;
+  role?: 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
+  order?: number;
+  durationMs?: number;
+  animation?: 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
+  caption?: string;
+}
+
 export interface RemotionRenderInput {
-  images: string[];               // HTTP URLs or data: URLs
+  images?: string[];               // Simple mode — flat list of URLs (backwards compat)
+  slides?: ImageSlideInput[];      // Storyboard mode — slides with roles/order/duration
   aspectRatio?: '9:16' | '16:9' | '1:1';
   ttsAudioUrl?: string;           // data: URL or HTTP
   musicAudioUrl?: string;         // HTTP URL
   musicVolume?: number;
   subtitleGroups?: SubtitleGroupInput[];
+  subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal';
   logoUrl?: string;
   productOverlay?: { name?: string; price?: string; cta?: string };
   ttsDurationMs?: number;         // Actual TTS duration in ms
@@ -53,12 +64,17 @@ export class RemotionVideoRenderer {
     await mkdir(tempDir, { recursive: true });
 
     try {
+      // 0. Normalize slides — support both flat images[] and storyboard slides[]
+      const slides = this.normalizeSlides(input);
+      const contentSlides = slides.filter(s => s.role !== 'logo' && s.role !== 'background');
+
       // 1. Calculate duration
-      let durationMs = 15000; // default 15s
+      const totalSlideDurationMs = contentSlides.reduce((sum, s) => sum + (s.durationMs ?? 4000), 0);
+      let durationMs = 15000;
       if (input.ttsDurationMs && input.ttsDurationMs > 0) {
-        durationMs = input.ttsDurationMs + 1500; // TTS + 1.5s breathing room
-      } else if (input.images.length > 0) {
-        durationMs = input.images.length * 4000; // 4s per image
+        durationMs = input.ttsDurationMs + 1500;
+      } else if (contentSlides.length > 0) {
+        durationMs = totalSlideDurationMs;
       }
       const durationInFrames = Math.ceil((durationMs / 1000) * FPS);
       const durationSeconds = durationMs / 1000;
@@ -73,18 +89,30 @@ export class RemotionVideoRenderer {
       // 3. Build the Remotion bundle (cached after first call)
       const bundleUrl = await this.ensureBundle();
 
-      // 4. Build input props
+      // 4. Extract logo from slides (role=logo) or from explicit logoUrl
+      const logoSlide = slides.find(s => s.role === 'logo');
+      const logoUrl = logoSlide?.url ?? input.logoUrl;
+
+      // 5. Build input props — use new storyboard format
       const inputProps = {
-        images: input.images,
+        slides: slides.map(s => ({
+          src: s.url,
+          role: s.role ?? 'slide',
+          order: s.order ?? 0,
+          durationMs: s.durationMs,
+          animation: s.animation ?? 'auto',
+          caption: s.caption,
+        })),
         ttsAudioSrc: input.ttsAudioUrl,
         musicAudioSrc: input.musicAudioUrl,
         musicVolume: input.musicVolume ?? 0.25,
         subtitleGroups,
-        logoUrl: input.logoUrl,
+        subtitleStyle: input.subtitleStyle ?? 'pill',
+        logoUrl,
         productOverlay: input.productOverlay,
       };
 
-      // 5. Render video
+      // 6. Render video
       const outputPath = join(tempDir, 'output.mp4');
 
       const { renderMedia, selectComposition } = await import('@remotion/renderer');
@@ -95,7 +123,6 @@ export class RemotionVideoRenderer {
         inputProps,
       });
 
-      // Override composition dimensions and duration
       await renderMedia({
         composition: {
           ...composition,
@@ -182,6 +209,25 @@ export class RemotionVideoRenderer {
 
   async cleanup(tempDir: string): Promise<void> {
     await this.cleanupDir(tempDir);
+  }
+
+  /**
+   * Normalize input: supports both flat images[] (backwards compat) and storyboard slides[].
+   * Returns sorted ImageSlideInput[] array.
+   */
+  private normalizeSlides(input: RemotionRenderInput): ImageSlideInput[] {
+    if (input.slides && input.slides.length > 0) {
+      // Storyboard mode — sort by order
+      return [...input.slides].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }
+    // Flat images mode — auto-assign roles
+    const images = input.images ?? [];
+    return images.map((url, i) => ({
+      url,
+      role: 'slide' as const,
+      order: i,
+      animation: 'auto' as const,
+    }));
   }
 
   private async cleanupDir(dirPath: string): Promise<void> {

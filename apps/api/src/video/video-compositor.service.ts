@@ -8,8 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from '../credits/credits.service';
 import { RemotionVideoRenderer } from '@automatismos/media';
-import type { SubtitleGroupInput } from '@automatismos/media';
+import type { SubtitleGroupInput, ImageSlideInput } from '@automatismos/media';
 import { EdgeTTSAdapter } from '@automatismos/media';
+import { PiperTTSAdapter } from '@automatismos/media';
 import { KieMusicAdapter, KieImageProAdapter } from '@automatismos/media';
 import { OpenAIAdapter } from '@automatismos/ai';
 import * as fs from 'fs';
@@ -17,13 +18,26 @@ import * as path from 'path';
 
 // ── Types ──
 
+export interface CompositorSlideInput {
+  mediaId?: string;        // UserMedia ID
+  url?: string;            // Direct URL
+  role?: 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
+  order?: number;
+  durationMs?: number;
+  animation?: 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
+  caption?: string;
+}
+
 export interface CompositorInput {
   workspaceId: string;
   userId: string;
 
-  // Images (IDs from user-media or URLs)
+  // Images (legacy flat mode)
   imageIds?: string[];
   imageUrls?: string[];
+
+  // Storyboard mode (takes priority over imageIds/imageUrls)
+  imageSlides?: CompositorSlideInput[];
 
   // Video config
   aspectRatio?: '9:16' | '16:9' | '1:1';
@@ -33,9 +47,11 @@ export interface CompositorInput {
   voiceId?: string;         // es-AR-ElenaNeural, es-MX-DaliaNeural, etc.
   voiceSpeed?: 'slow' | 'normal' | 'fast';
   voiceTone?: 'low' | 'normal' | 'high';
+  voiceEngine?: 'edge' | 'piper';
 
   // Subtitles
   enableSubtitles?: boolean;
+  subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke';
 
   // Music
   enableMusic?: boolean;
@@ -99,8 +115,17 @@ export class VideoCompositorService {
     this.logger.log(`Starting compositor render: ${totalCredits} credits, mode=${input.mode ?? 'general'}`);
 
     try {
-      // 3. Resolve image URLs from IDs
-      const imageUrls = await this.resolveImageUrls(input, userId);
+      // 3. Resolve slides (storyboard mode) or flat image URLs
+      let slides: ImageSlideInput[] | undefined;
+      let imageUrls: string[];
+
+      if (input.imageSlides?.length) {
+        slides = await this.resolveSlides(input.imageSlides, userId);
+        imageUrls = slides.map(s => s.url);
+      } else {
+        imageUrls = await this.resolveImageUrls(input, userId);
+      }
+
       if (imageUrls.length === 0) {
         throw new BadRequestException('Se necesita al menos una imagen');
       }
@@ -162,12 +187,14 @@ export class VideoCompositorService {
       }
 
       const result = await renderer.render({
-        images: imageUrls,
+        images: slides ? undefined : imageUrls,
+        slides: slides,
         aspectRatio: input.aspectRatio ?? '9:16',
         ttsAudioUrl: ttsAudioUrl,
         musicAudioUrl: musicAudioUrl,
         musicVolume: 0.25,
         subtitleGroups,
+        subtitleStyle: input.subtitleStyle,
         logoUrl,
         productOverlay,
         ttsDurationMs,
@@ -236,6 +263,35 @@ export class VideoCompositorService {
     }
   }
 
+  // ── Resolve storyboard slides ──
+
+  private async resolveSlides(slides: CompositorSlideInput[], userId: string): Promise<ImageSlideInput[]> {
+    const resolved: ImageSlideInput[] = [];
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i]!;
+      let url: string | undefined;
+
+      if (s.mediaId) {
+        url = await this.resolveMediaUrl(s.mediaId, userId);
+      } else if (s.url) {
+        url = s.url;
+      }
+
+      if (!url) continue;
+
+      resolved.push({
+        url,
+        role: s.role ?? 'slide',
+        order: s.order ?? i,
+        durationMs: s.durationMs,
+        animation: s.animation,
+        caption: s.caption,
+      });
+    }
+
+    return resolved.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+
   // ── Resolve image URLs ──
 
   private async resolveImageUrls(input: CompositorInput, userId: string): Promise<string[]> {
@@ -281,8 +337,6 @@ export class VideoCompositorService {
 
   private async generateTTS(input: CompositorInput): Promise<{ url: string; subtitlesVtt?: string }> {
     const voiceId = input.voiceId ?? 'es-AR-ElenaNeural';
-    const adapter = new EdgeTTSAdapter(voiceId);
-
     const text = input.narrationText!.slice(0, 2000);
 
     // Map speed: slow=0.85, normal=1.0, fast=1.2
@@ -295,7 +349,21 @@ export class VideoCompositorService {
     if (input.voiceTone === 'low') pitch = 0.9;
     else if (input.voiceTone === 'high') pitch = 1.1;
 
-    this.logger.log(`Generating TTS: voice=${voiceId}, ${text.length} chars`);
+    // Try Piper first if requested or if available
+    if (input.voiceEngine === 'piper' && PiperTTSAdapter.isAvailable()) {
+      try {
+        this.logger.log(`Generating TTS with Piper: voice=${voiceId}, ${text.length} chars`);
+        const piper = new PiperTTSAdapter();
+        const audio = await piper.synthesize(text, { voiceId, speed });
+        if (audio.url) return { url: audio.url, subtitlesVtt: audio.subtitlesVtt };
+      } catch (err: any) {
+        this.logger.warn(`Piper TTS failed, falling back to Edge TTS: ${err.message}`);
+      }
+    }
+
+    // Default: Edge TTS
+    const adapter = new EdgeTTSAdapter(voiceId);
+    this.logger.log(`Generating TTS with Edge: voice=${voiceId}, ${text.length} chars`);
     const audio = await adapter.synthesize(text, { voiceId, speed, pitch });
 
     if (!audio.url) throw new Error('TTS generation failed: no audio URL returned');
@@ -570,5 +638,107 @@ export class VideoCompositorService {
     ], { temperature: 0.7, maxTokens: 500 });
 
     return { improved: improved.trim() };
+  }
+
+  // ── Generate full video script with AI ──
+
+  async generateScript(input: {
+    topic: string;
+    intent: string;
+    targetPlatform: 'reels' | 'tiktok' | 'stories' | 'youtube-shorts';
+    duration?: number;
+    language?: string;
+    productInfo?: { name?: string; price?: string; features?: string };
+  }): Promise<{
+    narration: string;
+    imagePrompts: string[];
+    musicStyle: string;
+    subtitleStyle: string;
+    preset: string;
+  }> {
+    const apiKey = this.config.get<string>('LLM_API_KEY');
+    const baseUrl = this.config.get<string>('LLM_BASE_URL');
+    if (!apiKey) throw new BadRequestException('LLM_API_KEY no configurada');
+
+    const adapter = new OpenAIAdapter({
+      apiKey,
+      baseUrl: baseUrl || 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    });
+
+    const lang = input.language ?? 'es';
+    const dur = input.duration ?? 30;
+    const slideCount = Math.max(3, Math.min(8, Math.round(dur / 4)));
+
+    const platformGuides: Record<string, string> = {
+      reels: `Instagram Reels: Hook potente en los primeros 3 segundos. Ritmo rápido, frases cortas. CTA final claro (link en bio, guardá, compartí). Máximo ${dur}s.`,
+      tiktok: `TikTok: Empezar con algo impactante o una pregunta. Ritmo muy dinámico, lenguaje coloquial. Usar trends cuando sea posible. CTA: seguí para más. Máximo ${dur}s.`,
+      stories: `Instagram Stories: Tono personal y cercano. Hacer preguntas al espectador. Swipe-up o link CTA. Segmentos cortos (3-5s). Máximo ${dur}s.`,
+      'youtube-shorts': `YouTube Shorts: Valor rápido, educativo o entretenido. Empezar con "¿Sabías que..." o dato impactante. CTA: suscribite. Máximo ${dur}s.`,
+    };
+
+    const intentMap: Record<string, string> = {
+      vender: 'vender un producto o servicio, destacando beneficios y creando urgencia',
+      educar: 'educar al espectador, explicando conceptos de forma clara',
+      entretener: 'entretener con contenido dinámico y enganche emocional',
+      inspirar: 'inspirar y motivar con un mensaje poderoso',
+      informar: 'informar con datos concretos y lenguaje profesional',
+      storytelling: 'contar una historia que atrape al espectador',
+    };
+
+    const productContext = input.productInfo
+      ? `\nProducto/Servicio: ${input.productInfo.name ?? 'N/A'}. Precio: ${input.productInfo.price ?? 'N/A'}. Características: ${input.productInfo.features ?? 'N/A'}.`
+      : '';
+
+    const systemPrompt = `Eres un experto creador de guiones para videos cortos de redes sociales.
+
+Plataforma: ${platformGuides[input.targetPlatform] ?? platformGuides.reels}
+
+Intención: ${intentMap[input.intent] ?? input.intent}${productContext}
+
+Idioma: ${lang === 'es' ? 'Español' : 'English'}
+
+Genera un guión completo para un video sobre el tema dado. Responde EXCLUSIVAMENTE con un JSON válido (sin markdown, sin backticks, sin texto adicional) con esta estructura:
+{
+  "narration": "Texto completo de narración (${dur}s aprox, natural para voz)",
+  "imagePrompts": ["prompt descriptivo en inglés para generar imagen 1", "prompt para imagen 2", ...],
+  "musicStyle": "uno de: upbeat, calm, corporate, energetic, cinematic",
+  "subtitleStyle": "uno de: pill, word-by-word, karaoke, minimal",
+  "preset": "uno de: product-reel, educational, hook-content, before-after, testimonial, storytelling"
+}
+
+Reglas:
+- La narración debe ser fluida y natural, como si alguien la hablara
+- Genera exactamente ${slideCount} imagePrompts descriptivos en INGLÉS, aptos para generadores de imagen como Ideogram/DALL-E
+- Cada imagePrompt debe ser descriptivo (estilo, iluminación, composición) sin texto en la imagen
+- El musicStyle debe complementar el tono del contenido
+- El subtitleStyle debe coincidir con la plataforma (reels/tiktok → word-by-word o pill, stories → minimal, shorts → karaoke)
+- El preset debe ser el más cercano al tipo de contenido`;
+
+    const result = await adapter.chat([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: input.topic },
+    ], { temperature: 0.8, maxTokens: 1500 });
+
+    try {
+      const cleaned = result.trim().replace(/^```json?\s*/i, '').replace(/```\s*$/i, '');
+      const parsed = JSON.parse(cleaned);
+      return {
+        narration: String(parsed.narration ?? ''),
+        imagePrompts: Array.isArray(parsed.imagePrompts) ? parsed.imagePrompts.map(String) : [],
+        musicStyle: String(parsed.musicStyle ?? 'upbeat'),
+        subtitleStyle: String(parsed.subtitleStyle ?? 'pill'),
+        preset: String(parsed.preset ?? 'storytelling'),
+      };
+    } catch {
+      this.logger.warn('Failed to parse AI script response, returning raw narration');
+      return {
+        narration: result.trim(),
+        imagePrompts: [],
+        musicStyle: 'upbeat',
+        subtitleStyle: 'pill',
+        preset: 'storytelling',
+      };
+    }
   }
 }

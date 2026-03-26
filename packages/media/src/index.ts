@@ -139,6 +139,7 @@ export {
   type VoiceInfo,
 } from './adapters/voice-synthesis';
 export { EdgeTTSAdapter } from './adapters/edge-tts';
+export { PiperTTSAdapter } from './adapters/piper-tts';
 
 // --- Templates ---
 export {
@@ -190,6 +191,7 @@ export {
   type RemotionRenderInput,
   type RemotionRenderResult,
   type SubtitleGroupInput,
+  type ImageSlideInput,
 } from './renderers/remotion-renderer';
 
 // --- Pipeline ---

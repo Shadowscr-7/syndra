@@ -1,5 +1,18 @@
 // Shared types for Remotion video composition
 
+export type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
+export type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
+export type SubtitleStyle = 'pill' | 'word-by-word' | 'karaoke' | 'minimal';
+
+export interface StoryboardSlide {
+  src: string;                    // URL (HTTP or data:)
+  role: SlideRole;
+  order: number;
+  durationMs?: number;            // Override duration (ms)
+  animation?: SlideAnimation;
+  caption?: string;               // Text overlay for this specific slide
+}
+
 export interface SubtitleGroup {
   startFrame: number;
   endFrame: number;
@@ -7,12 +20,13 @@ export interface SubtitleGroup {
 }
 
 export interface VideoCompositionProps {
-  images: string[];             // URLs (HTTP or data:)
-  ttsAudioSrc?: string;         // data: URL or HTTP URL
-  musicAudioSrc?: string;       // HTTP URL
-  musicVolume: number;           // 0-1
+  slides: StoryboardSlide[];       // Ordered storyboard slides with roles
+  ttsAudioSrc?: string;            // data: URL or HTTP URL
+  musicAudioSrc?: string;          // HTTP URL
+  musicVolume: number;             // 0-1
   subtitleGroups: SubtitleGroup[];
-  logoUrl?: string;
+  subtitleStyle?: SubtitleStyle;
+  logoUrl?: string;                // Deprecated — use slide with role='logo' instead
   productOverlay?: {
     name?: string;
     price?: string;
