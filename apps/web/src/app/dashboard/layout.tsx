@@ -11,6 +11,9 @@ import { UsageWarningNotifier } from '@/components/plan/usage-warning-notifier';
 import { PaymentToast } from '@/components/dashboard/payment-toast';
 import { Suspense } from 'react';
 
+// All dashboard pages require auth + DB access — never statically generate them
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
