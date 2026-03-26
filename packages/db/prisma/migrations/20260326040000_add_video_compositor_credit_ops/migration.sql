@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "CreditOperationType" ADD VALUE 'VIDEO_COMPOSITOR';
+ALTER TYPE "CreditOperationType" ADD VALUE 'VIDEO_KIE_REELS';

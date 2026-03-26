@@ -2166,6 +2166,8 @@ enum CreditOperationType {
   VIDEO_KIE_SLIDES     // 0 créditos  — FFmpeg local (gratis)
   VIDEO_KIE_VIDEO      // 15 créditos — KIE Video IA
   VIDEO_KIE_AVATAR     // 25 créditos — KIE Avatar
+  VIDEO_COMPOSITOR     // 3 créditos  — Pro FFmpeg compositor (imágenes + TTS + subtítulos)
+  VIDEO_KIE_REELS      // 20 créditos — Kling 2.6 text-to-video para reels
 }
 
 model AICredit {
