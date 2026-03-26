@@ -295,7 +295,6 @@ export class VideoCompositorService {
     try {
       const adapter = new KieMusicAdapter({
         apiKey: kieApiKey,
-        baseUrl: this.config.get<string>('KIE_API_BASE_URL') ?? 'https://api.kieai.com',
       });
 
       this.logger.log(`Generating music: style=${style}`);
@@ -407,7 +406,6 @@ export class VideoCompositorService {
     aspectRatio: string;
   }): Promise<{ success: boolean; imageUrl: string; userMediaId: string }> {
     const apiKey = this.config.get<string>('KIE_AI_API_KEY');
-    const baseUrl = this.config.get<string>('KIE_API_BASE_URL');
     if (!apiKey) throw new BadRequestException('KIE_AI_API_KEY no configurada');
 
     // Check credits (IMAGE_PRO_TEXT = 4 credits for Ideogram V3)
@@ -427,7 +425,6 @@ export class VideoCompositorService {
 
     const adapter = new KieImageProAdapter({
       apiKey,
-      baseUrl,
       modelId: 'ideogram/v3-text-to-image',
     });
 
