@@ -184,6 +184,14 @@ export {
   type ProVideoResult,
 } from './renderers/pro-video-renderer';
 
+// --- Remotion Video Renderer (React-based compositor) ---
+export {
+  RemotionVideoRenderer,
+  type RemotionRenderInput,
+  type RemotionRenderResult,
+  type SubtitleGroupInput,
+} from './renderers/remotion-renderer';
+
 // --- Pipeline ---
 export {
   MediaPipeline,

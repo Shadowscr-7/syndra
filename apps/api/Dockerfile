@@ -5,9 +5,12 @@
 
 FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat openssl netcat-openbsd ffmpeg python3 py3-pip \
-    fontconfig font-noto font-noto-emoji ttf-dejavu
+    fontconfig font-noto font-noto-emoji ttf-dejavu \
+    chromium nss freetype harfbuzz ca-certificates
 RUN pip3 install --break-system-packages edge-tts
 RUN fc-cache -f
+
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
 # ---- Stage 1: Install dependencies ----
 FROM base AS deps

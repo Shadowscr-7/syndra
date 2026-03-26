@@ -8,6 +8,15 @@ module.exports = function (options) {
     '.prisma/client',
     '.prisma/client/default',
     'sharp',
+    // Remotion — uses its own webpack bundler at runtime, must not be compiled by NestJS
+    'remotion',
+    '@remotion/bundler',
+    '@remotion/renderer',
+    '@remotion/media-utils',
+    'react',
+    'react-dom',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
   ];
 
   return {

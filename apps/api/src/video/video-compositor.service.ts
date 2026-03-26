@@ -7,7 +7,8 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from '../credits/credits.service';
-import { ProVideoRenderer } from '@automatismos/media';
+import { RemotionVideoRenderer } from '@automatismos/media';
+import type { SubtitleGroupInput } from '@automatismos/media';
 import { EdgeTTSAdapter } from '@automatismos/media';
 import { KieMusicAdapter, KieImageProAdapter } from '@automatismos/media';
 import { OpenAIAdapter } from '@automatismos/ai';
@@ -122,16 +123,14 @@ export class VideoCompositorService {
         musicAudioUrl = await this.generateMusic(input.musicStyle ?? 'upbeat');
       }
 
-      // 6. Generate SRT subtitles — prefer real timing from TTS, fallback to estimated
-      let srtContent: string | undefined;
-      if (input.enableSubtitles && input.narrationText?.trim()) {
-        if (ttsVtt) {
-          srtContent = this.vttToGroupedSRT(ttsVtt);
-          this.logger.log(`Using word-level VTT subtitles (${srtContent.split('\n\n').length} segments)`);
-        } else {
-          srtContent = this.generateSRT(input.narrationText);
-          this.logger.log('Using estimated SRT subtitles (no VTT available)');
-        }
+      // 6. Parse subtitle timing from VTT → SubtitleGroupInput[] for Remotion
+      let subtitleGroups: SubtitleGroupInput[] = [];
+      if (input.enableSubtitles && input.narrationText?.trim() && ttsVtt) {
+        subtitleGroups = this.vttToSubtitleGroups(ttsVtt);
+        this.logger.log(`Parsed ${subtitleGroups.length} subtitle groups from VTT`);
+      } else if (input.enableSubtitles && input.narrationText?.trim()) {
+        subtitleGroups = this.estimateSubtitleGroups(input.narrationText);
+        this.logger.log(`Estimated ${subtitleGroups.length} subtitle groups (no VTT)`);
       }
 
       // 7. Resolve logo URL
@@ -150,17 +149,28 @@ export class VideoCompositorService {
         };
       }
 
-      // 9. Render with ProVideoRenderer — duration follows narration length
-      const renderer = new ProVideoRenderer();
+      // 9. Render with Remotion — duration follows narration length
+      const renderer = new RemotionVideoRenderer();
+
+      // Calculate TTS duration from VTT or estimation
+      let ttsDurationMs: number | undefined;
+      if (ttsVtt) {
+        ttsDurationMs = this.getVttDurationMs(ttsVtt);
+      } else if (input.narrationText) {
+        const words = input.narrationText.split(/\s+/).length;
+        ttsDurationMs = Math.round((words / 150) * 60 * 1000); // ~150 WPM
+      }
+
       const result = await renderer.render({
-        imageUrls,
+        images: imageUrls,
         aspectRatio: input.aspectRatio ?? '9:16',
-        ttsAudioUrl,
-        musicAudioUrl,
+        ttsAudioUrl: ttsAudioUrl,
+        musicAudioUrl: musicAudioUrl,
         musicVolume: 0.25,
-        srtContent,
+        subtitleGroups,
         logoUrl,
         productOverlay,
+        ttsDurationMs,
       });
 
       // 10. Upload to Cloudinary or save locally
@@ -197,7 +207,8 @@ export class VideoCompositorService {
             mode: input.mode ?? 'general',
             hasNarration: !!ttsAudioUrl,
             hasMusic: !!musicAudioUrl,
-            hasSubtitles: !!srtContent,
+            hasSubtitles: subtitleGroups.length > 0,
+            renderer: 'remotion',
           } as any,
           status: 'COMPLETED',
           outputUrl: videoUrl,
@@ -214,9 +225,9 @@ export class VideoCompositorService {
       return {
         videoUrl,
         durationSeconds: result.durationSeconds,
-        hasAudio: result.hasAudio,
-        hasSubtitles: result.hasSubtitles,
-        hasMusic: result.hasMusic,
+        hasAudio: !!ttsAudioUrl,
+        hasSubtitles: subtitleGroups.length > 0,
+        hasMusic: !!musicAudioUrl,
         creditsUsed: totalCredits,
       };
     } catch (error: any) {
@@ -327,25 +338,27 @@ export class VideoCompositorService {
   // ── Subtitles (SRT) ──
 
   /**
-   * Convert edge-tts VTT (word-level cues) to grouped SRT (3-5 words per caption).
-   * This creates an animated caption effect synced with actual speech timing.
+   * Convert edge-tts VTT (word-level cues) to SubtitleGroupInput[] for Remotion.
+   * Groups words into 3-5 word segments with precise ms timing.
    */
-  private vttToGroupedSRT(vtt: string): string {
-    // Parse VTT cues: each line has a timestamp range and one or more words
+  private vttToSubtitleGroups(vtt: string): SubtitleGroupInput[] {
     const cueRegex = /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\s*\n(.+)/g;
-    const cues: { start: string; end: string; text: string }[] = [];
+    const cues: { startMs: number; endMs: number; text: string }[] = [];
     let match: RegExpExecArray | null;
     while ((match = cueRegex.exec(vtt)) !== null) {
-      cues.push({ start: match[1]!, end: match[2]!, text: match[3]!.trim() });
+      cues.push({
+        startMs: this.timeToMs(match[1]!),
+        endMs: this.timeToMs(match[2]!),
+        text: match[3]!.trim(),
+      });
     }
 
-    if (cues.length === 0) return '';
+    if (cues.length === 0) return [];
 
-    // Group cues into chunks of 3-5 words for readability
     const WORDS_PER_GROUP = 4;
-    const groups: { start: string; end: string; text: string }[] = [];
+    const groups: SubtitleGroupInput[] = [];
     let currentWords: string[] = [];
-    let groupStart = cues[0]!.start;
+    let groupStartMs = cues[0]!.startMs;
 
     for (let i = 0; i < cues.length; i++) {
       const cue = cues[i]!;
@@ -354,61 +367,61 @@ export class VideoCompositorService {
 
       if (currentWords.length >= WORDS_PER_GROUP || i === cues.length - 1) {
         groups.push({
-          start: groupStart,
-          end: cue.end,
+          startMs: groupStartMs,
+          endMs: cue.endMs,
           text: currentWords.join(' '),
         });
         currentWords = [];
-        if (i + 1 < cues.length) groupStart = cues[i + 1]!.start;
+        if (i + 1 < cues.length) groupStartMs = cues[i + 1]!.startMs;
       }
     }
 
-    // Convert to SRT format (timestamps: HH:MM:SS,mmm)
-    return groups.map((g, i) => {
-      const srtStart = g.start.replace('.', ',');
-      const srtEnd = g.end.replace('.', ',');
-      return `${i + 1}\n${srtStart} --> ${srtEnd}\n${g.text}`;
-    }).join('\n\n') + '\n';
+    return groups;
   }
 
-  private generateSRT(text: string): string {
-    // Split text into sentences
+  /**
+   * Estimate subtitle groups when no VTT is available (fallback).
+   */
+  private estimateSubtitleGroups(text: string): SubtitleGroupInput[] {
     const sentences = text
       .replace(/([.!?])\s+/g, '$1\n')
       .split('\n')
       .map(s => s.trim())
       .filter(Boolean);
 
-    if (sentences.length === 0) return '';
+    if (sentences.length === 0) return [];
 
-    // Estimate ~150 words per minute reading speed
     const totalWords = text.split(/\s+/).length;
-    const estimatedDuration = Math.max(5, (totalWords / 150) * 60);
+    const estimatedDuration = Math.max(5, (totalWords / 150) * 60) * 1000; // ms
     const timePerSentence = estimatedDuration / sentences.length;
 
-    const lines: string[] = [];
-    let currentTime = 0;
-
-    sentences.forEach((sentence, i) => {
-      const start = this.formatSRTTime(currentTime);
-      currentTime += timePerSentence;
-      const end = this.formatSRTTime(currentTime);
-
-      lines.push(`${i + 1}`);
-      lines.push(`${start} --> ${end}`);
-      lines.push(sentence);
-      lines.push('');
+    let currentMs = 0;
+    return sentences.map((sentence) => {
+      const startMs = currentMs;
+      currentMs += timePerSentence;
+      return { startMs, endMs: currentMs, text: sentence };
     });
-
-    return lines.join('\n');
   }
 
-  private formatSRTTime(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 1000);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+  /**
+   * Get total VTT duration in ms from the last cue's end time.
+   */
+  private getVttDurationMs(vtt: string): number {
+    const timeRegex = /-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/g;
+    let lastEnd = 0;
+    let match: RegExpExecArray | null;
+    while ((match = timeRegex.exec(vtt)) !== null) {
+      lastEnd = this.timeToMs(match[1]!);
+    }
+    return lastEnd;
+  }
+
+  private timeToMs(timestamp: string): number {
+    const parts = timestamp.split(':');
+    const h = parseInt(parts[0]!, 10);
+    const m = parseInt(parts[1]!, 10);
+    const [s, ms] = parts[2]!.split('.');
+    return h * 3600000 + m * 60000 + parseInt(s!, 10) * 1000 + parseInt(ms!, 10);
   }
 
   // ── Upload ──
