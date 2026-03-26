@@ -121,6 +121,8 @@ export default function VideoPipelinePage() {
   const [storyboardEnabled, setStoryboardEnabled] = useState(false);
   const [storyboardSlides, setStoryboardSlides] = useState<StoryboardSlideUI[]>([]);
   const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon'>('pill');
+  const [compOverlayTheme, setCompOverlayTheme] = useState<'none' | 'minimal' | 'modern' | 'neon' | 'elegant'>('modern');
+  const [compAutoGenImages, setCompAutoGenImages] = useState(false);
 
   // ── AI Image Generation state ──
   const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
@@ -365,7 +367,7 @@ export default function VideoPipelinePage() {
     if (!compNarration.trim()) return;
     // Allow submitting with generated image URLs if no library images selected
     const generatedUrls = imagePrompts.filter(p => p.resultUrl).map(p => p.resultUrl!);
-    if (!compImageIds.length && !generatedUrls.length) return;
+    if (!compImageIds.length && !generatedUrls.length && !compAutoGenImages) return;
 
     setCompSubmitting(true);
     try {
@@ -377,6 +379,8 @@ export default function VideoPipelinePage() {
         voiceEngine: compVoiceEngine,
         enableSubtitles: compSubtitles,
         subtitleStyle: compSubtitleStyle,
+        overlayTheme: compOverlayTheme,
+        autoGenerateImages: compAutoGenImages,
         enableMusic: compMusic,
         musicStyle: compMusic ? compMusicStyle : undefined,
         mode: compMode,
@@ -441,7 +445,7 @@ export default function VideoPipelinePage() {
 
   // ── Cost calculation ──
   const compositorCost = 3 + (compMusic ? 3 : 0);
-  const hasImages = compImageIds.length > 0 || imagePrompts.some(p => p.resultUrl);
+  const hasImages = compImageIds.length > 0 || imagePrompts.some(p => p.resultUrl) || compAutoGenImages;
 
   return (
     <div className="space-y-6">
@@ -1126,6 +1130,39 @@ export default function VideoPipelinePage() {
                     </select>
                   </div>
                 )}
+
+                {/* Overlay Theme */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs" style={{ color: 'var(--color-text-muted)' }}>🎨 Overlay:</label>
+                  <select
+                    value={compOverlayTheme}
+                    onChange={(e) => setCompOverlayTheme(e.target.value as typeof compOverlayTheme)}
+                    className="input-field"
+                    style={{ maxWidth: '10rem', padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}
+                  >
+                    <option value="none">Sin overlay</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="modern">Modern</option>
+                    <option value="neon">Neón</option>
+                    <option value="elegant">Elegante</option>
+                  </select>
+                </div>
+
+                {/* Auto-generate images */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={compAutoGenImages}
+                    onChange={(e) => setCompAutoGenImages(e.target.checked)}
+                    className="accent-purple-500 w-4 h-4"
+                  />
+                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                    🤖 Auto-generar imágenes desde guión
+                    <span className="chip ml-2" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', borderColor: 'rgba(168,85,247,0.2)', fontSize: '0.6rem' }}>
+                      IA
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {/* Submit */}

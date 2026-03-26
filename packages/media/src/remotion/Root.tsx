@@ -16,6 +16,7 @@ export const RemotionRoot: React.FC = () => {
         musicVolume: 0.25,
         subtitleGroups: [],
         subtitleStyle: 'pill',
+        overlayTheme: 'modern',
       }}
     />
   );

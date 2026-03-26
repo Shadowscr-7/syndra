@@ -28,6 +28,7 @@ export interface RemotionRenderInput {
   musicVolume?: number;
   subtitleGroups?: SubtitleGroupInput[];
   subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal';
+  overlayTheme?: 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
   logoUrl?: string;
   productOverlay?: { name?: string; price?: string; cta?: string };
   ttsDurationMs?: number;         // Actual TTS duration in ms
@@ -108,6 +109,7 @@ export class RemotionVideoRenderer {
         musicVolume: input.musicVolume ?? 0.25,
         subtitleGroups,
         subtitleStyle: input.subtitleStyle ?? 'pill',
+        overlayTheme: input.overlayTheme ?? 'modern',
         logoUrl,
         productOverlay: input.productOverlay,
       };

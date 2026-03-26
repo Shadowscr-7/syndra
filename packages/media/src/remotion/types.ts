@@ -3,6 +3,7 @@
 export type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
 export type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'drift' | 'tilt-up' | 'tilt-down' | 'zoom-rotate' | 'cinematic-pan' | 'parallax' | 'none' | 'auto';
 export type SubtitleStyle = 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon';
+export type OverlayTheme = 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
 
 export interface StoryboardSlide {
   src: string;                    // URL (HTTP or data:)
@@ -32,4 +33,5 @@ export interface VideoCompositionProps {
     price?: string;
     cta?: string;
   };
+  overlayTheme?: OverlayTheme;    // Dynamic visual overlays
 }

@@ -10,7 +10,7 @@ import {
   Sequence,
   Easing,
 } from 'remotion';
-import type { VideoCompositionProps, SubtitleGroup, StoryboardSlide } from './types';
+import type { VideoCompositionProps, SubtitleGroup, StoryboardSlide, OverlayTheme } from './types';
 
 // ── Easing helpers ──
 const clamp = (v: number, min = 0, max = 1) => Math.min(max, Math.max(min, v));
@@ -397,6 +397,186 @@ const ProductOverlay: React.FC<{ overlay: { name?: string; price?: string; cta?:
   );
 };
 
+// ── Dynamic Overlays ──
+
+// Animated gradient overlay (top + bottom)
+const GradientOverlay: React.FC<{ theme: OverlayTheme }> = ({ theme }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  if (theme === 'none') return null;
+
+  const progress = frame / durationInFrames;
+  const shift = Math.sin(progress * Math.PI * 2) * 15;
+
+  const gradients: Record<string, { top: string; bottom: string }> = {
+    minimal: {
+      top: `linear-gradient(180deg, rgba(0,0,0,${0.3 + shift * 0.005}) 0%, transparent 25%)`,
+      bottom: `linear-gradient(0deg, rgba(0,0,0,${0.5 + shift * 0.005}) 0%, transparent 35%)`,
+    },
+    modern: {
+      top: `linear-gradient(180deg, rgba(10,10,30,0.4) 0%, transparent 30%)`,
+      bottom: `linear-gradient(0deg, rgba(10,10,30,0.6) 0%, transparent 40%)`,
+    },
+    neon: {
+      top: `linear-gradient(180deg, rgba(0,10,30,0.5) 0%, transparent 25%)`,
+      bottom: `linear-gradient(0deg, rgba(0,10,30,0.7) 0%, transparent 40%)`,
+    },
+    elegant: {
+      top: `linear-gradient(180deg, rgba(20,15,10,0.35) 0%, transparent 20%)`,
+      bottom: `linear-gradient(0deg, rgba(20,15,10,0.55) 0%, transparent 35%)`,
+    },
+  };
+
+  const g = gradients[theme] ?? gradients.modern!;
+
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0, background: g.top, pointerEvents: 'none', zIndex: 2 }} />
+      <div style={{ position: 'absolute', inset: 0, background: g.bottom, pointerEvents: 'none', zIndex: 2 }} />
+    </>
+  );
+};
+
+// Floating particles effect
+const FloatingParticles: React.FC<{ theme: OverlayTheme; count?: number }> = ({ theme, count = 12 }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  if (theme === 'none' || theme === 'minimal') return null;
+
+  const color = theme === 'neon' ? 'rgba(0,229,255,' : theme === 'elegant' ? 'rgba(255,215,0,' : 'rgba(255,255,255,';
+
+  // Deterministic pseudo-random based on index
+  const particles = Array.from({ length: count }, (_, i) => {
+    const seed = (i * 137.5) % 360;
+    const xBase = (seed / 360) * width;
+    const yBase = ((i * 73.7) % 100) / 100 * height;
+    const size = 2 + (i % 4);
+    const speed = 0.3 + (i % 5) * 0.15;
+    const opacity = 0.15 + (i % 3) * 0.1;
+    const x = xBase + Math.sin(frame * speed * 0.02 + seed) * 30;
+    const y = yBase + Math.cos(frame * speed * 0.015 + seed * 0.5) * 25 - frame * speed * 0.3;
+    const wrappedY = ((y % height) + height) % height;
+    return { x, y: wrappedY, size, opacity };
+  });
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, overflow: 'hidden' }}>
+      {particles.map((p, i) => (
+        <div key={i} style={{
+          position: 'absolute', left: p.x, top: p.y,
+          width: p.size, height: p.size, borderRadius: '50%',
+          background: `${color}${p.opacity})`,
+          boxShadow: theme === 'neon' ? `0 0 ${p.size * 2}px ${color}${p.opacity * 0.5})` : undefined,
+        }} />
+      ))}
+    </div>
+  );
+};
+
+// Progress bar at top or bottom
+const ProgressBar: React.FC<{ theme: OverlayTheme; position?: 'top' | 'bottom' }> = ({ theme, position = 'top' }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames, width } = useVideoConfig();
+  if (theme === 'none') return null;
+
+  const progress = clamp(frame / durationInFrames);
+
+  const colors: Record<string, string> = {
+    minimal: 'rgba(255,255,255,0.5)',
+    modern: 'linear-gradient(90deg, #6366f1, #a855f7, #ec4899)',
+    neon: 'linear-gradient(90deg, #00e5ff, #00ff88)',
+    elegant: 'linear-gradient(90deg, #d4a574, #f5e6d3)',
+  };
+
+  const barHeight = theme === 'minimal' ? 2 : 3;
+  const barStyle = colors[theme] ?? colors.modern!;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      [position]: 0, left: 0,
+      width: Math.round(width * progress), height: barHeight,
+      background: barStyle,
+      zIndex: 10, borderRadius: position === 'top' ? '0 0 2px 0' : '2px 0 0 0',
+      boxShadow: theme === 'neon' ? '0 0 8px rgba(0,229,255,0.5)' : undefined,
+    }} />
+  );
+};
+
+// Slide counter (e.g. "2/5")
+const SlideCounter: React.FC<{
+  currentSlide: number; totalSlides: number; theme: OverlayTheme;
+}> = ({ currentSlide, totalSlides, theme }) => {
+  const frame = useCurrentFrame();
+  const { width, fps } = useVideoConfig();
+  if (theme === 'none' || theme === 'minimal') return null;
+
+  const fadeIn = interpolate(frame, [0, Math.round(fps * 0.5)], [0, 0.7], { extrapolateRight: 'clamp' });
+  const fontSize = Math.round(width * 0.025);
+
+  const colors: Record<string, { bg: string; text: string; border: string }> = {
+    modern: { bg: 'rgba(0,0,0,0.45)', text: '#fff', border: 'rgba(255,255,255,0.1)' },
+    neon: { bg: 'rgba(0,10,30,0.6)', text: '#00e5ff', border: 'rgba(0,229,255,0.3)' },
+    elegant: { bg: 'rgba(20,15,10,0.5)', text: '#f5e6d3', border: 'rgba(212,165,116,0.3)' },
+  };
+  const c = colors[theme] ?? colors.modern!;
+
+  return (
+    <div style={{
+      position: 'absolute', top: Math.round(width * 0.04), left: Math.round(width * 0.04),
+      opacity: fadeIn, fontSize, fontWeight: 600,
+      fontFamily: 'Noto Sans, sans-serif', color: c.text,
+      background: c.bg, padding: `${Math.round(fontSize * 0.3)}px ${Math.round(fontSize * 0.7)}px`,
+      borderRadius: Math.round(fontSize * 0.4), border: `1px solid ${c.border}`,
+      backdropFilter: 'blur(4px)', zIndex: 5,
+      letterSpacing: '0.05em',
+    }}>
+      {currentSlide}/{totalSlides}
+    </div>
+  );
+};
+
+// Animated border frame
+const AnimatedFrame: React.FC<{ theme: OverlayTheme }> = ({ theme }) => {
+  const frame = useCurrentFrame();
+  const { width, height, fps, durationInFrames } = useVideoConfig();
+  if (theme !== 'neon' && theme !== 'elegant') return null;
+
+  const fadeIn = interpolate(frame, [0, Math.round(fps * 0.8)], [0, 1], { extrapolateRight: 'clamp' });
+  const fadeOut = interpolate(frame, [durationInFrames - Math.round(fps * 0.5), durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const opacity = Math.min(fadeIn, fadeOut) * 0.6;
+  const inset = Math.round(width * 0.03);
+
+  if (theme === 'neon') {
+    const pulse = 0.4 + 0.3 * Math.sin(frame * 0.1);
+    return (
+      <div style={{
+        position: 'absolute', inset, pointerEvents: 'none', zIndex: 4,
+        border: `1px solid rgba(0,229,255,${opacity * pulse})`,
+        borderRadius: Math.round(width * 0.02),
+        boxShadow: `inset 0 0 ${Math.round(15 * pulse)}px rgba(0,229,255,${opacity * pulse * 0.3}), 0 0 ${Math.round(10 * pulse)}px rgba(0,229,255,${opacity * pulse * 0.2})`,
+      }} />
+    );
+  }
+
+  // Elegant: corner accents
+  const cornerSize = Math.round(width * 0.08);
+  const cColor = `rgba(212,165,116,${opacity})`;
+  const cornerStyle = (position: Record<string, number>): React.CSSProperties => ({
+    position: 'absolute', ...position, width: cornerSize, height: cornerSize,
+    pointerEvents: 'none', zIndex: 4,
+  });
+
+  return (
+    <>
+      <div style={{ ...cornerStyle({ top: inset, left: inset }), borderTop: `2px solid ${cColor}`, borderLeft: `2px solid ${cColor}` }} />
+      <div style={{ ...cornerStyle({ top: inset, right: inset }), borderTop: `2px solid ${cColor}`, borderRight: `2px solid ${cColor}` }} />
+      <div style={{ ...cornerStyle({ bottom: inset, left: inset }), borderBottom: `2px solid ${cColor}`, borderLeft: `2px solid ${cColor}` }} />
+      <div style={{ ...cornerStyle({ bottom: inset, right: inset }), borderBottom: `2px solid ${cColor}`, borderRight: `2px solid ${cColor}` }} />
+    </>
+  );
+};
+
 // ── Main Composition ──
 export const VideoComposition: React.FC<VideoCompositionProps> = ({
   slides,
@@ -407,7 +587,9 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
   subtitleStyle,
   logoUrl,
   productOverlay,
+  overlayTheme = 'modern',
 }) => {
+  const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
 
   // Separate by role
@@ -444,6 +626,12 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
     }));
   }
 
+  // Calculate current slide index for counter
+  const currentSlideIdx = slideSequences.reduce((acc, seq, i) => {
+    if (frame >= seq.from && frame < seq.from + seq.duration) return i;
+    return acc;
+  }, 0) + 1;
+
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
       {slideSequences.map((seq, i) => (
@@ -456,6 +644,13 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
           {seq.slide.caption && <SlideCaption text={seq.slide.caption} />}
         </Sequence>
       ))}
+
+      {/* Dynamic overlays */}
+      <GradientOverlay theme={overlayTheme} />
+      <FloatingParticles theme={overlayTheme} />
+      <ProgressBar theme={overlayTheme} />
+      <AnimatedFrame theme={overlayTheme} />
+      <SlideCounter currentSlide={currentSlideIdx} totalSlides={n} theme={overlayTheme} />
 
       {effectiveLogoUrl && <LogoWatermark src={effectiveLogoUrl} />}
 

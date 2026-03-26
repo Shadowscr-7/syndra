@@ -311,6 +311,8 @@ export class VideoController {
       voiceEngine?: 'edge' | 'piper';
       enableSubtitles?: boolean;
       subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke';
+      overlayTheme?: 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
+      autoGenerateImages?: boolean;
       enableMusic?: boolean;
       musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
       mode?: 'general' | 'product';
@@ -324,8 +326,8 @@ export class VideoController {
     const userId = req.user?.sub;
     const workspaceId = req.workspaceId;
 
-    if (!body.imageIds?.length && !body.imageUrls?.length && !body.imageSlides?.length) {
-      throw new Error('Se necesita al menos una imagen');
+    if (!body.imageIds?.length && !body.imageUrls?.length && !body.imageSlides?.length && !body.autoGenerateImages) {
+      throw new Error('Se necesita al menos una imagen o activar auto-generación');
     }
 
     this.logger.log(`Compositor render: ${body.imageSlides?.length ?? body.imageIds?.length ?? 0} images, mode=${body.mode ?? 'general'}`);

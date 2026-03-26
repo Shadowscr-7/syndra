@@ -51,11 +51,17 @@ export interface CompositorInput {
 
   // Subtitles
   enableSubtitles?: boolean;
-  subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke';
+  subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon';
 
   // Music
   enableMusic?: boolean;
   musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
+
+  // Auto-generate images from narration (when no images provided)
+  autoGenerateImages?: boolean;
+
+  // Overlay theme for dynamic visual elements
+  overlayTheme?: 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
 
   // Product mode
   mode?: 'general' | 'product';
@@ -124,6 +130,28 @@ export class VideoCompositorService {
         imageUrls = slides.map(s => s.url);
       } else {
         imageUrls = await this.resolveImageUrls(input, userId);
+      }
+
+      // Auto-generate images from narration if none provided
+      if (imageUrls.length === 0 && input.autoGenerateImages && input.narrationText?.trim()) {
+        this.logger.log('No images provided, auto-generating from narration...');
+        const generated = await this.autoGenerateImages({
+          narrationText: input.narrationText,
+          aspectRatio: input.aspectRatio ?? '9:16',
+          userId: input.userId,
+          workspaceId: input.workspaceId,
+        });
+        imageUrls = generated.imageUrls;
+        if (!slides) {
+          slides = generated.imageUrls.map((url, i) => ({
+            url,
+            role: 'slide' as const,
+            order: i,
+            animation: 'auto' as const,
+            caption: generated.captions[i],
+          }));
+        }
+        this.logger.log(`Auto-generated ${imageUrls.length} images`);
       }
 
       if (imageUrls.length === 0) {
@@ -198,6 +226,7 @@ export class VideoCompositorService {
         logoUrl,
         productOverlay,
         ttsDurationMs,
+        overlayTheme: input.overlayTheme ?? 'modern',
       });
 
       // 10. Upload to Cloudinary or save locally
@@ -650,6 +679,123 @@ export class VideoCompositorService {
     ], { temperature: 0.7, maxTokens: 500 });
 
     return { improved: improved.trim() };
+  }
+
+  // ── Auto-generate images from narration ──
+
+  async autoGenerateImages(opts: {
+    narrationText: string;
+    aspectRatio: string;
+    userId: string;
+    workspaceId: string;
+  }): Promise<{ imageUrls: string[]; captions: string[] }> {
+    const apiKey = this.config.get<string>('LLM_API_KEY');
+    const baseUrl = this.config.get<string>('LLM_BASE_URL');
+    const kieApiKey = this.config.get<string>('KIE_AI_API_KEY');
+    if (!apiKey) throw new BadRequestException('LLM_API_KEY no configurada');
+    if (!kieApiKey) throw new BadRequestException('KIE_AI_API_KEY no configurada');
+
+    // 1. Generate image prompts from narration using AI
+    const adapter = new OpenAIAdapter({
+      apiKey,
+      baseUrl: baseUrl || 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    });
+
+    const words = opts.narrationText.split(/\s+/).length;
+    const slideCount = Math.max(3, Math.min(8, Math.round(words / 25)));
+
+    const result = await adapter.chat([
+      {
+        role: 'system',
+        content: `You are an expert visual director for social media videos. Given narration text, generate ${slideCount} image prompts that visually tell the story. Each prompt must be highly descriptive for AI image generators (Ideogram V3).
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "slides": [
+    { "prompt": "detailed English prompt for image generation", "caption": "short overlay text in the narration language (max 8 words)" }
+  ]
+}
+
+Rules:
+- Prompts must be in ENGLISH, detailed (style, lighting, mood, composition, camera angle)
+- Include visual style (cinematic, editorial, flat lay, lifestyle, etc.)
+- DO NOT include text/typography in image prompts
+- Each image should match a different segment of the narration
+- Captions should be punchy key phrases from the narration (in the narration's language)
+- Make images visually diverse: alternate between close-ups, wide shots, abstract, lifestyle, etc.
+- Add atmosphere: golden hour, neon lights, soft bokeh, dramatic shadows, etc.`,
+      },
+      { role: 'user', content: opts.narrationText },
+    ], { temperature: 0.8, maxTokens: 1200 });
+
+    let slides: Array<{ prompt: string; caption: string }> = [];
+    try {
+      const cleaned = result.trim().replace(/^```json?\s*/i, '').replace(/```\s*$/i, '');
+      const parsed = JSON.parse(cleaned);
+      slides = Array.isArray(parsed.slides) ? parsed.slides : [];
+    } catch {
+      this.logger.warn('Failed to parse auto-image prompts, using fallback');
+    }
+
+    if (slides.length === 0) {
+      // Fallback: split narration into segments and create generic prompts
+      const sentences = opts.narrationText.split(/[.!?]+/).filter(s => s.trim().length > 10);
+      slides = sentences.slice(0, slideCount).map((s, i) => ({
+        prompt: `Professional cinematic photograph representing: ${s.trim()}. High quality, editorial style, dramatic lighting, no text.`,
+        caption: s.trim().split(/\s+/).slice(0, 6).join(' '),
+      }));
+    }
+
+    // 2. Generate images in parallel (max 5 concurrent)
+    const imageAdapter = new KieImageProAdapter({ apiKey: kieApiKey, modelId: 'ideogram/v3-text-to-image' });
+    const sizeMap: Record<string, string> = { '9:16': 'portrait_16_9', '16:9': 'landscape_16_9', '1:1': 'square_hd' };
+    const imageSize = sizeMap[opts.aspectRatio] || 'portrait_16_9';
+
+    const imageUrls: string[] = [];
+    const captions: string[] = [];
+    const batchSize = 3;
+
+    for (let i = 0; i < slides.length; i += batchSize) {
+      const batch = slides.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (slide) => {
+          const finalPrompt = slide.prompt + '. Do NOT include any text, letters, numbers, or typography within the image.';
+          const generated = await imageAdapter.generate(finalPrompt, { imageSize });
+          if (generated.url) {
+            // Save as UserMedia
+            const media = await this.prisma.userMedia.create({
+              data: {
+                userId: opts.userId, filename: `autogen_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`,
+                url: generated.url, thumbnailUrl: generated.url, mimeType: 'image/png',
+                sizeBytes: 0, category: 'BACKGROUND' as any, tags: ['video-compositor', 'auto-generated'],
+              },
+            });
+            return { url: generated.url, caption: slide.caption, mediaId: media.id };
+          }
+          throw new Error('No URL returned');
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          imageUrls.push(r.value.url);
+          captions.push(r.value.caption);
+        }
+      }
+    }
+
+    // Consume credits for auto-generated images (4 credits each)
+    const generatedCount = imageUrls.length;
+    if (generatedCount > 0) {
+      await this.credits.consumeCredits(
+        opts.workspaceId,
+        'IMAGE_PRO_TEXT',
+        `Auto-generated ${generatedCount} images for video (Ideogram V3)`,
+      );
+    }
+
+    return { imageUrls, captions };
   }
 
   // ── Generate full video script with AI ──
