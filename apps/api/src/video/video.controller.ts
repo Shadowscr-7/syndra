@@ -31,11 +31,12 @@ export class VideoController {
    */
   @Get()
   async listVideos(
+    @Req() req: any,
     @Query('workspaceId') workspaceId?: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
   ) {
-    const wsId = workspaceId ?? 'default';
+    const wsId = workspaceId ?? req.workspaceId ?? 'default';
     return this.videoService.listVideoAssets(wsId, {
       status,
       limit: limit ? parseInt(limit, 10) : undefined,
@@ -62,16 +63,20 @@ export class VideoController {
    * GET /api/videos/credits — Créditos de video del workspace
    */
   @Get('credits')
-  async getCredits(@Query('workspaceId') workspaceId = 'default') {
-    return this.credits.getCurrentCredits(workspaceId);
+  async getCredits(@Req() req: any, @Query('workspaceId') workspaceId?: string) {
+    const wsId = workspaceId ?? req.workspaceId;
+    if (!wsId) throw new BadRequestException('workspaceId requerido');
+    return this.credits.getCurrentCredits(wsId);
   }
 
   /**
    * GET /api/videos/credits/history — Historial de créditos
    */
   @Get('credits/history')
-  async getCreditHistory(@Query('workspaceId') workspaceId = 'default') {
-    return this.credits.getCreditHistory(workspaceId);
+  async getCreditHistory(@Req() req: any, @Query('workspaceId') workspaceId?: string) {
+    const wsId = workspaceId ?? req.workspaceId;
+    if (!wsId) throw new BadRequestException('workspaceId requerido');
+    return this.credits.getCreditHistory(wsId);
   }
 
   /**
@@ -79,10 +84,13 @@ export class VideoController {
    */
   @Get('render')
   async listRenderJobs(
-    @Query('workspaceId') workspaceId = 'default',
+    @Req() req: any,
+    @Query('workspaceId') workspaceId?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.credits.getRenderJobs(workspaceId, limit ? Number(limit) : undefined);
+    const wsId = workspaceId ?? req.workspaceId;
+    if (!wsId) throw new BadRequestException('workspaceId requerido');
+    return this.credits.getRenderJobs(wsId, limit ? Number(limit) : undefined);
   }
 
   /**
