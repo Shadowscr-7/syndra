@@ -1,4 +1,4 @@
-import { BUILTIN_TEMPLATES } from '@automatismos/media';
+import { BUILTIN_TEMPLATES } from '@automatismos/media/templates';
 
 const CATEGORY_LABELS: Record<string, { emoji: string; label: string }> = {
   educational: { emoji: '📚', label: 'Educativo' },
