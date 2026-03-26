@@ -286,9 +286,9 @@ export class VideoCompositorService {
   // ── Music (Suno via Kie) ──
 
   private async generateMusic(style: string): Promise<string | undefined> {
-    const kieApiKey = this.config.get<string>('KIE_API_KEY');
+    const kieApiKey = this.config.get<string>('KIE_AI_API_KEY');
     if (!kieApiKey) {
-      this.logger.warn('KIE_API_KEY not set, skipping music generation');
+      this.logger.warn('KIE_AI_API_KEY not set, skipping music generation');
       return undefined;
     }
 
@@ -406,9 +406,9 @@ export class VideoCompositorService {
     includeText: boolean;
     aspectRatio: string;
   }): Promise<{ success: boolean; imageUrl: string; userMediaId: string }> {
-    const apiKey = this.config.get<string>('KIE_API_KEY');
+    const apiKey = this.config.get<string>('KIE_AI_API_KEY');
     const baseUrl = this.config.get<string>('KIE_API_BASE_URL');
-    if (!apiKey) throw new BadRequestException('KIE_API_KEY no configurada');
+    if (!apiKey) throw new BadRequestException('KIE_AI_API_KEY no configurada');
 
     // Check credits (IMAGE_PRO_TEXT = 4 credits for Ideogram V3)
     const hasCredits = await this.credits.hasEnoughCredits(opts.workspaceId, 4);
