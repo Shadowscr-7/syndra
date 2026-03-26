@@ -301,7 +301,7 @@ export default function VideoPipelinePage() {
         preset: string;
       }>('/videos/compositor/generate-script', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body,
       });
 
       // Apply narration
