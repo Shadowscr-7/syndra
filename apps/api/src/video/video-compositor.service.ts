@@ -9,7 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from '../credits/credits.service';
 import { ProVideoRenderer } from '@automatismos/media';
 import { EdgeTTSAdapter } from '@automatismos/media';
-import { KieMusicAdapter } from '@automatismos/media';
+import { KieMusicAdapter, KieImageProAdapter } from '@automatismos/media';
+import { OpenAIAdapter } from '@automatismos/ai';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -393,5 +394,113 @@ export class VideoCompositorService {
     fs.copyFileSync(localPath, destPath);
 
     return `/uploads/videos/${filename}`;
+  }
+
+  // ── Generate Image (Kie Ideogram) ──
+
+  async generateImage(opts: {
+    userId: string;
+    workspaceId: string;
+    prompt: string;
+    language: 'es' | 'en';
+    includeText: boolean;
+    aspectRatio: string;
+  }): Promise<{ success: boolean; imageUrl: string; userMediaId: string }> {
+    const apiKey = this.config.get<string>('KIE_API_KEY');
+    const baseUrl = this.config.get<string>('KIE_API_BASE_URL');
+    if (!apiKey) throw new BadRequestException('KIE_API_KEY no configurada');
+
+    // Check credits (4 for Ideogram V3)
+    const hasCredits = await this.credits.hasEnoughCredits(opts.workspaceId, 4);
+    if (!hasCredits) throw new BadRequestException('Créditos insuficientes. Necesitas 4 créditos.');
+
+    // Build prompt with language context
+    let finalPrompt = opts.prompt;
+    if (opts.includeText && opts.language === 'es') {
+      finalPrompt += '. All text within the image must be in Spanish (español).';
+    } else if (opts.includeText && opts.language === 'en') {
+      finalPrompt += '. All text within the image must be in English.';
+    }
+    if (!opts.includeText) {
+      finalPrompt += '. Do NOT include any text, letters, numbers, or typography within the image.';
+    }
+
+    const adapter = new KieImageProAdapter({
+      apiKey,
+      baseUrl,
+      modelId: 'ideogram/v3-text-to-image',
+    });
+
+    // Map aspect ratio
+    const sizeMap: Record<string, string> = {
+      '9:16': 'ASPECT_9_16',
+      '16:9': 'ASPECT_16_9',
+      '1:1': 'ASPECT_1_1',
+    };
+
+    this.logger.log(`Generating image: prompt="${opts.prompt.slice(0, 80)}...", lang=${opts.language}, text=${opts.includeText}`);
+
+    const result = await adapter.generate(finalPrompt, {
+      imageSize: sizeMap[opts.aspectRatio] || 'ASPECT_9_16',
+    });
+
+    if (!result.url) throw new BadRequestException('La generación de imagen falló');
+
+    // Save as UserMedia
+    const userMedia = await this.prisma.userMedia.create({
+      data: {
+        userId: opts.userId,
+        filename: `ideogram_${Date.now()}.png`,
+        url: result.url,
+        thumbnailUrl: result.url,
+        mimeType: 'image/png',
+        sizeBytes: 0,
+        category: 'BACKGROUND' as any,
+        tags: ['video-compositor', 'ai-generated'],
+      },
+    });
+
+    // Consume credits
+    await this.credits.consumeCredits(opts.workspaceId, 'VIDEO_COMPOSITOR', 'Ideogram image for compositor');
+
+    return { success: true, imageUrl: result.url, userMediaId: userMedia.id };
+  }
+
+  // ── Improve narration with AI ──
+
+  async improveNarration(text: string, intent: string): Promise<{ improved: string }> {
+    const apiKey = this.config.get<string>('LLM_API_KEY');
+    const baseUrl = this.config.get<string>('LLM_BASE_URL');
+    if (!apiKey) throw new BadRequestException('LLM_API_KEY no configurada');
+
+    const adapter = new OpenAIAdapter({
+      apiKey,
+      baseUrl: baseUrl || 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    });
+
+    const intentMap: Record<string, string> = {
+      vender: 'persuasivo y orientado a ventas, destacando beneficios y creando urgencia',
+      educar: 'educativo y didáctico, explicando conceptos de forma clara y accesible',
+      entretener: 'entretenido y dinámico, con humor ligero y enganche emocional',
+      inspirar: 'inspirador y motivacional, con frases poderosas que muevan a la acción',
+      informar: 'informativo y profesional, con datos concretos y lenguaje claro',
+      storytelling: 'narrativo tipo storytelling, contando una historia que atrape al espectador',
+    };
+
+    const toneDesc = intentMap[intent] || intent;
+
+    const improved = await adapter.chat([
+      {
+        role: 'system',
+        content: `Eres un experto copywriter para videos de redes sociales. Tu trabajo es mejorar narrativas para que suenen profesionales, naturales y efectivas como narración de video. El tono debe ser: ${toneDesc}. Responde SOLO con el texto mejorado, sin explicaciones ni comillas. Mantén una extensión similar al original (máximo 20% más largo). El idioma debe ser español.`,
+      },
+      {
+        role: 'user',
+        content: text,
+      },
+    ], { temperature: 0.7, maxTokens: 500 });
+
+    return { improved: improved.trim() };
   }
 }

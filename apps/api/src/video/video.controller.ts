@@ -2,7 +2,7 @@
 // Video Controller — REST endpoints para gestión de videos
 // ============================================================
 
-import { Controller, Get, Post, Param, Query, Body, Req, Logger, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Req, Logger, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
@@ -123,7 +123,17 @@ export class VideoController {
     return this.videoService.exportScriptAsPost(editorialRunId, mode);
   }
 
-  // ── Rutas con parámetro dinámico (al final) ────────────
+  // ── Video Compositor GET routes (MUST be before :id) ──
+
+  /**
+   * GET /api/videos/compositor/voices — Voces disponibles para TTS
+   */
+  @Get('compositor/voices')
+  getVoices() {
+    return { data: AVAILABLE_VOICES };
+  }
+
+  // ── Rutas con parámetro dinámico (al final de los GET) ────────────
 
   /**
    * GET /api/videos/:id — Detalle de un video asset
@@ -231,14 +241,6 @@ export class VideoController {
   // ── Video Compositor (Opción 1 — FFmpeg Pro) ──
 
   /**
-   * GET /api/videos/compositor/voices — Voces disponibles para TTS
-   */
-  @Get('compositor/voices')
-  getVoices() {
-    return { data: AVAILABLE_VOICES };
-  }
-
-  /**
    * POST /api/videos/compositor/render — Renderizar video con compositor
    */
   @Post('compositor/render')
@@ -313,5 +315,60 @@ export class VideoController {
       },
       options: { aspectRatio: body.aspectRatio ?? '9:16' },
     });
+  }
+
+  // ── Compositor image generation (Kie Ideogram) ──
+
+  /**
+   * POST /api/videos/compositor/generate-image — Genera imagen con Kie Ideogram para el compositor
+   */
+  @Post('compositor/generate-image')
+  async generateCompositorImage(
+    @Req() req: any,
+    @Body() body: {
+      prompt: string;
+      language?: 'es' | 'en';
+      includeText?: boolean;
+      aspectRatio?: '9:16' | '16:9' | '1:1';
+    },
+  ) {
+    const userId = req.user?.sub;
+    const workspaceId = req.workspaceId;
+
+    if (!body.prompt?.trim()) {
+      throw new BadRequestException('Se necesita un prompt para generar la imagen');
+    }
+
+    return this.compositor.generateImage({
+      userId,
+      workspaceId,
+      prompt: body.prompt,
+      language: body.language ?? 'es',
+      includeText: body.includeText ?? false,
+      aspectRatio: body.aspectRatio ?? '9:16',
+    });
+  }
+
+  // ── AI narration improvement ──
+
+  /**
+   * POST /api/videos/compositor/improve-text — Mejora narración con IA
+   */
+  @Post('compositor/improve-text')
+  async improveText(
+    @Req() req: any,
+    @Body() body: {
+      text: string;
+      intent: string;
+    },
+  ) {
+    if (!body.text?.trim()) {
+      throw new BadRequestException('Se necesita un texto para mejorar');
+    }
+    if (!body.intent?.trim()) {
+      throw new BadRequestException('Se necesita una intención');
+    }
+
+    return this.compositor.improveNarration(body.text, body.intent);
   }
 }

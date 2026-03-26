@@ -30,11 +30,17 @@ export function UserMediaPicker({ selectedIds, onChange, categoryFilter, max = 5
     try {
       const params = new URLSearchParams({ limit: '50' });
       if (categoryFilter) params.set('category', categoryFilter);
-      const data = await apiFetch<{ items: UserMediaItem[] } | UserMediaItem[]>(
+      const data = await apiFetch<any>(
         `/user-media?${params.toString()}`,
       );
-      // API may return { items: [...] } or directly an array
-      const items = Array.isArray(data) ? data : (data?.items ?? []);
+      // API returns { data: [...], meta: {...} } or { items: [...] } or array
+      const items: UserMediaItem[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
       setMedia(items.filter((m) => m.mimeType?.startsWith('image/')));
     } catch {
       setMedia([]);

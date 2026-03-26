@@ -33,6 +33,14 @@ interface Credits {
   period: string;
 }
 
+interface ImagePromptEntry {
+  id: string;
+  prompt: string;
+  status: 'pending' | 'generating' | 'done' | 'error';
+  resultUrl?: string;
+  userMediaId?: string;
+}
+
 // ── Status styles ──
 
 const statusStyles: Record<string, { bg: string; color: string; border: string }> = {
@@ -44,6 +52,16 @@ const statusStyles: Record<string, { bg: string; color: string; border: string }
   FAILED:     { bg: 'rgba(239,68,68,0.1)',  color: '#ef4444', border: 'rgba(239,68,68,0.2)' },
   CANCELLED:  { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', border: 'rgba(107,114,128,0.2)' },
 };
+
+// ── Narration intent options ──
+const NARRATION_INTENTS = [
+  { id: 'vender', label: '🛒 Vender', desc: 'Persuasivo, destaca beneficios' },
+  { id: 'educar', label: '📚 Educar', desc: 'Didáctico, explica conceptos' },
+  { id: 'entretener', label: '🎭 Entretener', desc: 'Dinámico, con enganche' },
+  { id: 'inspirar', label: '✨ Inspirar', desc: 'Motivacional, poderoso' },
+  { id: 'informar', label: '📰 Informar', desc: 'Profesional, datos claros' },
+  { id: 'storytelling', label: '📖 Storytelling', desc: 'Narrativo, cuenta historia' },
+];
 
 // ── Main Page ──
 
@@ -58,7 +76,7 @@ export default function VideoPipelinePage() {
   const [compImageIds, setCompImageIds] = useState<string[]>([]);
   const [compAspect, setCompAspect] = useState<AspectRatio>('9:16');
   const [compNarration, setCompNarration] = useState('');
-  const [compVoiceId, setCompVoiceId] = useState('es-AR-ElenaNeural');
+  const [compVoiceId, setCompVoiceId] = useState('');
   const [compVoiceSpeed, setCompVoiceSpeed] = useState<'slow' | 'normal' | 'fast'>('normal');
   const [compSubtitles, setCompSubtitles] = useState(true);
   const [compMusic, setCompMusic] = useState(false);
@@ -70,6 +88,16 @@ export default function VideoPipelinePage() {
   const [compProductPrice, setCompProductPrice] = useState('');
   const [compProductCta, setCompProductCta] = useState('');
   const [compSubmitting, setCompSubmitting] = useState(false);
+
+  // ── AI Image Generation state ──
+  const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
+  const [imgLang, setImgLang] = useState<'es' | 'en'>('es');
+  const [imgIncludeText, setImgIncludeText] = useState(false);
+
+  // ── AI Narration Improve state ──
+  const [showImprovePanel, setShowImprovePanel] = useState(false);
+  const [improveIntent, setImproveIntent] = useState('');
+  const [improving, setImproving] = useState(false);
 
   // ── Kie AI state (Option 2) ──
   const [kiePrompt, setKiePrompt] = useState('');
@@ -87,7 +115,11 @@ export default function VideoPipelinePage() {
         apiFetch<RenderJob[]>('/videos/render').catch(() => []),
       ]);
       if (credRes) setCredits(credRes);
-      setVoices(voicesRes?.data ?? []);
+      const voiceList = voicesRes?.data ?? [];
+      setVoices(voiceList);
+      if (voiceList.length > 0 && !compVoiceId && voiceList[0]) {
+        setCompVoiceId(voiceList[0].id);
+      }
       setJobs(Array.isArray(jobsRes) ? jobsRes : []);
     } catch (e) {
       console.error('Error loading video pipeline data:', e);
@@ -98,15 +130,92 @@ export default function VideoPipelinePage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── AI Image Generation ──
+  const addImagePrompt = () => {
+    setImagePrompts(prev => [...prev, {
+      id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      prompt: '',
+      status: 'pending',
+    }]);
+  };
+
+  const updateImagePrompt = (id: string, prompt: string) => {
+    setImagePrompts(prev => prev.map(p => p.id === id ? { ...p, prompt } : p));
+  };
+
+  const removeImagePrompt = (id: string) => {
+    setImagePrompts(prev => prev.filter(p => p.id !== id));
+  };
+
+  const generateImage = async (entry: ImagePromptEntry) => {
+    if (!entry.prompt.trim()) return;
+    setImagePrompts(prev => prev.map(p => p.id === entry.id ? { ...p, status: 'generating' } : p));
+    try {
+      const res = await apiFetch<{ success: boolean; imageUrl: string; userMediaId: string }>('/videos/compositor/generate-image', {
+        method: 'POST',
+        body: {
+          prompt: entry.prompt,
+          language: imgLang,
+          includeText: imgIncludeText,
+          aspectRatio: compAspect,
+        },
+      });
+      setImagePrompts(prev => prev.map(p =>
+        p.id === entry.id ? { ...p, status: 'done', resultUrl: res.imageUrl, userMediaId: res.userMediaId } : p
+      ));
+      // Auto-select the generated image
+      if (res.userMediaId) {
+        setCompImageIds(prev => prev.length < 10 ? [...prev, res.userMediaId] : prev);
+      }
+      loadData(); // refresh credits
+    } catch (err: any) {
+      console.error('Image generation error:', err);
+      setImagePrompts(prev => prev.map(p => p.id === entry.id ? { ...p, status: 'error' } : p));
+    }
+  };
+
+  const generateAllImages = async () => {
+    const pending = imagePrompts.filter(p => p.status === 'pending' && p.prompt.trim());
+    for (const entry of pending) {
+      await generateImage(entry);
+    }
+  };
+
+  // ── AI Narration Improve ──
+  const improveNarration = async () => {
+    if (!compNarration.trim() || !improveIntent) return;
+    setImproving(true);
+    try {
+      const res = await apiFetch<{ improved: string }>('/videos/compositor/improve-text', {
+        method: 'POST',
+        body: { text: compNarration, intent: improveIntent },
+      });
+      if (res.improved) {
+        setCompNarration(res.improved);
+      }
+      setShowImprovePanel(false);
+      setImproveIntent('');
+    } catch (err: any) {
+      console.error('Improve narration error:', err);
+    } finally {
+      setImproving(false);
+    }
+  };
+
   // ── Submit Compositor ──
   const submitCompositor = async () => {
-    if (!compImageIds.length || !compNarration.trim()) return;
+    if (!compNarration.trim()) return;
+    // Allow submitting with generated image URLs if no library images selected
+    const generatedUrls = imagePrompts.filter(p => p.resultUrl).map(p => p.resultUrl!);
+    if (!compImageIds.length && !generatedUrls.length) return;
+
     setCompSubmitting(true);
     try {
       await apiFetch('/videos/compositor/render', {
         method: 'POST',
         body: {
-          imageIds: compImageIds,
+          imageIds: compImageIds.length ? compImageIds : undefined,
+          imageUrls: generatedUrls.length && !compImageIds.length ? generatedUrls : undefined,
           aspectRatio: compAspect,
           narrationText: compNarration,
           voiceId: compVoiceId,
@@ -124,6 +233,7 @@ export default function VideoPipelinePage() {
       });
       setCompNarration('');
       setCompImageIds([]);
+      setImagePrompts([]);
       loadData();
     } catch (e) {
       console.error('Compositor render error:', e);
@@ -156,6 +266,7 @@ export default function VideoPipelinePage() {
 
   // ── Cost calculation ──
   const compositorCost = 3 + (compMusic ? 3 : 0);
+  const hasImages = compImageIds.length > 0 || imagePrompts.some(p => p.resultUrl);
 
   return (
     <div className="space-y-6">
@@ -242,18 +353,140 @@ export default function VideoPipelinePage() {
                 )}
               </div>
 
-              {/* Images */}
+              {/* Images from library */}
               <div className="glass-card p-5 space-y-3">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                  📷 Imágenes <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(hasta 10)</span>
+                  📷 Imágenes de biblioteca <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(hasta 10)</span>
                 </h3>
                 <UserMediaPicker
                   selectedIds={compImageIds}
                   onChange={setCompImageIds}
                   max={10}
                 />
-                {compImageIds.length === 0 && (
-                  <p className="text-xs" style={{ color: '#f59e0b' }}>Selecciona al menos 1 imagen de tu biblioteca.</p>
+                {compImageIds.length > 0 && (
+                  <p className="text-xs" style={{ color: '#10b981' }}>{compImageIds.length} imagen(es) seleccionada(s)</p>
+                )}
+              </div>
+
+              {/* AI Image Generation */}
+              <div className="glass-card p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    🎨 Generar imágenes con IA
+                    <span className="chip ml-2" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', borderColor: 'rgba(168,85,247,0.2)', fontSize: '0.6rem' }}>
+                      Ideogram V3 — 3 créd c/u
+                    </span>
+                  </h3>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Genera imágenes personalizadas con IA para usar como slides del video.
+                </p>
+
+                {/* Language + text options */}
+                <div className="flex gap-4 items-center">
+                  <div className="flex gap-2 items-center">
+                    <label className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Idioma texto:</label>
+                    <select
+                      value={imgLang}
+                      onChange={(e) => setImgLang(e.target.value as 'es' | 'en')}
+                      className="input-field"
+                      style={{ maxWidth: '8rem', padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                    >
+                      <option value="es">🇪🇸 Español</option>
+                      <option value="en">🇬🇧 Inglés</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={imgIncludeText}
+                      onChange={(e) => setImgIncludeText(e.target.checked)}
+                      className="accent-purple-500 w-4 h-4"
+                    />
+                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                      Incluir texto en la imagen
+                    </span>
+                  </label>
+                </div>
+
+                {/* Prompt entries */}
+                <div className="space-y-2">
+                  {imagePrompts.map((entry, idx) => (
+                    <div key={entry.id} className="flex gap-2 items-start">
+                      <span className="text-xs mt-2 font-mono" style={{ color: 'var(--color-text-muted)', minWidth: '1.5rem' }}>
+                        {idx + 1}.
+                      </span>
+                      <div className="flex-1">
+                        <textarea
+                          value={entry.prompt}
+                          onChange={(e) => updateImagePrompt(entry.id, e.target.value)}
+                          placeholder="Describe la imagen... Ej: Slide elegante con fondo degradado azul oscuro mostrando estadísticas de crecimiento"
+                          className="input-field text-sm"
+                          rows={2}
+                          disabled={entry.status === 'generating' || entry.status === 'done'}
+                          style={entry.status === 'done' ? { borderColor: '#10b981', opacity: 0.8 } : undefined}
+                        />
+                        {entry.status === 'done' && entry.resultUrl && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <img src={entry.resultUrl} alt="Generated" className="w-16 h-16 rounded object-cover border border-white/10" />
+                            <span className="text-xs" style={{ color: '#10b981' }}>✓ Generada y seleccionada</span>
+                          </div>
+                        )}
+                        {entry.status === 'generating' && (
+                          <p className="text-xs mt-1 animate-pulse" style={{ color: '#a855f7' }}>⏳ Generando...</p>
+                        )}
+                        {entry.status === 'error' && (
+                          <p className="text-xs mt-1" style={{ color: '#ef4444' }}>Error al generar. Intenta de nuevo.</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {entry.status === 'pending' && (
+                          <button
+                            onClick={() => generateImage(entry)}
+                            disabled={!entry.prompt.trim()}
+                            className="btn-ghost text-xs"
+                            style={{ padding: '0.25rem 0.5rem', opacity: entry.prompt.trim() ? 1 : 0.4 }}
+                          >
+                            🎨
+                          </button>
+                        )}
+                        {entry.status !== 'generating' && (
+                          <button
+                            onClick={() => removeImagePrompt(entry.id)}
+                            className="btn-ghost text-xs"
+                            style={{ padding: '0.25rem 0.5rem', color: '#ef4444' }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={addImagePrompt}
+                    className="btn-ghost text-xs"
+                    style={{ padding: '0.4rem 0.75rem' }}
+                  >
+                    + Agregar prompt
+                  </button>
+                  {imagePrompts.filter(p => p.status === 'pending' && p.prompt.trim()).length > 1 && (
+                    <button
+                      onClick={generateAllImages}
+                      className="btn-primary text-xs"
+                      style={{ padding: '0.4rem 0.75rem' }}
+                    >
+                      🎨 Generar todas ({imagePrompts.filter(p => p.status === 'pending' && p.prompt.trim()).length})
+                    </button>
+                  )}
+                </div>
+
+                {!hasImages && (
+                  <p className="text-xs" style={{ color: '#f59e0b' }}>
+                    Selecciona imágenes de tu biblioteca o genera nuevas con IA.
+                  </p>
                 )}
               </div>
 
@@ -318,7 +551,23 @@ export default function VideoPipelinePage() {
 
               {/* Narration */}
               <div className="glass-card p-5 space-y-3">
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎙️ Narración</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎙️ Narración</h3>
+                  {compNarration.trim() && (
+                    <button
+                      onClick={() => setShowImprovePanel(!showImprovePanel)}
+                      className="btn-ghost text-xs"
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        background: showImprovePanel ? 'rgba(168,85,247,0.15)' : undefined,
+                        borderColor: showImprovePanel ? 'rgba(168,85,247,0.3)' : undefined,
+                      }}
+                    >
+                      ✨ Mejorar con IA
+                    </button>
+                  )}
+                </div>
+
                 <textarea
                   value={compNarration}
                   onChange={(e) => setCompNarration(e.target.value)}
@@ -326,6 +575,44 @@ export default function VideoPipelinePage() {
                   className="input-field"
                   rows={4}
                 />
+
+                {/* AI Improve Panel */}
+                {showImprovePanel && (
+                  <div className="rounded-lg p-4 space-y-3" style={{ background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.15)' }}>
+                    <p className="text-xs font-medium" style={{ color: '#a855f7' }}>¿Con qué intención quieres mejorar el texto?</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {NARRATION_INTENTS.map((intent) => (
+                        <button
+                          key={intent.id}
+                          onClick={() => setImproveIntent(intent.id)}
+                          className={improveIntent === intent.id ? 'btn-primary' : 'btn-ghost'}
+                          style={{ padding: '0.5rem', fontSize: '0.75rem', textAlign: 'left' }}
+                        >
+                          <div className="font-medium">{intent.label}</div>
+                          <div className="text-[0.65rem] mt-0.5 opacity-70">{intent.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <button
+                        onClick={improveNarration}
+                        disabled={!improveIntent || improving}
+                        className="btn-primary text-xs"
+                        style={{ padding: '0.4rem 1rem', opacity: (!improveIntent || improving) ? 0.5 : 1 }}
+                      >
+                        {improving ? '⏳ Mejorando...' : '✨ Aplicar mejora'}
+                      </button>
+                      <button
+                        onClick={() => { setShowImprovePanel(false); setImproveIntent(''); }}
+                        className="btn-ghost text-xs"
+                        style={{ padding: '0.4rem 0.75rem' }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="input-label">Voz</label>
@@ -334,8 +621,9 @@ export default function VideoPipelinePage() {
                       onChange={(e) => setCompVoiceId(e.target.value)}
                       className="input-field"
                     >
+                      {voices.length === 0 && <option value="">Cargando voces...</option>}
                       {voices.map((v) => (
-                        <option key={v.id} value={v.id}>{v.label}</option>
+                        <option key={v.id} value={v.id}>{v.label} ({v.gender === 'F' ? '♀' : '♂'})</option>
                       ))}
                     </select>
                   </div>
@@ -420,10 +708,10 @@ export default function VideoPipelinePage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={submitCompositor}
-                  disabled={!compImageIds.length || !compNarration.trim() || compSubmitting}
+                  disabled={!hasImages || !compNarration.trim() || compSubmitting}
                   className="btn-primary"
                   style={{
-                    opacity: (!compImageIds.length || !compNarration.trim() || compSubmitting) ? 0.5 : 1,
+                    opacity: (!hasImages || !compNarration.trim() || compSubmitting) ? 0.5 : 1,
                     padding: '0.75rem 2rem',
                     fontSize: '0.95rem',
                   }}
