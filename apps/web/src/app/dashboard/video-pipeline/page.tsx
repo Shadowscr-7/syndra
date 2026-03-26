@@ -27,10 +27,10 @@ interface RenderJob {
 }
 
 interface Credits {
-  totalCredits: number;
-  usedCredits: number;
-  remainingCredits: number;
-  period: string;
+  balance: number;
+  unlimited: boolean;
+  totalPurchased: number;
+  totalConsumed: number;
 }
 
 interface ImagePromptEntry {
@@ -110,7 +110,7 @@ export default function VideoPipelinePage() {
     setLoading(true);
     try {
       const [credRes, voicesRes, jobsRes] = await Promise.all([
-        apiFetch<Credits>('/videos/credits').catch(() => null),
+        apiFetch<Credits>('/credits/balance').catch(() => null),
         apiFetch<{ data: Voice[] }>('/videos/compositor/voices').catch(() => ({ data: [] })),
         apiFetch<RenderJob[]>('/videos/render').catch(() => []),
       ]);
@@ -280,16 +280,16 @@ export default function VideoPipelinePage() {
       {credits && (
         <div className="grid grid-cols-3 gap-4 animate-fade-in">
           <div className="glass-card p-4 text-center stat-gradient-cyan">
-            <div className="text-2xl font-bold" style={{ color: 'var(--color-secondary)' }}>{credits.remainingCredits}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Créditos Restantes</div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--color-secondary)' }}>{credits.unlimited ? '∞' : credits.balance}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Créditos Disponibles</div>
           </div>
           <div className="glass-card p-4 text-center stat-gradient-purple">
-            <div className="text-2xl font-bold" style={{ color: 'var(--color-primary-light)' }}>{credits.usedCredits}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Usados</div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--color-primary-light)' }}>{credits.totalConsumed}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Consumidos</div>
           </div>
           <div className="glass-card p-4 text-center stat-gradient-blue">
-            <div className="text-2xl font-bold" style={{ color: '#60a5fa' }}>{credits.totalCredits}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Total ({credits.period})</div>
+            <div className="text-2xl font-bold" style={{ color: '#60a5fa' }}>{credits.totalPurchased}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Total Adquiridos</div>
           </div>
         </div>
       )}

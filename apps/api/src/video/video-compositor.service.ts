@@ -410,7 +410,7 @@ export class VideoCompositorService {
     const baseUrl = this.config.get<string>('KIE_API_BASE_URL');
     if (!apiKey) throw new BadRequestException('KIE_API_KEY no configurada');
 
-    // Check credits (4 for Ideogram V3)
+    // Check credits (IMAGE_PRO_TEXT = 4 credits for Ideogram V3)
     const hasCredits = await this.credits.hasEnoughCredits(opts.workspaceId, 4);
     if (!hasCredits) throw new BadRequestException('Créditos insuficientes. Necesitas 4 créditos.');
 
@@ -461,8 +461,8 @@ export class VideoCompositorService {
         },
       });
 
-      // Consume credits
-      await this.credits.consumeCredits(opts.workspaceId, 'VIDEO_COMPOSITOR', 'Ideogram image for compositor');
+      // Consume credits (IMAGE_PRO_TEXT = 4 for Ideogram V3)
+      await this.credits.consumeCredits(opts.workspaceId, 'IMAGE_PRO_TEXT', 'Ideogram V3 image for video compositor');
 
       return { success: true, imageUrl: result.url, userMediaId: userMedia.id };
     } catch (error: any) {
