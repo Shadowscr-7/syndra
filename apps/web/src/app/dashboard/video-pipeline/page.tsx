@@ -120,7 +120,7 @@ export default function VideoPipelinePage() {
   // ── Storyboard state ──
   const [storyboardEnabled, setStoryboardEnabled] = useState(false);
   const [storyboardSlides, setStoryboardSlides] = useState<StoryboardSlideUI[]>([]);
-  const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke'>('pill');
+  const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon'>('pill');
 
   // ── AI Image Generation state ──
   const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
@@ -269,7 +269,7 @@ export default function VideoPipelinePage() {
     setCompNarration(preset.narrationPlaceholder);
     setCompMusicStyle(preset.musicStyle as typeof compMusicStyle);
     setCompMusic(true);
-    setCompSubtitleStyle(preset.subtitleStyle as 'pill' | 'minimal');
+    setCompSubtitleStyle(preset.subtitleStyle as 'pill' | 'minimal' | 'neon');
     setStoryboardEnabled(true);
     setImproveIntent(preset.narrationIntent);
   };
@@ -315,7 +315,7 @@ export default function VideoPipelinePage() {
       }
 
       // Apply subtitle style
-      const validSubs = ['pill', 'minimal', 'word-by-word', 'karaoke'];
+      const validSubs = ['pill', 'minimal', 'word-by-word', 'karaoke', 'neon'];
       if (validSubs.includes(res.subtitleStyle)) {
         setCompSubtitleStyle(res.subtitleStyle as typeof compSubtitleStyle);
       }
@@ -1089,6 +1089,7 @@ export default function VideoPipelinePage() {
                         <option value="minimal">✏️ Minimal</option>
                         <option value="word-by-word">💬 Palabra×Palabra</option>
                         <option value="karaoke">🎤 Karaoke</option>
+                        <option value="neon">💡 Neón</option>
                       </select>
                     </div>
                   )}

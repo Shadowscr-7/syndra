@@ -1,8 +1,8 @@
 // Shared types for Remotion video composition
 
 export type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
-export type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
-export type SubtitleStyle = 'pill' | 'word-by-word' | 'karaoke' | 'minimal';
+export type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'drift' | 'tilt-up' | 'tilt-down' | 'zoom-rotate' | 'cinematic-pan' | 'parallax' | 'none' | 'auto';
+export type SubtitleStyle = 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon';
 
 export interface StoryboardSlide {
   src: string;                    // URL (HTTP or data:)

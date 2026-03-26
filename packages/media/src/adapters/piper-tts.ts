@@ -22,12 +22,15 @@ const PIPER_VOICES: VoiceInfo[] = [
 ];
 
 // Map Edge TTS voice IDs to Piper model names by language prefix
+// Latin American Spanish → Mexican model (closest to LatAm)
 const EDGE_TO_PIPER_MAP: Record<string, string> = {
-  'es-AR': 'es_ES-sharvard-medium',
+  'es-AR': 'es_MX-ald-medium',
   'es-MX': 'es_MX-ald-medium',
+  'es-CO': 'es_MX-ald-medium',
+  'es-CL': 'es_MX-ald-medium',
+  'es-PE': 'es_MX-ald-medium',
+  'es-VE': 'es_MX-ald-medium',
   'es-ES': 'es_ES-sharvard-medium',
-  'es-CO': 'es_ES-sharvard-medium',
-  'es-CL': 'es_ES-sharvard-medium',
   'en-US': 'en_US-amy-medium',
   'en-GB': 'en_US-lessac-medium',
 };
@@ -40,7 +43,7 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
   constructor(options?: { piperBin?: string; modelsDir?: string; defaultVoice?: string }) {
     this.piperBin = options?.piperBin ?? process.env.PIPER_BIN ?? '/opt/piper/piper';
     this.modelsDir = options?.modelsDir ?? process.env.PIPER_MODELS_DIR ?? '/opt/piper-models';
-    this.defaultVoice = options?.defaultVoice ?? 'es_ES-sharvard-medium';
+    this.defaultVoice = options?.defaultVoice ?? 'es_MX-ald-medium';
   }
 
   /**
@@ -127,8 +130,8 @@ export class PiperTTSAdapter implements VoiceSynthesisAdapter {
       if (EDGE_TO_PIPER_MAP[langPrefix]) return EDGE_TO_PIPER_MAP[langPrefix];
     }
 
-    // Fallback by first segment (es → Spanish, en → English)
-    if (parts[0] === 'es') return 'es_ES-sharvard-medium';
+    // Fallback by first segment (es → LatAm Spanish, en → English)
+    if (parts[0] === 'es') return 'es_MX-ald-medium';
     if (parts[0] === 'en') return 'en_US-amy-medium';
 
     return this.defaultVoice;
