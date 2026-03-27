@@ -303,8 +303,8 @@ export function VideoEditorShell() {
     });
   };
 
-  const updateLayer = useCallback(<T extends AnyLayer>(id: number, patch: Partial<T>) => {
-    setLayers(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
+  const updateLayer = useCallback((id: number, patch: Partial<AnyLayer>) => {
+    setLayers(prev => prev.map(l => l.id === id ? ({ ...l, ...patch } as AnyLayer) : l));
   }, []);
 
   const deleteLayer = (id: number) => {
@@ -1089,9 +1089,9 @@ export function VideoEditorShell() {
 
               {/* Captions preview */}
               {captionsEnabled && (
-                <div style={{ position: 'absolute', [captionPos === 'top' ? 'top' : captionPos === 'center' ? 'top' : 'bottom']: captionPos === 'top' ? '8%' : captionPos === 'center' ? '45%' : '10%', left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 10 }}>
+                <div style={{ position: 'absolute', top: captionPos === 'top' ? '8%' : captionPos === 'center' ? '45%' : undefined, bottom: captionPos === 'bottom' ? '10%' : undefined, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 10 }}>
                   <span style={{ fontFamily: `'${captionFont}', sans-serif`, fontSize: captionSize * scale, fontWeight: 900, color: captionColor, background: captionBg ? 'rgba(0,0,0,0.6)' : 'none', padding: captionBg ? `${4 * scale}px ${10 * scale}px` : 0, borderRadius: 6, display: 'inline-block' }}>
-                    {captionText.split('\n')[Math.floor(currentFrame / (fps * 1.5)) % Math.max(1, captionText.split('\n').length)] || 'Subtítulo'}
+                    {(() => { const lines = captionText.split('\n').filter(l => l.trim()); return lines[Math.floor(currentFrame / (fps * 1.5)) % Math.max(1, lines.length)] || 'Subtítulo'; })()}
                   </span>
                 </div>
               )}
@@ -1111,10 +1111,16 @@ export function VideoEditorShell() {
             {/* Transport */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 44 }}>
               <div style={{ display: 'flex', gap: 4 }}>
-                {[['⏮', () => setCurrentFrame(0)], ['⏪', () => setCurrentFrame(Math.max(0, currentFrame - fps))], [playing ? '⏸' : '▶', () => setPlaying(p => !p)], ['⏩', () => setCurrentFrame(Math.min(totalFrames, currentFrame + fps))], ['⏭', () => setCurrentFrame(totalFrames)]].map(([icon, fn], i) => (
-                  <button key={i} onClick={fn as () => void}
-                    style={{ width: 28, height: 28, borderRadius: 6, background: (icon === '⏸' || (icon === '▶' && !playing)) && i === 2 && playing ? '#7c3aed' : 'rgba(20,20,40,0.8)', border: '1px solid rgba(124,58,237,0.15)', color: '#a0a0c0', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {icon as string}
+                {([
+                  { key: 'start', icon: '⏮', fn: () => setCurrentFrame(0) },
+                  { key: 'back', icon: '⏪', fn: () => setCurrentFrame(Math.max(0, currentFrame - fps)) },
+                  { key: 'play', icon: playing ? '⏸' : '▶', fn: () => setPlaying(p => !p), active: true },
+                  { key: 'fwd', icon: '⏩', fn: () => setCurrentFrame(Math.min(totalFrames, currentFrame + fps)) },
+                  { key: 'end', icon: '⏭', fn: () => setCurrentFrame(totalFrames) },
+                ] as { key: string; icon: string; fn: () => void; active?: boolean }[]).map(({ key, icon, fn, active }) => (
+                  <button key={key} onClick={fn}
+                    style={{ width: 28, height: 28, borderRadius: 6, background: active && playing ? '#7c3aed' : 'rgba(20,20,40,0.8)', border: '1px solid rgba(124,58,237,0.15)', color: active && playing ? '#fff' : '#a0a0c0', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {icon}
                   </button>
                 ))}
               </div>
@@ -1139,9 +1145,8 @@ export function VideoEditorShell() {
                 </div>
               )}
               {layers.map((l, i) => {
-                const tl = l as TextLayer;
-                const left = (tl.startSec / durationSec) * 100;
-                const width = Math.max(1, ((tl.endSec - tl.startSec) / durationSec) * 100);
+                const left = (l.startSec / durationSec) * 100;
+                const width = Math.max(1, ((l.endSec - l.startSec) / durationSec) * 100);
                 const color = getLayerTrackColor(l.type);
                 const top = 4 + i * 20;
                 return (
