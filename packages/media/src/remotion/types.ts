@@ -1,17 +1,31 @@
 // Shared types for Remotion video composition
 
 export type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
-export type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'drift' | 'tilt-up' | 'tilt-down' | 'zoom-rotate' | 'cinematic-pan' | 'parallax' | 'none' | 'auto';
-export type SubtitleStyle = 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon';
+export type SlideAnimation =
+  | 'ken-burns-in' | 'ken-burns-out'
+  | 'pan-left' | 'pan-right'
+  | 'zoom-pulse' | 'drift'
+  | 'tilt-up' | 'tilt-down'
+  | 'zoom-rotate' | 'cinematic-pan' | 'parallax'
+  | 'none' | 'auto';
+
+export type SubtitleStyle =
+  | 'pill'          // glass pill background — clean and modern
+  | 'word-by-word'  // each word highlights in sequence with glow
+  | 'karaoke'       // gradient sweep as text is spoken
+  | 'minimal'       // plain text, elegant fade
+  | 'neon'          // synthwave glow border
+  | 'kinetic';      // CapCut-style: words fly from random directions, variable size
+
 export type OverlayTheme = 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
 
 export interface StoryboardSlide {
-  src: string;                    // URL (HTTP or data:)
+  src: string;
   role: SlideRole;
   order: number;
-  durationMs?: number;            // Override duration (ms)
+  durationMs?: number;
   animation?: SlideAnimation;
-  caption?: string;               // Text overlay for this specific slide
+  caption?: string;
 }
 
 export interface SubtitleGroup {
@@ -20,18 +34,38 @@ export interface SubtitleGroup {
   text: string;
 }
 
+/** Per-word timing (from Whisper or manual) for kinetic subtitles */
+export interface TimedWord {
+  text: string;
+  startFrame: number;
+  endFrame: number;
+  emphasis?: boolean;   // if true → larger size + accent color
+}
+
 export interface VideoCompositionProps {
-  slides: StoryboardSlide[];       // Ordered storyboard slides with roles
-  ttsAudioSrc?: string;            // data: URL or HTTP URL
-  musicAudioSrc?: string;          // HTTP URL
-  musicVolume: number;             // 0-1
+  slides: StoryboardSlide[];
+  ttsAudioSrc?: string;
+  musicAudioSrc?: string;
+  musicVolume: number;
   subtitleGroups: SubtitleGroup[];
+  timedWords?: TimedWord[];           // For kinetic subtitle precise timing
   subtitleStyle?: SubtitleStyle;
-  logoUrl?: string;                // Deprecated — use slide with role='logo' instead
+  logoUrl?: string;
   productOverlay?: {
     name?: string;
     price?: string;
     cta?: string;
   };
-  overlayTheme?: OverlayTheme;    // Dynamic visual overlays
+  overlayTheme?: OverlayTheme;
+
+  // Style prompt — free-text aesthetic description
+  // e.g. "dark cinematic, orange accents, energetic, bold typography"
+  stylePrompt?: string;
+
+  // Accent color — drives kinetic subtitle highlights, progress bar, badges
+  accentColor?: string;
+
+  // Talking-head video — person speaking on camera
+  // If provided: renders as full-screen base; slides appear as scene inserts
+  talkingHeadVideoUrl?: string | null;
 }

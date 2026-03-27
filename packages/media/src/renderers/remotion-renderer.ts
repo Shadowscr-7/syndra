@@ -6,9 +6,8 @@
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { execFile } from 'child_process';
 
 export interface ImageSlideInput {
   url: string;
@@ -27,17 +26,38 @@ export interface RemotionRenderInput {
   musicAudioUrl?: string;         // HTTP URL
   musicVolume?: number;
   subtitleGroups?: SubtitleGroupInput[];
-  subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon';
+  subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon' | 'kinetic';
   overlayTheme?: 'none' | 'minimal' | 'modern' | 'neon' | 'elegant';
   logoUrl?: string;
   productOverlay?: { name?: string; price?: string; cta?: string };
   ttsDurationMs?: number;         // Actual TTS duration in ms
+
+  // NEW: Style prompt — free text describing desired aesthetic
+  // e.g. "dark cinematic with orange accents, energetic"
+  stylePrompt?: string;
+
+  // NEW: Accent color for kinetic subtitles, badges, progress bar
+  accentColor?: string;           // e.g. '#FF3366'
+
+  // NEW: Talking-head video (a person speaking on camera)
+  // When provided, plays as full-screen base layer with slides as scene inserts
+  talkingHeadVideoUrl?: string;
+
+  // NEW: Whisper-extracted per-word timecodes (precise subtitle sync)
+  timedWords?: TimedWordInput[];
 }
 
 export interface SubtitleGroupInput {
   startMs: number;
   endMs: number;
   text: string;
+}
+
+export interface TimedWordInput {
+  text: string;
+  startMs: number;
+  endMs: number;
+  emphasis?: boolean;
 }
 
 export interface RemotionRenderResult {
@@ -53,9 +73,12 @@ const ASPECT_DIMENSIONS: Record<string, { w: number; h: number }> = {
 };
 
 const FPS = 30;
+const BUNDLE_TIMEOUT_MS = 3 * 60 * 1000;   // 3 min — bundle can be slow on first run
+const RENDER_TIMEOUT_MS = 10 * 60 * 1000;  // 10 min — generous for long videos
 
-// Cache the bundle URL after first build
+// Cache the bundle URL after first successful build
 let cachedBundleUrl: string | null = null;
+let bundleInProgress: Promise<string> | null = null;
 
 export class RemotionVideoRenderer {
 
@@ -65,7 +88,7 @@ export class RemotionVideoRenderer {
     await mkdir(tempDir, { recursive: true });
 
     try {
-      // 0. Normalize slides — support both flat images[] and storyboard slides[]
+      // 0. Normalize slides
       const slides = this.normalizeSlides(input);
       const contentSlides = slides.filter(s => s.role !== 'logo' && s.role !== 'background');
 
@@ -73,12 +96,16 @@ export class RemotionVideoRenderer {
       const totalSlideDurationMs = contentSlides.reduce((sum, s) => sum + (s.durationMs ?? 4000), 0);
       let durationMs = 15000;
       if (input.ttsDurationMs && input.ttsDurationMs > 0) {
-        durationMs = input.ttsDurationMs + 1500;
+        durationMs = input.ttsDurationMs + 1500; // 1.5s buffer after TTS
+      } else if (input.talkingHeadVideoUrl) {
+        durationMs = 0; // will be determined by the video itself in composition
       } else if (contentSlides.length > 0) {
         durationMs = totalSlideDurationMs;
       }
-      const durationInFrames = Math.ceil((durationMs / 1000) * FPS);
-      const durationSeconds = durationMs / 1000;
+      const durationInFrames = durationMs > 0
+        ? Math.ceil((durationMs / 1000) * FPS)
+        : 300; // 10s placeholder — composition uses OffthreadVideo duration
+      const durationSeconds = durationMs / 1000 || 10;
 
       // 2. Convert subtitle timing from ms to frames
       const subtitleGroups = (input.subtitleGroups ?? []).map((g) => ({
@@ -87,14 +114,22 @@ export class RemotionVideoRenderer {
         text: g.text,
       }));
 
-      // 3. Build the Remotion bundle (cached after first call)
+      // 3. Convert timed words from ms to frames (for kinetic subtitles)
+      const timedWords = (input.timedWords ?? []).map((w) => ({
+        text: w.text,
+        startFrame: Math.round((w.startMs / 1000) * FPS),
+        endFrame: Math.round((w.endMs / 1000) * FPS),
+        emphasis: w.emphasis ?? false,
+      }));
+
+      // 4. Build the bundle (cached, with timeout protection)
       const bundleUrl = await this.ensureBundle();
 
-      // 4. Extract logo from slides (role=logo) or from explicit logoUrl
+      // 5. Extract logo
       const logoSlide = slides.find(s => s.role === 'logo');
       const logoUrl = logoSlide?.url ?? input.logoUrl;
 
-      // 5. Build input props — use new storyboard format
+      // 6. Build input props
       const inputProps = {
         slides: slides.map(s => ({
           src: s.url,
@@ -108,55 +143,69 @@ export class RemotionVideoRenderer {
         musicAudioSrc: input.musicAudioUrl,
         musicVolume: input.musicVolume ?? 0.25,
         subtitleGroups,
+        timedWords,
         subtitleStyle: input.subtitleStyle ?? 'pill',
         overlayTheme: input.overlayTheme ?? 'modern',
         logoUrl,
         productOverlay: input.productOverlay,
+        stylePrompt: input.stylePrompt ?? '',
+        accentColor: input.accentColor ?? '#FFD700',
+        talkingHeadVideoUrl: input.talkingHeadVideoUrl ?? null,
       };
 
-      // 6. Render video
+      // 7. Render video — with TOTAL TIMEOUT protection
       const outputPath = join(tempDir, 'output.mp4');
-
       const { renderMedia, selectComposition } = await import('@remotion/renderer');
-
       const chromiumPath = this.findChromium();
 
-      const composition = await selectComposition({
-        serveUrl: bundleUrl,
-        id: 'VideoCompositor',
-        inputProps,
-        browserExecutable: chromiumPath,
-        chromiumOptions: {
-          enableMultiProcessOnLinux: true,
-        },
-      });
+      const composition = await this.withTimeout(
+        selectComposition({
+          serveUrl: bundleUrl,
+          id: 'VideoCompositor',
+          inputProps,
+          browserExecutable: chromiumPath,
+          chromiumOptions: { enableMultiProcessOnLinux: true },
+        }),
+        60_000,
+        'selectComposition timed out after 60s',
+      );
 
-      await renderMedia({
-        composition: {
-          ...composition,
-          width: dim.w,
-          height: dim.h,
-          durationInFrames,
-          fps: FPS,
-        },
-        serveUrl: bundleUrl,
-        codec: 'h264',
-        outputLocation: outputPath,
-        inputProps,
-        concurrency: 2,
-        chromiumOptions: {
-          enableMultiProcessOnLinux: true,
-        },
-        browserExecutable: chromiumPath,
-      });
+      let lastProgressLog = Date.now();
+
+      await this.withTimeout(
+        renderMedia({
+          composition: {
+            ...composition,
+            width: dim.w,
+            height: dim.h,
+            durationInFrames,
+            fps: FPS,
+          },
+          serveUrl: bundleUrl,
+          codec: 'h264',
+          outputLocation: outputPath,
+          inputProps,
+          concurrency: 2,
+          timeoutInMilliseconds: 60_000,   // per-frame timeout (Remotion native)
+          chromiumOptions: { enableMultiProcessOnLinux: true },
+          browserExecutable: chromiumPath,
+          onProgress: ({ renderedFrames, encodedFrames, stitchStage }) => {
+            const now = Date.now();
+            if (now - lastProgressLog > 15_000) { // log every 15s
+              const pct = Math.round((renderedFrames / durationInFrames) * 100);
+              console.log(`[Remotion] Rendering ${pct}% (${renderedFrames}/${durationInFrames} frames, stage: ${stitchStage})`);
+              lastProgressLog = now;
+            }
+          },
+        }),
+        RENDER_TIMEOUT_MS,
+        `renderMedia timed out after ${RENDER_TIMEOUT_MS / 60000} minutes`,
+      );
 
       console.log(`[Remotion] Render complete: ${outputPath} (${durationSeconds.toFixed(1)}s, ${durationInFrames} frames)`);
 
-      return {
-        outputPath,
-        durationSeconds,
-        tempDir,
-      };
+      return { outputPath, durationSeconds, tempDir };
+
     } catch (error) {
       await this.cleanupDir(tempDir);
       throw error;
@@ -164,13 +213,16 @@ export class RemotionVideoRenderer {
   }
 
   private async ensureBundle(): Promise<string> {
+    // Return cached bundle if available
     if (cachedBundleUrl) return cachedBundleUrl;
+
+    // If a bundle is already in progress, wait for it (don't double-bundle)
+    if (bundleInProgress) {
+      return bundleInProgress;
+    }
 
     const { bundle } = await import('@remotion/bundler');
 
-    // Find the Root.tsx entry point
-    // In Docker: /app/packages/media/src/remotion/Root.tsx
-    // Locally: relative to this file
     const possiblePaths = [
       '/app/packages/media/src/remotion/Root.tsx',
       join(__dirname, '..', 'remotion', 'Root.tsx'),
@@ -179,39 +231,52 @@ export class RemotionVideoRenderer {
 
     let entryPoint = '';
     for (const p of possiblePaths) {
-      if (existsSync(p)) {
-        entryPoint = p;
-        break;
-      }
+      if (existsSync(p)) { entryPoint = p; break; }
     }
-
     if (!entryPoint) {
-      throw new Error(
-        `Remotion Root.tsx not found. Searched: ${possiblePaths.join(', ')}`,
-      );
+      throw new Error(`Remotion Root.tsx not found. Searched: ${possiblePaths.join(', ')}`);
     }
 
-    console.log(`[Remotion] Bundling compositions from ${entryPoint}...`);
+    console.log(`[Remotion] Bundling from ${entryPoint}...`);
     const startTime = Date.now();
 
-    cachedBundleUrl = await bundle({
-      entryPoint,
-      onProgress: (progress: number) => {
-        if (progress % 25 === 0) {
-          console.log(`[Remotion] Bundle progress: ${progress}%`);
-        }
-      },
+    bundleInProgress = this.withTimeout(
+      bundle({
+        entryPoint,
+        onProgress: (progress: number) => {
+          if (progress % 25 === 0) console.log(`[Remotion] Bundle ${progress}%`);
+        },
+      }),
+      BUNDLE_TIMEOUT_MS,
+      `bundle() timed out after ${BUNDLE_TIMEOUT_MS / 60000} minutes`,
+    ).then(url => {
+      cachedBundleUrl = url;
+      bundleInProgress = null;
+      console.log(`[Remotion] Bundle ready in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+      return url;
+    }).catch(err => {
+      // Clear everything so next attempt retries fresh
+      cachedBundleUrl = null;
+      bundleInProgress = null;
+      throw err;
     });
 
-    console.log(`[Remotion] Bundle ready in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
-    return cachedBundleUrl;
+    return bundleInProgress;
+  }
+
+  /** Race a promise against a timeout. Rejects with clear message if exceeded. */
+  private withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`[Remotion] ${label}`)), ms);
+      promise
+        .then(v => { clearTimeout(timer); resolve(v); })
+        .catch(e => { clearTimeout(timer); reject(e); });
+    });
   }
 
   private findChromium(): string | undefined {
-    // Docker Alpine
     if (existsSync('/usr/bin/chromium-browser')) return '/usr/bin/chromium-browser';
     if (existsSync('/usr/bin/chromium')) return '/usr/bin/chromium';
-    // Let Remotion find it automatically
     return undefined;
   }
 
@@ -219,22 +284,13 @@ export class RemotionVideoRenderer {
     await this.cleanupDir(tempDir);
   }
 
-  /**
-   * Normalize input: supports both flat images[] (backwards compat) and storyboard slides[].
-   * Returns sorted ImageSlideInput[] array.
-   */
   private normalizeSlides(input: RemotionRenderInput): ImageSlideInput[] {
     if (input.slides && input.slides.length > 0) {
-      // Storyboard mode — sort by order
       return [...input.slides].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
-    // Flat images mode — auto-assign roles
     const images = input.images ?? [];
     return images.map((url, i) => ({
-      url,
-      role: 'slide' as const,
-      order: i,
-      animation: 'auto' as const,
+      url, role: 'slide' as const, order: i, animation: 'auto' as const,
     }));
   }
 
