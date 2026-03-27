@@ -74,7 +74,7 @@ const ASPECT_DIMENSIONS: Record<string, { w: number; h: number }> = {
 
 const FPS = 30;
 const BUNDLE_TIMEOUT_MS = 3 * 60 * 1000;   // 3 min — bundle can be slow on first run
-const RENDER_TIMEOUT_MS = 10 * 60 * 1000;  // 10 min — generous for long videos
+const RENDER_TIMEOUT_MS = 20 * 60 * 1000;  // 20 min — 2-core server needs extra time for stitching
 
 // Cache the bundle URL after first successful build
 let cachedBundleUrl: string | null = null;
