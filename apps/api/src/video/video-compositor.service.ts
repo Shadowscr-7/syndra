@@ -166,7 +166,7 @@ export class VideoCompositorService {
       let ttsVtt: string | undefined;
       if (input.narrationText?.trim()) {
         const ttsResult = await this.generateTTS(input);
-        ttsAudioUrl = ttsResult.url;
+        ttsAudioUrl = this.toLocalFileUrl(ttsResult.url);  // ensure file:// for local paths
         ttsVtt = ttsResult.subtitlesVtt;
       }
 
@@ -352,13 +352,35 @@ export class VideoCompositorService {
     const media = await this.prisma.userMedia.findUnique({ where: { id: mediaId } });
     if (!media || media.userId !== userId) return undefined;
 
-    const url = media.url;
-    // If it's a relative upload path, make it absolute for server-side fetch
+    return this.toLocalFileUrl(media.url);
+  }
+
+  /**
+   * Converts any local/relative image path to a file:// URL so Remotion's
+   * Chromium instance can read it directly from disk.
+   * Remote URLs (http/https/data:) are returned as-is.
+   */
+  private toLocalFileUrl(url: string): string {
+    if (!url) return url;
+    // Already a remote or data URL — usable as-is
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+    // Already a file:// URL
+    if (url.startsWith('file://')) return url;
+
+    const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+
+    // Relative path like /uploads/images/foo.png
     if (url.startsWith('/uploads/')) {
-      const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
       const localPath = path.join(uploadDir, url.replace('/uploads/', ''));
-      if (fs.existsSync(localPath)) return localPath;
+      if (fs.existsSync(localPath)) return `file://${localPath}`;
     }
+
+    // Already an absolute disk path like /app/uploads/images/foo.png
+    if (url.startsWith('/') && fs.existsSync(url)) {
+      return `file://${url}`;
+    }
+
+    // Fallback: return as-is (may be a relative path — caller's problem)
     return url;
   }
 
