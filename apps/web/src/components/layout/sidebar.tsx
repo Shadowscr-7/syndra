@@ -60,6 +60,7 @@ const allSections: SidebarSection[] = [
     items: [
       { name: 'Biblioteca', href: '/dashboard/media', icon: '📂' },
       { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator' },
+      { name: 'Editor de Video', href: '/dashboard/video-editor', icon: '✂️', minPlan: 'creator' },
       { name: 'Créditos IA', href: '/dashboard/credits', icon: '💎' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },
     ],
