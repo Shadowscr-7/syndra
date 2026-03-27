@@ -183,17 +183,23 @@ export class RemotionVideoRenderer {
           },
           serveUrl: bundleUrl,
           codec: 'h264',
+          x264Preset: 'fast',              // faster encoding with minimal quality loss
           outputLocation: outputPath,
           inputProps,
           concurrency: 2,
           timeoutInMilliseconds: 60_000,   // per-frame timeout (Remotion native)
           chromiumOptions: { enableMultiProcessOnLinux: true },
           browserExecutable: chromiumPath,
-          onProgress: ({ renderedFrames, encodedFrames, stitchStage }) => {
+          onProgress: ({ renderedFrames, encodedFrames }) => {
             const now = Date.now();
             if (now - lastProgressLog > 15_000) { // log every 15s
-              const pct = Math.round((renderedFrames / durationInFrames) * 100);
-              console.log(`[Remotion] Rendering ${pct}% (${renderedFrames}/${durationInFrames} frames, stage: ${stitchStage})`);
+              const renderPct = Math.round((renderedFrames / durationInFrames) * 100);
+              const encodePct = Math.round((encodedFrames / durationInFrames) * 100);
+              if (renderedFrames >= durationInFrames) {
+                console.log(`[Remotion] Encoding ${encodePct}% (${encodedFrames}/${durationInFrames} frames encoded, stitching...)`);
+              } else {
+                console.log(`[Remotion] Rendering ${renderPct}% (${renderedFrames}/${durationInFrames} frames rendered, encoded: ${encodePct}%)`);
+              }
               lastProgressLog = now;
             }
           },
