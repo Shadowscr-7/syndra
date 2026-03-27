@@ -120,9 +120,12 @@ export default function VideoPipelinePage() {
   // ── Storyboard state ──
   const [storyboardEnabled, setStoryboardEnabled] = useState(false);
   const [storyboardSlides, setStoryboardSlides] = useState<StoryboardSlideUI[]>([]);
-  const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon'>('pill');
+  const [compSubtitleStyle, setCompSubtitleStyle] = useState<'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon' | 'kinetic'>('pill');
   const [compOverlayTheme, setCompOverlayTheme] = useState<'none' | 'minimal' | 'modern' | 'neon' | 'elegant'>('modern');
   const [compAutoGenImages, setCompAutoGenImages] = useState(false);
+  const [compStylePrompt, setCompStylePrompt] = useState('');
+  const [compAccentColor, setCompAccentColor] = useState('#FFD700');
+  const [compTalkingHeadUrl, setCompTalkingHeadUrl] = useState('');
 
   // ── AI Image Generation state ──
   const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
@@ -271,7 +274,7 @@ export default function VideoPipelinePage() {
     setCompNarration(preset.narrationPlaceholder);
     setCompMusicStyle(preset.musicStyle as typeof compMusicStyle);
     setCompMusic(true);
-    setCompSubtitleStyle(preset.subtitleStyle as 'pill' | 'minimal' | 'neon');
+    setCompSubtitleStyle(preset.subtitleStyle as typeof compSubtitleStyle);
     setStoryboardEnabled(true);
     setImproveIntent(preset.narrationIntent);
   };
@@ -317,7 +320,7 @@ export default function VideoPipelinePage() {
       }
 
       // Apply subtitle style
-      const validSubs = ['pill', 'minimal', 'word-by-word', 'karaoke', 'neon'];
+      const validSubs = ['pill', 'minimal', 'word-by-word', 'karaoke', 'neon', 'kinetic'];
       if (validSubs.includes(res.subtitleStyle)) {
         setCompSubtitleStyle(res.subtitleStyle as typeof compSubtitleStyle);
       }
@@ -384,11 +387,14 @@ export default function VideoPipelinePage() {
         enableMusic: compMusic,
         musicStyle: compMusic ? compMusicStyle : undefined,
         mode: compMode,
-        logoId: compMode === 'product' ? compLogoIds[0] : undefined,
+        logoId: compLogoIds[0] || undefined,
         productImageId: compMode === 'product' ? compProductImageIds[0] : undefined,
         productName: compMode === 'product' ? compProductName : undefined,
         productPrice: compMode === 'product' ? compProductPrice : undefined,
         productCta: compMode === 'product' ? compProductCta : undefined,
+        stylePrompt: compStylePrompt.trim() || undefined,
+        accentColor: compAccentColor !== '#FFD700' ? compAccentColor : undefined,
+        talkingHeadVideoUrl: compTalkingHeadUrl.trim() || undefined,
       };
 
       if (storyboardEnabled && storyboardSlides.length > 0) {
@@ -685,6 +691,22 @@ export default function VideoPipelinePage() {
                   </p>
                 )}
               </div>
+
+              {/* Logo (general mode) */}
+              {compMode === 'general' && (
+                <div className="glass-card p-5 space-y-3">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🏷️ Logo de marca <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(opcional)</span></h3>
+                  <UserMediaPicker
+                    selectedIds={compLogoIds}
+                    onChange={setCompLogoIds}
+                    categoryFilter="LOGO"
+                    max={1}
+                  />
+                  {compLogoIds.length > 0 && (
+                    <p className="text-xs" style={{ color: '#10b981' }}>✓ Logo seleccionado — aparecerá en el video</p>
+                  )}
+                </div>
+              )}
 
               {/* Images from library */}
               <div className="glass-card p-5 space-y-3">
@@ -1094,6 +1116,7 @@ export default function VideoPipelinePage() {
                         <option value="word-by-word">💬 Palabra×Palabra</option>
                         <option value="karaoke">🎤 Karaoke</option>
                         <option value="neon">💡 Neón</option>
+                        <option value="kinetic">⚡ Kinetic (CapCut)</option>
                       </select>
                     </div>
                   )}
@@ -1163,6 +1186,54 @@ export default function VideoPipelinePage() {
                     </span>
                   </span>
                 </label>
+
+                {/* Style prompt */}
+                <div>
+                  <label className="input-label">🎨 Style Prompt <span className="font-normal opacity-60">(opcional)</span></label>
+                  <textarea
+                    value={compStylePrompt}
+                    onChange={(e) => setCompStylePrompt(e.target.value)}
+                    placeholder="Describe el estilo visual del video. Ej: oscuro y cinematográfico con acentos naranja, energético, tipografía bold..."
+                    className="input-field"
+                    rows={2}
+                    style={{ fontSize: '0.85rem' }}
+                  />
+                  <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Palabras clave: cinematic, dark, neon, minimal, corporate, energetic, elegant, vintage...
+                  </p>
+                </div>
+
+                {/* Accent color + Talking head URL */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="input-label">🎨 Color de acento</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={compAccentColor}
+                        onChange={(e) => setCompAccentColor(e.target.value)}
+                        style={{ width: '2.5rem', height: '2rem', borderRadius: '0.25rem', border: '1px solid var(--color-border)', cursor: 'pointer', padding: '0' }}
+                      />
+                      <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>{compAccentColor}</span>
+                      {compAccentColor !== '#FFD700' && (
+                        <button onClick={() => setCompAccentColor('#FFD700')} className="btn-ghost text-xs" style={{ padding: '0.15rem 0.4rem' }}>Reset</button>
+                      )}
+                    </div>
+                    <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>Subtítulos kinetic, barra de progreso, badges</p>
+                  </div>
+                  <div>
+                    <label className="input-label">🎥 Video hablando a cámara <span className="font-normal opacity-60">(URL, opcional)</span></label>
+                    <input
+                      type="url"
+                      value={compTalkingHeadUrl}
+                      onChange={(e) => setCompTalkingHeadUrl(e.target.value)}
+                      placeholder="https://... (URL del video)"
+                      className="input-field"
+                      style={{ fontSize: '0.8rem' }}
+                    />
+                    <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>Si se provee, la persona ocupa pantalla completa con imágenes como insertos</p>
+                  </div>
+                </div>
               </div>
 
               {/* Submit */}
