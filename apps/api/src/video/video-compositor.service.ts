@@ -166,7 +166,7 @@ export class VideoCompositorService {
       let ttsVtt: string | undefined;
       if (input.narrationText?.trim()) {
         const ttsResult = await this.generateTTS(input);
-        ttsAudioUrl = this.toLocalFileUrl(ttsResult.url);  // ensure file:// for local paths
+        ttsAudioUrl = this.toDataUrl(ttsResult.url);  // base64 data URL so Chromium can read it
         ttsVtt = ttsResult.subtitlesVtt;
       }
 
@@ -352,36 +352,49 @@ export class VideoCompositorService {
     const media = await this.prisma.userMedia.findUnique({ where: { id: mediaId } });
     if (!media || media.userId !== userId) return undefined;
 
-    return this.toLocalFileUrl(media.url);
+    return this.toDataUrl(media.url);
   }
 
   /**
-   * Converts any local/relative image path to a file:// URL so Remotion's
-   * Chromium instance can read it directly from disk.
-   * Remote URLs (http/https/data:) are returned as-is.
+   * Converts any local file path to a base64 data URL so Remotion's Chromium
+   * can use it. Chromium blocks file:// access from http:// pages (security),
+   * but data: URLs are embedded and always work.
+   * Remote URLs (https://) and existing data: URLs pass through unchanged.
    */
-  private toLocalFileUrl(url: string): string {
+  private toDataUrl(url: string): string {
     if (!url) return url;
-    // Already a remote or data URL — usable as-is
+    // Already remote or data — usable as-is
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-    // Already a file:// URL
-    if (url.startsWith('file://')) return url;
 
-    const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+    // Strip file:// if already converted from a prior step
+    const diskPath = url.startsWith('file://') ? url.slice(7) : url;
 
-    // Relative path like /uploads/images/foo.png
-    if (url.startsWith('/uploads/')) {
-      const localPath = path.join(uploadDir, url.replace('/uploads/', ''));
-      if (fs.existsSync(localPath)) return `file://${localPath}`;
+    // Resolve relative /uploads/... paths
+    let localPath = diskPath;
+    if (diskPath.startsWith('/uploads/')) {
+      const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+      localPath = path.join(uploadDir, diskPath.replace('/uploads/', ''));
     }
 
-    // Already an absolute disk path like /app/uploads/images/foo.png
-    if (url.startsWith('/') && fs.existsSync(url)) {
-      return `file://${url}`;
+    if (!fs.existsSync(localPath)) {
+      this.logger.warn(`[toDataUrl] File not found on disk: ${localPath}`);
+      return url; // return as-is; Remotion will fail with a clear message
     }
 
-    // Fallback: return as-is (may be a relative path — caller's problem)
-    return url;
+    const buf = fs.readFileSync(localPath);
+    const ext = path.extname(localPath).toLowerCase().slice(1);
+    const mime =
+      ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+      ext === 'png'  ? 'image/png'  :
+      ext === 'webp' ? 'image/webp' :
+      ext === 'gif'  ? 'image/gif'  :
+      ext === 'mp3'  ? 'audio/mpeg' :
+      ext === 'wav'  ? 'audio/wav'  :
+      ext === 'ogg'  ? 'audio/ogg'  :
+      'application/octet-stream';
+
+    this.logger.log(`[toDataUrl] Encoded ${localPath} (${(buf.length / 1024).toFixed(0)} KB) as ${mime}`);
+    return `data:${mime};base64,${buf.toString('base64')}`;
   }
 
   // ── TTS ──
