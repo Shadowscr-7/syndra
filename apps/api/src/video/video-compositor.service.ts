@@ -166,7 +166,7 @@ export class VideoCompositorService {
       let ttsVtt: string | undefined;
       if (input.narrationText?.trim()) {
         const ttsResult = await this.generateTTS(input);
-        ttsAudioUrl = this.toDataUrl(ttsResult.url);  // base64 data URL so Chromium can read it
+        ttsAudioUrl = this.toFileUrl(ttsResult.url);   // file:// — disableWebSecurity allows local files
         ttsVtt = ttsResult.subtitlesVtt;
       }
 
@@ -395,6 +395,17 @@ export class VideoCompositorService {
 
     this.logger.log(`[toDataUrl] Encoded ${localPath} (${(buf.length / 1024).toFixed(0)} KB) as ${mime}`);
     return `data:${mime};base64,${buf.toString('base64')}`;
+  }
+
+  /** Converts a local path to file:// URL for large files (audio).
+   *  Requires disableWebSecurity:true in Chromium (set in remotion-renderer). */
+  private toFileUrl(url: string): string {
+    if (!url) return url;
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('file://')) return url;
+    const diskPath = url.startsWith('/uploads/')
+      ? path.join(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'), url.replace('/uploads/', ''))
+      : url;
+    return fs.existsSync(diskPath) ? `file://${diskPath}` : url;
   }
 
   // ── TTS ──

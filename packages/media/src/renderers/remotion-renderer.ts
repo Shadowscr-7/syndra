@@ -158,13 +158,20 @@ export class RemotionVideoRenderer {
       const { renderMedia, selectComposition } = await import('@remotion/renderer');
       const chromiumPath = this.findChromium();
 
+      // disableWebSecurity allows Chromium (http://localhost:3000) to load
+      // file:// resources — safe here since this is a server-side headless renderer
+      const chromiumOptions = {
+        enableMultiProcessOnLinux: true,
+        disableWebSecurity: true,
+      };
+
       const composition = await this.withTimeout(
         selectComposition({
           serveUrl: bundleUrl,
           id: 'VideoCompositor',
           inputProps,
           browserExecutable: chromiumPath,
-          chromiumOptions: { enableMultiProcessOnLinux: true },
+          chromiumOptions,
         }),
         60_000,
         'selectComposition timed out after 60s',
@@ -188,7 +195,7 @@ export class RemotionVideoRenderer {
           inputProps,
           concurrency: 2,
           timeoutInMilliseconds: 60_000,   // per-frame timeout (Remotion native)
-          chromiumOptions: { enableMultiProcessOnLinux: true },
+          chromiumOptions,
           browserExecutable: chromiumPath,
           onProgress: ({ renderedFrames, encodedFrames }) => {
             const now = Date.now();
