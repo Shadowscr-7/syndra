@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 
 
@@ -296,6 +296,18 @@ export default function LearningPage() {
   const weakPatterns = [...allPatterns].sort((a, b) => a.weightedScore - b.weightedScore).filter(p => p.weightedScore < 45).slice(0, 5);
 
   const pendingCopies = copies.filter(c => !c.analyzed);
+
+  const fieldStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid rgba(124,58,237,0.4)',
+    background: 'rgba(255,255,255,0.05)',
+    color: 'var(--color-text)',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  };
 
   return (
     <div className="space-y-8">
@@ -646,7 +658,7 @@ export default function LearningPage() {
                     Título <span style={{ opacity: 0.5 }}>(opcional)</span>
                   </label>
                   <input
-                    className="input w-full"
+                    style={fieldStyle}
                     placeholder="Ej: Ad verano 2024 — Instagram"
                     value={copyForm.title}
                     onChange={e => setCopyForm(f => ({ ...f, title: e.target.value }))}
@@ -657,12 +669,12 @@ export default function LearningPage() {
                     Tipo *
                   </label>
                   <select
-                    className="input w-full"
+                    style={fieldStyle}
                     value={copyForm.type}
                     onChange={e => setCopyForm(f => ({ ...f, type: e.target.value as CopyType }))}
                   >
                     {(Object.keys(COPY_TYPE_LABELS) as CopyType[]).map(t => (
-                      <option key={t} value={t}>{COPY_TYPE_LABELS[t]}</option>
+                      <option key={t} value={t} style={{ background: '#1e1b2e', color: '#e2e0f0' }}>{COPY_TYPE_LABELS[t]}</option>
                     ))}
                   </select>
                 </div>
@@ -672,8 +684,7 @@ export default function LearningPage() {
                   Texto del copy *
                 </label>
                 <textarea
-                  className="input w-full"
-                  style={{ minHeight: '120px', resize: 'vertical' }}
+                  style={{ ...fieldStyle, minHeight: '120px', resize: 'vertical' }}
                   placeholder="Pega aquí tu copy publicitario, caption, guión o contenido de referencia…"
                   value={copyForm.body}
                   onChange={e => setCopyForm(f => ({ ...f, body: e.target.value }))}
@@ -685,13 +696,13 @@ export default function LearningPage() {
                     Plataforma <span style={{ opacity: 0.5 }}>(opcional)</span>
                   </label>
                   <select
-                    className="input w-full"
+                    style={fieldStyle}
                     value={copyForm.platform}
                     onChange={e => setCopyForm(f => ({ ...f, platform: e.target.value }))}
                   >
-                    <option value="">— Sin especificar —</option>
+                    <option value="" style={{ background: '#1e1b2e', color: '#e2e0f0' }}>— Sin especificar —</option>
                     {PLATFORMS.map(p => (
-                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                      <option key={p} value={p} style={{ background: '#1e1b2e', color: '#e2e0f0' }}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
                     ))}
                   </select>
                 </div>
@@ -700,7 +711,7 @@ export default function LearningPage() {
                     Notas <span style={{ opacity: 0.5 }}>(opcional)</span>
                   </label>
                   <input
-                    className="input w-full"
+                    style={fieldStyle}
                     placeholder="Ej: Mejor conversión en Q4, campaña navidad"
                     value={copyForm.notes}
                     onChange={e => setCopyForm(f => ({ ...f, notes: e.target.value }))}
