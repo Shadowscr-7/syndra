@@ -34,6 +34,13 @@ export class TelegramPollingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // En producción se usa webhook — el polling interferiría borrando el webhook al arrancar
+    const isProduction = this.config.get<string>('NODE_ENV') === 'production';
+    if (isProduction) {
+      this.logger.log('Production mode — Telegram polling disabled (using webhook)');
+      return;
+    }
+
     // Delete any existing webhook so polling works
     try {
       await fetch(`${this.apiUrl}/deleteWebhook`, { method: 'POST' });
