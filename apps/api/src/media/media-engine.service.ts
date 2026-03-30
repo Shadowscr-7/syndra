@@ -260,6 +260,9 @@ export class MediaEngineService {
           where: { isMain: true },
           take: 1,
         },
+        editorialRun: {
+          select: { contentProfileId: true },
+        },
       },
     });
 
@@ -273,7 +276,7 @@ export class MediaEngineService {
       where: { workspaceId },
     });
 
-    const branding = this.extractBranding(brand);
+    const legacyBranding = this.extractBranding(brand);
 
     // 2b. Cargar BusinessProfile + UserMedia para contenido promocional
     const businessProfile = await this.prisma.businessProfile.findUnique({
@@ -282,6 +285,41 @@ export class MediaEngineService {
 
     // Resolve owner userId for UserMedia queries
     const ownerId = await this.resolveUserId(workspaceId);
+
+    // 2c. Cargar VisualStyleProfile (fuente canónica de colores/fuentes)
+    // Prioridad: VisualStyleProfile específico del contentProfile > global > BusinessProfile.brandColors > BrandProfile.visualStyle
+    const runContentProfileId = brief.editorialRun?.contentProfileId ?? null;
+    const visualStyle = ownerId
+      ? await (async () => {
+          // First: profile-specific style (matches the run's content profile)
+          if (runContentProfileId) {
+            const specific = await this.prisma.visualStyleProfile.findFirst({
+              where: { userId: ownerId, contentProfileId: runContentProfileId },
+              orderBy: { createdAt: 'desc' },
+            }).catch(() => null);
+            if (specific) return specific;
+          }
+          // Fallback: global style (no contentProfileId = workspace-wide Brand Kit)
+          return this.prisma.visualStyleProfile.findFirst({
+            where: { userId: ownerId, contentProfileId: null },
+            orderBy: { createdAt: 'desc' },
+          }).catch(() => null);
+        })()
+      : null;
+
+    // Merge branding: VisualStyleProfile wins over legacy BrandProfile.visualStyle
+    const branding: Partial<BrandingConfig> = {
+      ...legacyBranding,
+      ...(visualStyle?.colorPalette?.length
+        ? {
+            primaryColor: visualStyle.colorPalette[0] ?? legacyBranding.primaryColor,
+            secondaryColor: visualStyle.colorPalette[1] ?? legacyBranding.secondaryColor,
+            accentColor: visualStyle.colorPalette[2] ?? legacyBranding.accentColor,
+          }
+        : {}),
+      ...(visualStyle?.primaryFont ? { primaryFont: visualStyle.primaryFont } : {}),
+      ...(visualStyle?.secondaryFont ? { secondaryFont: visualStyle.secondaryFont } : {}),
+    };
 
     // Cargar logo del workspace (UserMedia con isLogo=true)
     const logoMedia = ownerId ? await this.prisma.userMedia.findFirst({
@@ -303,7 +341,8 @@ export class MediaEngineService {
       'PRODUCT', 'SERVICE', 'OFFER', 'SEASONAL', 'ANNOUNCEMENT',
     ].includes(theme.type);
 
-    const logoUrl = logoMedia?.url ?? branding.logoUrl ?? null;
+    const logoUrl = logoMedia?.url ?? branding.logoUrl ?? legacyBranding.logoUrl ?? null;
+    const imagePromptPrefix = visualStyle?.customPromptPrefix ?? undefined;
 
     // Build per-request pipeline from DB credentials (fallback to env)
     const pipeline = await this.getPipeline(workspaceId);
@@ -326,7 +365,7 @@ export class MediaEngineService {
           try {
             const slideVersion = { copy: slidePrompts[i]!, caption: mainVersion.caption };
             const result = await this.generateSingleImageWithProFallback(
-              slideVersion, brief, llm, pipeline, workspaceId,
+              slideVersion, brief, llm, pipeline, workspaceId, imagePromptPrefix,
             );
             const asset = await this.prisma.mediaAsset.create({
               data: {
@@ -353,7 +392,7 @@ export class MediaEngineService {
         }
       } catch (carouselErr) {
         this.logger.warn(`Carousel AI generation failed, falling back to single image: ${carouselErr}`);
-        const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId);
+        const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId, imagePromptPrefix);
         const asset = await this.prisma.mediaAsset.create({
           data: {
             contentVersionId: mainVersion.id,
@@ -389,7 +428,7 @@ export class MediaEngineService {
         mediaAssetIds.push(asset.id);
       } catch (promoErr) {
         this.logger.warn(`Promotional composition failed, falling back to AI image: ${promoErr}`);
-        const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline);
+        const result = await this.generateSingleImage(mainVersion, brief, llm, pipeline, imagePromptPrefix);
         const asset = await this.prisma.mediaAsset.create({
           data: {
             contentVersionId: mainVersion.id,
@@ -407,7 +446,7 @@ export class MediaEngineService {
       }
     } else {
       // Standard AI image generation path — try KIE Pro model first if API key available
-      const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId);
+      const result = await this.generateSingleImageWithProFallback(mainVersion, brief, llm, pipeline, workspaceId, imagePromptPrefix);
 
       const asset = await this.prisma.mediaAsset.create({
         data: {
@@ -990,10 +1029,11 @@ ${isTextModel ? 'Include the key message as text IN the image. ' : ''}Respond ON
     const productImageUrl = productMedia?.url ?? undefined;
 
     // Build colors
-    const colors = businessProfile?.brandColors ?? [];
-    const primaryColor = colors[0] ?? branding.primaryColor ?? '#6C63FF';
-    const secondaryColor = colors[1] ?? branding.secondaryColor ?? '#F4F4FF';
-    const accentColor = colors[2] ?? '#FF6B35';
+    // Priority: VisualStyleProfile (already merged into branding) > BusinessProfile.brandColors > defaults
+    const bizColors = businessProfile?.brandColors ?? [];
+    const primaryColor = branding.primaryColor ?? bizColors[0] ?? '#6C63FF';
+    const secondaryColor = branding.secondaryColor ?? bizColors[1] ?? '#F4F4FF';
+    const accentColor = branding.accentColor ?? bizColors[2] ?? '#FF6B35';
 
     // Build overlay text
     const productName = theme?.productName ?? productMedia?.productName ?? version.title;
@@ -1012,7 +1052,9 @@ ${isTextModel ? 'Include the key message as text IN the image. ' : ''}Respond ON
       secondaryColor,
       accentColor,
       textColor: '#FFFFFF',
-      font: 'Arial, Helvetica, sans-serif',
+      font: branding.primaryFont
+        ? `'${branding.primaryFont}', Arial, Helvetica, sans-serif`
+        : 'Arial, Helvetica, sans-serif',
     };
 
     // --- Try Sharp-based composition (real pixel compositing) ---
@@ -1098,6 +1140,7 @@ ${isTextModel ? 'Include the key message as text IN the image. ' : ''}Respond ON
     llm: LLMAdapter,
     pipeline: MediaPipeline,
     workspaceId?: string,
+    promptPrefix?: string,
   ): Promise<ImagePipelineResult> {
     const kieApiKey = this.config.get<string>('KIE_AI_API_KEY', '');
     const kieExhausted = this.kieCreditsExhaustedAt !== null && (Date.now() - this.kieCreditsExhaustedAt) < this.KIE_CREDITS_COOLDOWN_MS;
@@ -1108,7 +1151,7 @@ ${isTextModel ? 'Include the key message as text IN the image. ' : ''}Respond ON
     this.logger.debug(`KIE check: apiKey=${kieApiKey ? 'SET(' + kieApiKey.length + 'chars)' : 'EMPTY'}, creditsExhausted=${kieExhausted}`);
     if (!kieApiKey || kieExhausted) {
       this.logger.log(`Skipping KIE Pro — ${!kieApiKey ? 'no API key' : 'credits exhausted (cooldown ' + Math.round((this.KIE_CREDITS_COOLDOWN_MS - (Date.now() - (this.kieCreditsExhaustedAt ?? 0))) / 60000) + ' min left)'}, using standard pipeline`);
-      return this.generateSingleImage(version, brief, llm, pipeline);
+      return this.generateSingleImage(version, brief, llm, pipeline, promptPrefix);
     }
 
     const modelId = DEFAULT_BATCH_KIE_MODEL;
@@ -1134,7 +1177,7 @@ Focus on visual impact, composition, and brand aesthetics.`;
 Content summary: ${version.copy.substring(0, 400)}
 Tone: ${brief.tone}
 Format: ${brief.format}
-CTA: ${brief.cta}
+CTA: ${brief.cta}${promptPrefix ? `\nBrand style notes: ${promptPrefix}` : ''}
 
 ${isTextModel ? 'Include the key message as readable text IN the image design. ' : ''}Respond ONLY with the prompt in English. Max 150 words.`;
 
@@ -1167,7 +1210,7 @@ ${isTextModel ? 'Include the key message as readable text IN the image design. '
       } else {
         this.logger.warn(`KIE Pro batch generation failed, falling back to standard: ${err}`);
       }
-      return this.generateSingleImage(version, brief, llm, pipeline);
+      return this.generateSingleImage(version, brief, llm, pipeline, promptPrefix);
     }
   }
 
@@ -1181,6 +1224,7 @@ ${isTextModel ? 'Include the key message as readable text IN the image design. '
     brief: { angle: string; tone: string; format: string; cta: string },
     llm: LLMAdapter,
     pipeline: MediaPipeline,
+    promptPrefix?: string,
   ): Promise<ImagePipelineResult> {
     const formatLower = brief.format.toLowerCase();
     const aspectRatio = formatLower === 'story' || formatLower === 'reel' ? '9:16 vertical (1080x1920)' : '4:5 (1080x1350)';
@@ -1210,7 +1254,7 @@ Respond ONLY with the image prompt in English, no explanations. Max 120 words.`;
     const userMessage = `Topic: ${brief.angle}
 Content summary: ${version.copy.substring(0, 400)}
 Tone: ${brief.tone}
-CTA: ${brief.cta}`;
+CTA: ${brief.cta}${promptPrefix ? `\nBrand style notes: ${promptPrefix}` : ''}`;
 
     let prompt: string;
     try {

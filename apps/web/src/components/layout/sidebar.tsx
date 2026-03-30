@@ -98,6 +98,7 @@ const allSections: SidebarSection[] = [
   {
     label: 'Config',
     items: [
+      { name: 'Brand Kit', href: '/dashboard/brand-kit', icon: '🎨' },
       { name: 'Planes', href: '/dashboard/plans', icon: '💎' },
       { name: 'Facturación', href: '/dashboard/billing', icon: '💳' },
       { name: 'Credenciales', href: '/dashboard/credentials', icon: '🔑' },

@@ -136,6 +136,7 @@ model Workspace {
   avatarProfiles   AvatarProfile[]
   weeklyPlanConfigs WeeklyPlanConfig[]
   weeklyPlanBatches WeeklyPlanBatch[]
+  referenceCopies  ReferenceCopy[]
 
   @@map("workspaces")
 }
@@ -1867,6 +1868,39 @@ model ContentFatigueScore {
   @@unique([workspaceId, dimensionType, dimensionValue])
   @@index([workspaceId, fatigueScore(sort: Desc)])
   @@map("content_fatigue_scores")
+}
+
+// ============================================================
+// REFERENCE COPY LIBRARY (Feature #13)
+// ============================================================
+
+enum CopyType {
+  AD_PAID
+  ORGANIC
+  EMAIL
+  CAPTION
+  STORY
+  OTHER
+}
+
+model ReferenceCopy {
+  id             String    @id @default(cuid())
+  workspaceId    String    @map("workspace_id")
+  title          String?
+  body           String    @db.Text
+  type           CopyType
+  platform       String?
+  tags           Json      @default("[]")
+  notes          String?
+  analyzed       Boolean   @default(false)
+  analysisResult Json?     @map("analysis_result")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("reference_copies")
 }
 
 // ============================================================

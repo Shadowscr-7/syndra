@@ -44,6 +44,35 @@ interface Decision {
   createdAt: string;
 }
 
+type CopyType = 'AD_PAID' | 'ORGANIC' | 'EMAIL' | 'CAPTION' | 'STORY' | 'OTHER';
+
+interface CopyAnalysisResult {
+  tone: string;
+  hookType: string;
+  cta: string;
+  lengthClass: string;
+  topPhrases: string[];
+  keywords: string[];
+}
+
+interface ReferenceCopy {
+  id: string;
+  title: string | null;
+  body: string;
+  type: CopyType;
+  platform: string | null;
+  tags: string[];
+  notes: string | null;
+  analyzed: boolean;
+  analysisResult: CopyAnalysisResult | null;
+  createdAt: string;
+}
+
+interface BrandMemoryData {
+  frequentPhrases: Array<{ phrase: string; count: number }>;
+  usedCTAs: Array<{ cta: string; count: number }>;
+}
+
 const DIMENSION_LABELS: Record<string, { label: string; icon: string }> = {
   THEME: { label: 'Temática', icon: '🎯' },
   FORMAT: { label: 'Formato', icon: '📐' },
@@ -73,6 +102,17 @@ const DECISION_LABELS: Record<string, string> = {
   BOOST_ENGAGEMENT: 'Boost',
 };
 
+const COPY_TYPE_LABELS: Record<CopyType, string> = {
+  AD_PAID: 'Publicidad Pagada',
+  ORGANIC: 'Orgánico',
+  EMAIL: 'Email',
+  CAPTION: 'Caption',
+  STORY: 'Story',
+  OTHER: 'Otro',
+};
+
+const PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'email', 'twitter', 'youtube'];
+
 export default function LearningPage() {
   const [profile, setProfile] = useState<LearningProfile | null>(null);
   const [dimensions, setDimensions] = useState<Record<string, PatternScore[]>>({});
@@ -80,7 +120,22 @@ export default function LearningPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'patterns' | 'decisions'>('patterns');
+  const [activeTab, setActiveTab] = useState<'patterns' | 'decisions' | 'copies'>('patterns');
+
+  // Copies state
+  const [copies, setCopies] = useState<ReferenceCopy[]>([]);
+  const [brandMemory, setBrandMemory] = useState<BrandMemoryData | null>(null);
+  const [showCopyForm, setShowCopyForm] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analyzingAll, setAnalyzingAll] = useState(false);
+  const [savingCopy, setSavingCopy] = useState(false);
+  const [copyForm, setCopyForm] = useState({
+    title: '',
+    body: '',
+    type: 'AD_PAID' as CopyType,
+    platform: '',
+    notes: '',
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -107,7 +162,25 @@ export default function LearningPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchCopies = useCallback(async () => {
+    try {
+      const [copiesRes, memoryRes] = await Promise.all([
+        fetch('/api/reference-copy', { credentials: 'include' }),
+        fetch('/api/brand-memory', { credentials: 'include' }),
+      ]);
+      const copiesJson = await copiesRes.json();
+      const memoryJson = await memoryRes.json();
+      setCopies(Array.isArray(copiesJson?.data) ? copiesJson.data : []);
+      setBrandMemory(memoryJson?.data ?? null);
+    } catch (err) {
+      console.error('Error fetching copies:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    fetchCopies();
+  }, [fetchData, fetchCopies]);
 
   const handleRecalculate = async () => {
     setRecalculating(true);
@@ -141,6 +214,66 @@ export default function LearningPage() {
     }
   };
 
+  const handleCreateCopy = async () => {
+    if (!copyForm.body.trim()) return;
+    setSavingCopy(true);
+    try {
+      await fetch('/api/reference-copy', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...copyForm,
+          title: copyForm.title.trim() || null,
+          platform: copyForm.platform || null,
+          notes: copyForm.notes.trim() || null,
+        }),
+      });
+      setCopyForm({ title: '', body: '', type: 'AD_PAID', platform: '', notes: '' });
+      setShowCopyForm(false);
+      await fetchCopies();
+    } catch (err) {
+      console.error('Error creating copy:', err);
+    } finally {
+      setSavingCopy(false);
+    }
+  };
+
+  const handleDeleteCopy = async (id: string) => {
+    await fetch(`/api/reference-copy/${id}`, { method: 'DELETE', credentials: 'include' });
+    await fetchCopies();
+  };
+
+  const handleAnalyzeOne = async (id: string) => {
+    setAnalyzingId(id);
+    try {
+      await fetch(`/api/reference-copy/${id}/analyze`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      await fetchCopies();
+    } catch (err) {
+      console.error('Analysis error:', err);
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
+
+  const handleAnalyzeAll = async () => {
+    setAnalyzingAll(true);
+    try {
+      await fetch('/api/reference-copy/analyze-all', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      await fetchCopies();
+    } catch (err) {
+      console.error('Batch analysis error:', err);
+    } finally {
+      setAnalyzingAll(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -161,6 +294,8 @@ export default function LearningPage() {
   const allPatterns = Object.values(dimensions).flat();
   const topPatterns = [...allPatterns].sort((a, b) => b.weightedScore - a.weightedScore).slice(0, 5);
   const weakPatterns = [...allPatterns].sort((a, b) => a.weightedScore - b.weightedScore).filter(p => p.weightedScore < 45).slice(0, 5);
+
+  const pendingCopies = copies.filter(c => !c.analyzed);
 
   return (
     <div className="space-y-8">
@@ -230,6 +365,12 @@ export default function LearningPage() {
             className={activeTab === 'decisions' ? 'btn-primary' : 'btn-ghost'}
           >
             📋 Decisiones ({decisions.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('copies')}
+            className={activeTab === 'copies' ? 'btn-primary' : 'btn-ghost'}
+          >
+            📝 Mis Copies ({copies.length})
           </button>
         </div>
         <button
@@ -424,6 +565,297 @@ export default function LearningPage() {
                 )}
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {/* Mis Copies Tab */}
+      {activeTab === 'copies' && (
+        <div className="space-y-6 animate-fade-in">
+
+          {/* BrandMemory summary */}
+          {brandMemory && (brandMemory.usedCTAs?.length > 0 || brandMemory.frequentPhrases?.length > 0) && (
+            <div className="glass-card p-5" style={{ border: '1px solid rgba(124,58,237,0.2)' }}>
+              <h2 className="text-sm font-bold mb-3" style={{ color: 'var(--color-text)' }}>
+                🧠 Lo que Syndra ya aprendió de tu estilo creativo
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {brandMemory.usedCTAs?.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                      CTAs detectados
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {brandMemory.usedCTAs.slice(0, 8).map((c, i) => (
+                        <span key={i} className="chip text-xs">
+                          {c.cta}
+                          {c.count > 1 && <span style={{ opacity: 0.6 }}> ×{c.count}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {brandMemory.frequentPhrases?.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                      Frases frecuentes
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {brandMemory.frequentPhrases.slice(0, 6).map((p, i) => (
+                        <span key={i} className="chip text-xs truncate max-w-[200px]" title={p.phrase}>
+                          {p.phrase.length > 40 ? `${p.phrase.substring(0, 40)}…` : p.phrase}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Actions row */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <button
+              onClick={() => setShowCopyForm(v => !v)}
+              className="btn-primary"
+            >
+              {showCopyForm ? '✕ Cancelar' : '+ Agregar Copy'}
+            </button>
+            {pendingCopies.length > 0 && (
+              <button
+                onClick={handleAnalyzeAll}
+                disabled={analyzingAll}
+                className="btn-ghost"
+              >
+                {analyzingAll
+                  ? '⏳ Analizando…'
+                  : `🔍 Analizar todo (${pendingCopies.length} pendiente${pendingCopies.length > 1 ? 's' : ''})`}
+              </button>
+            )}
+          </div>
+
+          {/* Add Copy Form */}
+          {showCopyForm && (
+            <div className="glass-card p-6 space-y-4" style={{ border: '1px solid rgba(124,58,237,0.3)' }}>
+              <h3 className="text-base font-bold" style={{ color: 'var(--color-text)' }}>
+                Nuevo Copy de Referencia
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Título <span style={{ opacity: 0.5 }}>(opcional)</span>
+                  </label>
+                  <input
+                    className="input w-full"
+                    placeholder="Ej: Ad verano 2024 — Instagram"
+                    value={copyForm.title}
+                    onChange={e => setCopyForm(f => ({ ...f, title: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Tipo *
+                  </label>
+                  <select
+                    className="input w-full"
+                    value={copyForm.type}
+                    onChange={e => setCopyForm(f => ({ ...f, type: e.target.value as CopyType }))}
+                  >
+                    {(Object.keys(COPY_TYPE_LABELS) as CopyType[]).map(t => (
+                      <option key={t} value={t}>{COPY_TYPE_LABELS[t]}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Texto del copy *
+                </label>
+                <textarea
+                  className="input w-full"
+                  style={{ minHeight: '120px', resize: 'vertical' }}
+                  placeholder="Pega aquí tu copy publicitario, caption, guión o contenido de referencia…"
+                  value={copyForm.body}
+                  onChange={e => setCopyForm(f => ({ ...f, body: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Plataforma <span style={{ opacity: 0.5 }}>(opcional)</span>
+                  </label>
+                  <select
+                    className="input w-full"
+                    value={copyForm.platform}
+                    onChange={e => setCopyForm(f => ({ ...f, platform: e.target.value }))}
+                  >
+                    <option value="">— Sin especificar —</option>
+                    {PLATFORMS.map(p => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                    Notas <span style={{ opacity: 0.5 }}>(opcional)</span>
+                  </label>
+                  <input
+                    className="input w-full"
+                    placeholder="Ej: Mejor conversión en Q4, campaña navidad"
+                    value={copyForm.notes}
+                    onChange={e => setCopyForm(f => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreateCopy}
+                  disabled={savingCopy || !copyForm.body.trim()}
+                  className="btn-primary"
+                >
+                  {savingCopy ? 'Guardando…' : 'Guardar Copy'}
+                </button>
+                <button onClick={() => setShowCopyForm(false)} className="btn-ghost">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Copies list */}
+          {copies.length === 0 ? (
+            <div className="glass-card p-12 text-center">
+              <div className="text-5xl mb-4">📝</div>
+              <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
+                Sin copies de referencia aún
+              </h2>
+              <p style={{ color: 'var(--color-text-muted)' }}>
+                Agrega tus mejores copies y publicidades para que Syndra aprenda tu estilo creativo,
+                tono favorito y las frases que mejor conectan con tu audiencia.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {copies.map(copy => (
+                <div key={copy.id} className="glass-card p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="chip">{COPY_TYPE_LABELS[copy.type]}</span>
+                        {copy.platform && (
+                          <span className="chip" style={{ opacity: 0.7 }}>
+                            {copy.platform.charAt(0).toUpperCase() + copy.platform.slice(1)}
+                          </span>
+                        )}
+                        <span
+                          className="badge"
+                          style={{
+                            background: copy.analyzed ? 'rgba(16,185,129,0.15)' : 'rgba(124,58,237,0.12)',
+                            color: copy.analyzed ? '#10b981' : '#a78bfa',
+                          }}
+                        >
+                          <span
+                            className="badge-dot"
+                            style={{ background: copy.analyzed ? '#10b981' : '#a78bfa' }}
+                          />
+                          {copy.analyzed ? 'Analizado' : 'Sin analizar'}
+                        </span>
+                      </div>
+                      {copy.title && (
+                        <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
+                          {copy.title}
+                        </h3>
+                      )}
+                      <p
+                        className="text-sm"
+                        style={{
+                          color: 'var(--color-text-muted)',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {copy.body}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={() => handleAnalyzeOne(copy.id)}
+                        disabled={analyzingId === copy.id}
+                        className="btn-ghost text-xs whitespace-nowrap"
+                      >
+                        {analyzingId === copy.id ? '⏳ Analizando…' : '🔍 Analizar'}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCopy(copy.id)}
+                        className="btn-ghost text-xs"
+                        style={{ color: '#ef4444' }}
+                      >
+                        🗑 Eliminar
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Analysis result panel */}
+                  {copy.analyzed && copy.analysisResult && (
+                    <div
+                      className="mt-4 pt-4"
+                      style={{ borderTop: '1px solid rgba(124,58,237,0.15)' }}
+                    >
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Tono</span>
+                          <p className="font-semibold mt-0.5 capitalize" style={{ color: 'var(--color-text)' }}>
+                            {copy.analysisResult.tone || '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Tipo de hook</span>
+                          <p className="font-semibold mt-0.5" style={{ color: 'var(--color-text)' }}>
+                            {copy.analysisResult.hookType || '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Extensión</span>
+                          <p className="font-semibold mt-0.5" style={{ color: 'var(--color-text)' }}>
+                            {copy.analysisResult.lengthClass || '—'}
+                          </p>
+                        </div>
+                        {copy.analysisResult.cta && (
+                          <div className="col-span-2 md:col-span-3">
+                            <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>CTA detectado</span>
+                            <p className="font-semibold mt-0.5" style={{ color: 'var(--color-primary)' }}>
+                              &ldquo;{copy.analysisResult.cta}&rdquo;
+                            </p>
+                          </div>
+                        )}
+                        {copy.analysisResult.topPhrases?.length > 0 && (
+                          <div className="col-span-2 md:col-span-3">
+                            <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Frases clave</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {copy.analysisResult.topPhrases.map((ph, i) => (
+                                <span key={i} className="chip text-xs">{ph}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {copy.analysisResult.keywords?.length > 0 && (
+                          <div className="col-span-2 md:col-span-3">
+                            <span className="uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Keywords</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {copy.analysisResult.keywords.map((kw, i) => (
+                                <span key={i} className="chip text-xs" style={{ opacity: 0.75 }}>{kw}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

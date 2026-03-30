@@ -1024,20 +1024,9 @@ export class WeeklyPlannerService {
   // ── Publish approved items ───────────────────────────
 
   async publishDueItems() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const today = now.toISOString().split('T')[0];
-
-    // Find approved items scheduled for today within publishTime window
+    // Find all approved items; evaluate time-window per-item using the config's timezone
     const dueItems = await this.prisma.plannedPublication.findMany({
-      where: {
-        status: 'APPROVED',
-        scheduledDate: {
-          gte: new Date(`${today}T00:00:00`),
-          lt: new Date(`${today}T23:59:59`),
-        },
-      },
+      where: { status: 'APPROVED' },
       include: {
         editorialRun: true,
         batch: { include: { config: true } },
@@ -1045,14 +1034,26 @@ export class WeeklyPlannerService {
     });
 
     for (const item of dueItems) {
+      // Resolve timezone from config (fall back to Mexico City)
+      const tz = item.batch?.config?.timezone ?? 'America/Mexico_City';
+      const { day: todayEnum, hour: nowHour, minute: nowMin } = this.getNowInTz(tz);
+      const todayDateStr = this.getTodayDateStr(tz);
+
+      // Check the item is scheduled for today (in its timezone)
+      const itemDateStr = item.scheduledDate.toISOString().split('T')[0]!;
+      if (itemDateStr !== todayDateStr) continue;
+
+      // Check it's also the right day-of-week (extra safety)
+      if (item.dayOfWeek && item.dayOfWeek !== todayEnum) continue;
+
       // Parse scheduled time
       const parts = item.scheduledTime.split(':').map(Number);
       const schedHour = parts[0] ?? 0;
       const schedMin = parts[1] ?? 0;
       const schedTotal = schedHour * 60 + schedMin;
-      const nowTotal = currentHour * 60 + currentMinute;
+      const nowTotal = nowHour * 60 + nowMin;
 
-      // Within 15 min window
+      // Within 15-min window
       if (nowTotal >= schedTotal && nowTotal < schedTotal + 15) {
         if (!item.editorialRunId) continue;
 
@@ -1082,27 +1083,65 @@ export class WeeklyPlannerService {
     }
   }
 
+  // ── Timezone helpers ─────────────────────────────────
+
+  /** Devuelve { day (enum), hour, minute } en la timezone dada usando Intl nativo */
+  private getNowInTz(timezone: string): { day: string; hour: number; minute: number } {
+    const now = new Date();
+    const tz = this.safeTimezone(timezone);
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'long',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+    const dayLabel = get('weekday').toUpperCase();
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const day = dayNames.find((d) => d === dayLabel) ?? 'MONDAY';
+    const hour = parseInt(get('hour'), 10);
+    const minute = parseInt(get('minute'), 10);
+    return { day, hour, minute };
+  }
+
+  /** Devuelve "YYYY-MM-DD" para hoy en la timezone dada */
+  private getTodayDateStr(timezone: string): string {
+    const tz = this.safeTimezone(timezone);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+      .format(new Date());
+  }
+
+  /** Valida la timezone — cae a UTC si no es reconocida */
+  private safeTimezone(tz: string): string {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: tz });
+      return tz;
+    } catch {
+      return 'UTC';
+    }
+  }
+
   // ── Cron: trigger batch generation ────────────────────
 
   @Cron('*/15 * * * *', { name: 'weekly-planner-generate' })
   async cronGenerateBatches() {
-    const now = new Date();
-    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    const todayEnum = dayNames[now.getDay()];
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-
     const configs = await this.prisma.weeklyPlanConfig.findMany({
-      where: {
-        isActive: true,
-        plannerRunDays: { has: todayEnum as any },
-      },
+      where: { isActive: true },
     });
 
     for (const config of configs) {
+      // Evaluar día y hora en la timezone del config (no del servidor)
+      const { day: todayEnum, hour: nowHour, minute: nowMin } =
+        this.getNowInTz(config.timezone ?? 'America/Mexico_City');
+
+      if (!(config.plannerRunDays as string[]).includes(todayEnum)) continue;
+
       const parts = config.plannerRunTime.split(':').map(Number);
       const schedTotal = (parts[0] ?? 0) * 60 + (parts[1] ?? 0);
-      const nowTotal = currentHour * 60 + currentMinute;
+      const nowTotal = nowHour * 60 + nowMin;
       if (nowTotal < schedTotal || nowTotal >= schedTotal + 15) continue;
 
       try {

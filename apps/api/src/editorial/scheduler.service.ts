@@ -232,18 +232,50 @@ export class SchedulerService implements OnModuleInit {
   }
 
   /**
-   * Cron diario: 7:00 AM (timezone del workspace)
-   * Crea un EditorialRun para cada workspace activo con campaña vigente
+   * Cron diario: 7:00 AM (America/Mexico_City)
+   * Fallback para workspaces que NO usan el sistema de slots ni el planner semanal.
+   * Si un workspace ya tiene ScheduleSlots activos configurados, sus slots registran
+   * sus propios CronJobs (ver syncAllSlotJobs) — este fallback los omite para evitar
+   * duplicados.
    */
   @Cron('0 7 * * *', { name: 'daily-editorial-run', timeZone: 'America/Mexico_City' })
   async dailyEditorialRun() {
-    this.logger.log('⏰ Daily editorial run triggered');
+    this.logger.log('⏰ Daily editorial run (fallback) triggered');
 
     try {
-      // Obtener todos los workspaces con al menos una fuente activa
+      // Determinar el día de hoy en la timezone del cron
+      const todayEnum = this.getTodayEnum('America/Mexico_City');
+
+      // Workspaces que YA tienen slots activos para hoy → los slots manejan su propio cron.
+      // PublishSchedule está ligado a userId; resolvemos workspace via WorkspaceUser (OWNER).
+      const schedulesWithSlotsToday = await this.prisma.publishSchedule.findMany({
+        where: {
+          isActive: true,
+          slots: { some: { dayOfWeek: todayEnum as any } },
+        },
+        select: { userId: true },
+      });
+      const userIdsWithSlots = schedulesWithSlotsToday.map((s) => s.userId);
+      const membershipsWithSlots = userIdsWithSlots.length > 0
+        ? await this.prisma.workspaceUser.findMany({
+            where: { userId: { in: userIdsWithSlots }, role: 'OWNER' },
+            select: { workspaceId: true },
+          })
+        : [];
+      const coveredIds = new Set(membershipsWithSlots.map((m) => m.workspaceId));
+
+      // Workspaces que YA tienen un WeeklyPlanConfig activo → el planner los gestiona
+      const workspacesWithPlanner = await this.prisma.weeklyPlanConfig.findMany({
+        where: { isActive: true },
+        select: { workspaceId: true },
+      });
+      for (const w of workspacesWithPlanner) coveredIds.add(w.workspaceId);
+
+      // Solo los workspaces SIN cobertura por slots/planner
       const workspaces = await this.prisma.workspace.findMany({
         where: {
-          operationMode: { not: 'MANUAL' }, // Skip MANUAL workspaces
+          id: { notIn: [...coveredIds] },
+          operationMode: { not: 'MANUAL' },
         },
         include: {
           campaigns: {
@@ -261,15 +293,13 @@ export class SchedulerService implements OnModuleInit {
         },
       });
 
-      const eligibleWorkspaces = workspaces.filter(
-        (ws) => ws.researchSources.length > 0,
-      );
+      const eligible = workspaces.filter((ws) => ws.researchSources.length > 0);
 
       this.logger.log(
-        `Found ${eligibleWorkspaces.length} eligible workspaces for daily run`,
+        `Daily fallback: ${eligible.length} workspace(s) without slot/planner coverage`,
       );
 
-      for (const ws of eligibleWorkspaces) {
+      for (const ws of eligible) {
         try {
           const { editorialRunId } = await this.orchestrator.createRun({
             workspaceId: ws.id,
@@ -277,20 +307,46 @@ export class SchedulerService implements OnModuleInit {
             origin: 'scheduler',
             targetChannels: ws.activeChannels,
           });
-
-          this.logger.log(
-            `Created daily run ${editorialRunId} for workspace ${ws.name}`,
-          );
+          this.logger.log(`Created daily fallback run ${editorialRunId} for "${ws.name}"`);
         } catch (error) {
-          this.logger.error(
-            `Failed to create daily run for workspace ${ws.name}:`,
-            error,
-          );
+          this.logger.error(`Failed to create daily run for "${ws.name}":`, error);
         }
       }
     } catch (error) {
       this.logger.error('Daily editorial run failed:', error);
     }
+  }
+
+  /** Devuelve el DayOfWeek enum (MONDAY, TUESDAY…) para "hoy" en la timezone dada */
+  private getTodayEnum(timezone: string): string {
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' });
+    const dayLabel = formatter.format(new Date()).toUpperCase();
+    // Intl weekday 'long' → "Monday", "Tuesday"… → uppercase matches enum
+    return dayNames.find((d) => d === dayLabel) ?? dayNames[new Date().getDay()] ?? 'MONDAY';
+  }
+
+  /** Devuelve { hour, minute } para "ahora" en la timezone dada */
+  private getNowInTimezone(timezone: string): { day: string; hour: number; minute: number } {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+    const dayLabel = get('weekday').toUpperCase();
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const day = dayNames.find((d) => d === dayLabel) ?? 'MONDAY';
+
+    return {
+      day,
+      hour: parseInt(get('hour'), 10),
+      minute: parseInt(get('minute'), 10),
+    };
   }
 
   /**

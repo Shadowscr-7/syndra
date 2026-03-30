@@ -45,6 +45,7 @@ import { BusinessProfileModule } from './business-profile/business-profile.modul
 import { BusinessBriefsModule } from './business-briefs/business-briefs.module';
 import { CreditsModule } from './credits/credits.module';
 import { WeeklyPlannerModule } from './weekly-planner/weekly-planner.module';
+import { ReferenceCopyModule } from './reference-copy/reference-copy.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { WeeklyPlannerModule } from './weekly-planner/weekly-planner.module';
     TrendsModule,
     ExperimentsModule,
     BrandMemoryModule,
+    ReferenceCopyModule,
     SourceTrustModule,
     PlaybookModule,
     BusinessProfileModule,

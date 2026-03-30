@@ -177,13 +177,18 @@ export class StrategyService {
     const llm = await this.getLlm(workspaceId);
 
     // Determine available formats: campaign's channelFormats > theme preferredFormats > defaults
+    // When channelFormats is set, filter by the run's targetChannels so each channel gets
+    // only the formats explicitly configured for it (not a superset of all channels).
     let availableFormats = themes[0]?.preferredFormats ?? ['post', 'carousel', 'reel', 'story'];
     if (run.campaign?.channelFormats && typeof run.campaign.channelFormats === 'object') {
       const cf = run.campaign.channelFormats as Record<string, string[]>;
-      // Merge unique formats across all channels
-      const allFormats = Object.values(cf).flat();
-      if (allFormats.length > 0) {
-        availableFormats = [...new Set(allFormats)];
+      // Use only the formats configured for the run's targetChannels (if specified)
+      const relevantChannels = run.targetChannels?.length > 0
+        ? run.targetChannels.filter((ch) => cf[ch] !== undefined)
+        : Object.keys(cf);
+      const channelFormats = relevantChannels.flatMap((ch) => cf[ch] ?? []);
+      if (channelFormats.length > 0) {
+        availableFormats = [...new Set(channelFormats)];
       }
     }
 

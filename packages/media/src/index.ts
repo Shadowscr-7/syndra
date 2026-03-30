@@ -38,6 +38,7 @@ export interface BrandingConfig {
   secondaryFont: string;
   primaryColor: string;
   secondaryColor: string;
+  accentColor?: string;
   backgroundColor: string;
   textColor: string;
   logoUrl?: string;

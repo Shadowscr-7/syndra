@@ -415,7 +415,8 @@ export class EditorialOrchestratorService {
         }
 
         case 'review': {
-          // Resolve effective operation mode: campaign → schedule → workspace (cascade)
+          // Resolve effective operation mode cascade:
+          // campaign.operationMode ?? schedule.operationMode ?? workspace.operationMode
           const runForMode = await this.prisma.editorialRun.findUnique({
             where: { id: editorialRunId },
             include: {
@@ -424,19 +425,34 @@ export class EditorialOrchestratorService {
             },
           });
 
-          // Check schedule-level operationMode (via workspace owner's schedule)
-          const ownerUser = await this.prisma.workspaceUser.findFirst({
-            where: { workspaceId, role: 'OWNER' },
-            select: { userId: true },
-          });
+          // Resolve schedule-level operationMode.
+          // For slot-triggered runs: look up the SPECIFIC slot's parent PublishSchedule.
+          // For other runs: fall back to any active schedule owned by the workspace owner.
           let scheduleMode: string | null | undefined = null;
-          if (ownerUser) {
-            const activeSchedule = await this.prisma.publishSchedule.findFirst({
-              where: { userId: ownerUser.userId, isActive: true, operationMode: { not: null } },
-              select: { operationMode: true },
+          if (runForMode?.origin?.startsWith('schedule:')) {
+            const slotId = runForMode.origin.slice('schedule:'.length);
+            const slot = await this.prisma.scheduleSlot.findUnique({
+              where: { id: slotId },
+              include: { schedule: { select: { operationMode: true } } },
             });
-            scheduleMode = activeSchedule?.operationMode;
+            scheduleMode = slot?.schedule?.operationMode ?? null;
+            this.logger.log(
+              `Slot run ${editorialRunId}: slotId=${slotId}, scheduleMode=${scheduleMode ?? 'null (inherit workspace)'}`,
+            );
+          } else {
+            const ownerUser = await this.prisma.workspaceUser.findFirst({
+              where: { workspaceId, role: 'OWNER' },
+              select: { userId: true },
+            });
+            if (ownerUser) {
+              const activeSchedule = await this.prisma.publishSchedule.findFirst({
+                where: { userId: ownerUser.userId, isActive: true, operationMode: { not: null } },
+                select: { operationMode: true },
+              });
+              scheduleMode = activeSchedule?.operationMode;
+            }
           }
+
           const effectiveMode =
             runForMode?.campaign?.operationMode ??
             scheduleMode ??

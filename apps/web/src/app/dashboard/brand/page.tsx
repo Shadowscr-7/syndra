@@ -18,7 +18,34 @@ export default async function BrandPage() {
     <div className="space-y-8">
       <div className="page-header animate-fade-in">
         <h1 className="page-title">Brand Profile</h1>
-        <p className="page-subtitle">Define la voz, tono e identidad visual de tu marca.</p>
+        <p className="page-subtitle">Define la voz, tono e identidad verbal de tu marca.</p>
+      </div>
+
+      {/* ── Notice: visual config lives in Brand Kit ── */}
+      <div
+        className="flex items-start gap-4 p-4 rounded-xl animate-fade-in"
+        style={{
+          background: 'rgba(6,182,212,0.06)',
+          border: '1px solid rgba(6,182,212,0.2)',
+        }}
+      >
+        <span className="text-xl shrink-0">🎨</span>
+        <div className="flex-1">
+          <p className="text-sm font-semibold" style={{ color: '#06b6d4' }}>
+            Colores, tipografías y logo → Brand Kit
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'rgba(240,240,255,0.55)' }}>
+            La identidad visual (paleta de colores, fuentes, logo y assets) se configura en{' '}
+            <a
+              href="/dashboard/brand-kit"
+              className="underline font-medium"
+              style={{ color: '#06b6d4' }}
+            >
+              Brand Kit
+            </a>
+            {' '}y se aplica automáticamente a todas las imágenes generadas por el pipeline.
+          </p>
+        </div>
       </div>
 
       <form action={updateBrandProfile} className="max-w-4xl space-y-6">
