@@ -39,7 +39,7 @@ export class MediaBalanceService {
         return;
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
       const currentBalance = data.total_available || 0; // standard OpenAI format
 
       if (currentBalance < 5.0) {
@@ -88,7 +88,7 @@ export class MediaBalanceService {
           <p>Por favor, ingresa a <a href="https://kie.ai/">Kie.ai</a> y realiza el top-up utilizando los fondos de reserva.</p>
         </div>
       `,
-      text: \`Alerta de saldo en KIE AI. Saldo actual: \${currentBalance}. Reserva en hucha: \${reserveAmount}. Por favor, recarga.\`,
+      text: `Alerta de saldo en KIE AI. Saldo actual: ${currentBalance}. Reserva en hucha: ${reserveAmount}. Por favor, recarga.`,
     });
 
     if (success) {
@@ -115,19 +115,19 @@ export class MediaBalanceService {
     if (admin?.email) {
       await this.emailService.send({
         to: admin.email,
-        subject: \`Cierre Mensual: Fondo de IA (\${new Date().toLocaleString('es-ES', { month: 'long' })})\`,
-        html: \`
+        subject: `Cierre Mensual: Fondo de IA (${new Date().toLocaleString('es-ES', { month: 'long' })})`,
+        html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2>📊 Cierre Mensual: Hucha de IA</h2>
             <p>Se ha realizado el balance mensual de las recargas (TOP-UPs) correspondientes a las suscripciones pagadas del último ciclo.</p>
             <div style="background-color: #f7f9fc; padding: 15px; border-radius: 8px; font-size: 18px; text-align: center;">
               Total acumulado para recarga Kie:<br/>
-              <strong style="color: #007bff; font-size: 28px;">$\${totalAccumulated.toFixed(2)}</strong> USD
+              <strong style="color: #007bff; font-size: 28px;">$${totalAccumulated.toFixed(2)}</strong> USD
             </div>
             <p>El Ledger interno ha sido reiniciado ($0) para comenzar contabilizar el nuevo mes.</p>
           </div>
-        \`,
-        text: \`Cierre mensual. Acumulado en el Ledger: $\${totalAccumulated.toFixed(2)}\`,
+        `,
+        text: `Cierre mensual. Acumulado en el Ledger: $${totalAccumulated.toFixed(2)}`,
       });
     }
 
@@ -142,6 +142,6 @@ export class MediaBalanceService {
       });
     }
 
-    this.logger.log(\`Cierre mensual completado. Reseteado: $\${totalAccumulated}\`);
+    this.logger.log(`Cierre mensual completado. Reseteado: $${totalAccumulated}`);
   }
 }

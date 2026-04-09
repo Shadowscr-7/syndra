@@ -103,6 +103,7 @@ const allSections: SidebarSection[] = [
       { name: 'Facturación', href: '/dashboard/billing', icon: '💳' },
       { name: 'Credenciales', href: '/dashboard/credentials', icon: '🔑' },
       { name: 'Configuración', href: '/dashboard/settings', icon: '⚙️' },
+      { name: 'Soporte', href: '/dashboard/support', icon: '🎫' },
     ],
   },
   // ── Afiliados (solo collaborators) ──
@@ -128,6 +129,7 @@ const allSections: SidebarSection[] = [
       { name: 'Playbooks', href: '/dashboard/admin/playbooks', icon: '📖' },
       { name: 'Auditoría', href: '/dashboard/admin/audit', icon: '📝' },
       { name: 'Riesgo Churn', href: '/dashboard/admin/churn', icon: '⚠️' },
+      { name: 'Tickets', href: '/dashboard/admin/tickets', icon: '🎫' },
     ],
   },
 ];

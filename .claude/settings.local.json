@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(find /e/Proyectos/automatismos/apps/web/src/app/dashboard -type f -name *video*)",
+      "Bash(npx tsc:*)",
+      "Bash(find /e/Proyectos/automatismos -type d \\\\\\(-name visual-styles -o -name brand* -o -name assets \\\\\\))",
+      "Bash(find /e/Proyectos/automatismos/packages/media -name *.ts)",
+      "Bash(find /e/Proyectos/automatismos/apps/web/src/app/dashboard -name *.tsx)",
+      "Bash(grep -r font /e/Proyectos/automatismos/packages/media/src --include=*.ts)",
+      "Bash(find /e/Proyectos/automatismos/apps/api/src -name *.ts -path */routes/* -o -name *.ts -path */controllers/*)",
+      "Bash(find /e/Proyectos/automatismos/apps/web/src -name *visual* -o -name *style*)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
+    ]
+  }
+}

@@ -52,6 +52,8 @@ model User {
   editorialComments       EditorialComment[]
   editorialAssignments    EditorialAssignment[]
   approvalSteps           ApprovalStep[]
+  supportTickets          SupportTicket[]
+  ticketMessages          TicketMessage[]
 
   @@map("users")
 }
@@ -137,6 +139,7 @@ model Workspace {
   weeklyPlanConfigs WeeklyPlanConfig[]
   weeklyPlanBatches WeeklyPlanBatch[]
   referenceCopies  ReferenceCopy[]
+  supportTickets   SupportTicket[]
 
   @@map("workspaces")
 }
@@ -2388,4 +2391,68 @@ model AiFundLedger {
 enum AiFundType {
   TOP_UP
   RESET
+}
+
+// ============================================================
+// SUPPORT TICKETS (MESA DE AYUDA)
+// ============================================================
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  createdById String   @map("created_by_id")
+  subject     String
+  status      TicketStatus @default(OPEN)
+  priority    TicketPriority @default(NORMAL)
+  category    TicketCategory @default(OTHER)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  messages    TicketMessage[]
+
+  @@index([workspaceId])
+  @@index([createdById])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id            String   @id @default(cuid())
+  ticketId      String   @map("ticket_id")
+  senderId      String   @map("sender_id")
+  content       String   @db.Text
+  attachmentUrl String?  @map("attachment_url")
+  isAdminReply  Boolean  @default(false) @map("is_admin_reply")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender        User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@map("ticket_messages")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  BUG
+  BILLING
+  FEATURE_REQUEST
+  GENERAL_INQUIRY
+  OTHER
 }

@@ -78,6 +78,7 @@ export function buildPostCopyPrompt(params: {
   references: string[];
   maxCaptionLength: number;
   hashtagLimit: number;
+  persona?: any;
   contentProfile?: Parameters<typeof buildProfileContext>[0];
   brandMemory?: Parameters<typeof buildMemoryContext>[0];
   industryContext?: string;
@@ -130,6 +131,7 @@ export function buildCarouselCopyPrompt(params: {
   brandVoice: string;
   references: string[];
   slideCount: number;
+  persona?: any;
   contentProfile?: Parameters<typeof buildProfileContext>[0];
   brandMemory?: Parameters<typeof buildMemoryContext>[0];
   industryContext?: string;

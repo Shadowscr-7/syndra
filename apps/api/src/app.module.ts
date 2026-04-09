@@ -46,6 +46,7 @@ import { BusinessBriefsModule } from './business-briefs/business-briefs.module';
 import { CreditsModule } from './credits/credits.module';
 import { WeeklyPlannerModule } from './weekly-planner/weekly-planner.module';
 import { ReferenceCopyModule } from './reference-copy/reference-copy.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { ReferenceCopyModule } from './reference-copy/reference-copy.module';
     BusinessBriefsModule,
     CreditsModule,
     WeeklyPlannerModule,
+    SupportModule,
   ],
 })
 export class AppModule implements NestModule {
