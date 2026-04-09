@@ -1,0 +1,695 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import type { OnboardingState, OnboardingMode, ThemeEntry, SourceEntry, MediaEntry, PersonaData, ContentProfileData, VisualStyleData, CampaignEntry } from './steps/types';
+import StepMode from './steps/StepMode';
+import StepBusiness from './steps/StepBusiness';
+import StepBrand from './steps/StepBrand';
+import StepWebsite from './steps/StepWebsite';
+import StepCreatorProfile from './steps/StepCreatorProfile';
+import StepPersona from './steps/StepPersona';
+import StepContentProfile from './steps/StepContentProfile';
+import StepVisualStyle from './steps/StepVisualStyle';
+import StepThemes from './steps/StepThemes';
+import StepSources from './steps/StepSources';
+import StepMedia from './steps/StepMedia';
+import StepCampaigns from './steps/StepCampaigns';
+import StepSocial from './steps/StepSocial';
+import StepConfirm from './steps/StepConfirm';
+
+// ── Types ──────────────────────────────────────────────
+interface Industry {
+  id: string;
+  name: string;
+  icon: string;
+  description?: string;
+}
+
+const FALLBACK_INDUSTRIES: Industry[] = [
+  { id: 'ecommerce', name: 'E-commerce', icon: '🛒' },
+  { id: 'restaurant', name: 'Restaurante', icon: '🍽️' },
+  { id: 'fitness', name: 'Fitness', icon: '💪' },
+  { id: 'realestate', name: 'Inmobiliaria', icon: '🏠' },
+  { id: 'tech', name: 'Tecnología', icon: '💻' },
+  { id: 'beauty', name: 'Belleza', icon: '💄' },
+  { id: 'generic', name: 'Otro', icon: '🏢' },
+];
+
+// Business:  Mode → Negocio → Marca → Web → Temas → Fuentes → Media → Campañas → Redes → Confirmar
+const BUSINESS_STEPS = ['Tipo', 'Negocio', 'Marca', 'Sitio web', 'Temas', 'Fuentes', 'Media', 'Campañas', 'Redes', 'Confirmar'];
+// Creator:   Mode → Perfil → Persona → Perfil Cont. → Estilo Visual → Temas → Fuentes → Media → Campañas → Redes → Confirmar
+const CREATOR_STEPS = ['Tipo', 'Perfil', 'AI Persona', 'Perfil contenido', 'Estilo visual', 'Temas', 'Fuentes', 'Media', 'Campañas', 'Redes', 'Confirmar'];
+
+const CREATOR_CATEGORIES = [
+  { id: 'lifestyle', name: 'Lifestyle', icon: '✨' },
+  { id: 'tech', name: 'Tech & Gaming', icon: '🎮' },
+  { id: 'fitness', name: 'Fitness & Salud', icon: '💪' },
+  { id: 'food', name: 'Cocina & Recetas', icon: '🍳' },
+  { id: 'education', name: 'Educación', icon: '📚' },
+  { id: 'entertainment', name: 'Entretenimiento', icon: '🎬' },
+  { id: 'travel', name: 'Viajes', icon: '✈️' },
+  { id: 'art', name: 'Arte & Diseño', icon: '🎨' },
+  { id: 'finance', name: 'Finanzas', icon: '💰' },
+  { id: 'music', name: 'Música', icon: '🎵' },
+  { id: 'other', name: 'Otro', icon: '🌟' },
+];
+
+// ── Main Page ──────────────────────────────────────────
+export default function OnboardingPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(0);
+  const [mode, setMode] = useState<OnboardingMode>(null);
+  const [loading, setLoading] = useState(false);
+  const [industries, setIndustries] = useState<Industry[]>(FALLBACK_INDUSTRIES);
+  const [metaConnected, setMetaConnected] = useState(false);
+  const [metaInfo, setMetaInfo] = useState('');
+  const [websiteLoading, setWebsiteLoading] = useState(false);
+  const [websiteResult, setWebsiteResult] = useState<string | null>(null);
+
+  const [data, setData] = useState({
+    workspaceName: '',
+    slug: '',
+    industry: '',
+    brandName: '',
+    brandDescription: '',
+    brandVoice: 'Profesional',
+    websiteUrl: '',
+    // Creator fields
+    creatorName: '',
+    creatorCategory: '',
+    creatorTopics: '',
+    creatorSources: '',
+  });
+
+  useEffect(() => {
+    fetch('/api/onboarding/industries', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((json) => {
+        const list = Array.isArray(json.data) ? json.data : [];
+        if (list.length > 0) {
+          setIndustries(
+            list.map((item: { slug?: string; id?: string; name: string; icon: string; description?: string }) => ({
+              id: item.slug ?? item.id ?? item.name,
+              name: item.name,
+              icon: item.icon,
+              description: item.description,
+            })),
+          );
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
+
+  // Listen for Meta OAuth popup completion
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'meta-oauth-complete') {
+        setMetaConnected(true);
+        setMetaInfo(e.data.instagramUsername || e.data.pageName || 'Conectado');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const updateField = (field: string, value: string) => {
+    setData((prev) => ({ ...prev, [field]: value }));
+    if (field === 'workspaceName' || field === 'creatorName') {
+      setData((prev) => ({
+        ...prev,
+        slug: value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, ''),
+      }));
+    }
+  };
+
+  const steps = mode === 'creator' ? CREATOR_STEPS : BUSINESS_STEPS;
+
+  const canProceed = () => {
+    if (step === 0) return mode !== null;
+    if (mode === 'business') {
+      switch (step) {
+        case 1: return !!data.workspaceName && !!data.industry;
+        case 2: return true;
+        case 3: return true;
+        case 4: return true;
+        case 5: return true;
+        default: return false;
+      }
+    } else {
+      switch (step) {
+        case 1: return !!data.creatorName && !!data.creatorCategory;
+        case 2: return true;
+        case 3: return true;
+        default: return false;
+      }
+    }
+  };
+
+  const isLastStep = step === steps.length - 1;
+
+  const handleConnectMeta = () => {
+    const w = 600, h = 700;
+    const left = window.screenX + (window.innerWidth - w) / 2;
+    const top = window.screenY + (window.innerHeight - h) / 2;
+    window.open(
+      '/api/auth/meta?from=onboarding&popup=1',
+      'meta-oauth',
+      `width=${w},height=${h},left=${left},top=${top}`,
+    );
+  };
+
+  const handleExtractFromWeb = useCallback(async () => {
+    if (!data.websiteUrl.trim()) return;
+    setWebsiteLoading(true);
+    setWebsiteResult(null);
+    try {
+      let url = data.websiteUrl.trim();
+      if (!url.startsWith('http')) url = `https://${url}`;
+      const res = await fetch('/api/business-profile/extract-from-web', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ urls: [url] }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const profile = json.data?.profile;
+        if (profile) {
+          setData((prev) => ({
+            ...prev,
+            brandName: prev.brandName || profile.businessName || '',
+            brandDescription: prev.brandDescription || profile.description || '',
+            workspaceName: prev.workspaceName || profile.businessName || '',
+            industry: prev.industry || profile.businessType || prev.industry,
+          }));
+          setWebsiteResult(`✅ Se extrajeron datos de tu sitio web`);
+        } else {
+          setWebsiteResult('⚠️ No se pudieron extraer datos del sitio');
+        }
+      } else {
+        setWebsiteResult('⚠️ Error al analizar el sitio web');
+      }
+    } catch {
+      setWebsiteResult('⚠️ Error de conexión');
+    } finally {
+      setWebsiteLoading(false);
+    }
+  }, [data.websiteUrl]);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      const payload: Record<string, unknown> = {
+        ...data,
+        mode,
+      };
+      if (mode === 'creator') {
+        payload.workspaceName = data.creatorName;
+        payload.industry = data.creatorCategory;
+      }
+      await fetch('/api/onboarding/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      router.push('/dashboard');
+    } catch (err) {
+      console.error('Onboarding error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Render ─────────────────────────────────────────────
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-bg)' }}>
+      <div
+        className="w-full max-w-2xl rounded-2xl border p-8 space-y-8"
+        style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}
+      >
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>
+            🚀 Configurar tu workspace
+          </h1>
+          <p className="mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            Paso {step + 1} de {steps.length}: {steps[step]}
+          </p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="flex gap-2">
+          {steps.map((_, i) => (
+            <div
+              key={i}
+              className="flex-1 h-1.5 rounded-full transition-colors"
+              style={{ backgroundColor: i <= step ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}
+            />
+          ))}
+        </div>
+
+        {/* Step Content */}
+        <div className="min-h-[320px]">
+          {/* ═══ STEP 0: Choose mode ═══ */}
+          {step === 0 && (
+            <div className="space-y-6">
+              <p className="text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                ¿Cómo vas a usar Syndra?
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setMode('business')}
+                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all"
+                  style={{
+                    backgroundColor: mode === 'business' ? 'rgba(124,58,237,0.12)' : 'var(--color-bg-tertiary)',
+                    borderColor: mode === 'business' ? 'var(--color-primary)' : 'var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <span className="text-4xl">🏢</span>
+                  <span className="text-lg font-semibold">Empresa / Negocio</span>
+                  <span className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                    Gestiona la presencia digital de tu marca o empresa
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('creator')}
+                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all"
+                  style={{
+                    backgroundColor: mode === 'creator' ? 'rgba(124,58,237,0.12)' : 'var(--color-bg-tertiary)',
+                    borderColor: mode === 'creator' ? 'var(--color-primary)' : 'var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <span className="text-4xl">🎨</span>
+                  <span className="text-lg font-semibold">Creador de contenido</span>
+                  <span className="text-xs text-center" style={{ color: 'var(--color-text-secondary)' }}>
+                    Crea y publica contenido para tu audiencia personal
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════
+               BUSINESS FLOW
+             ═══════════════════════════════════════════════ */}
+          {mode === 'business' && step === 1 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Nombre del negocio *
+                </label>
+                <input
+                  type="text"
+                  value={data.workspaceName}
+                  onChange={(e) => updateField('workspaceName', e.target.value)}
+                  placeholder="Mi Empresa"
+                  className="w-full px-4 py-3 rounded-lg border text-sm"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                {data.slug && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    URL: syndra.app/{data.slug}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text)' }}>
+                  Industria *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {industries.map((ind) => (
+                    <button
+                      key={ind.id}
+                      type="button"
+                      onClick={() => updateField('industry', ind.id)}
+                      className="flex items-center gap-2 p-3 rounded-lg border text-sm transition-colors"
+                      style={{
+                        backgroundColor: data.industry === ind.id ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                        borderColor: data.industry === ind.id ? 'var(--color-primary)' : 'var(--color-border)',
+                        color: data.industry === ind.id ? 'white' : 'var(--color-text)',
+                      }}
+                    >
+                      <span className="text-lg">{ind.icon}</span>
+                      {ind.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {mode === 'business' && step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Nombre de marca
+                </label>
+                <input
+                  type="text"
+                  value={data.brandName}
+                  onChange={(e) => updateField('brandName', e.target.value)}
+                  placeholder="Nombre visible de tu marca"
+                  className="w-full px-4 py-3 rounded-lg border text-sm"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Descripción
+                </label>
+                <textarea
+                  value={data.brandDescription}
+                  onChange={(e) => updateField('brandDescription', e.target.value)}
+                  placeholder="¿A qué se dedica tu marca?"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Tono de voz
+                </label>
+                <select
+                  value={data.brandVoice}
+                  onChange={(e) => updateField('brandVoice', e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border text-sm"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option>Profesional</option>
+                  <option>Casual</option>
+                  <option>Divertido</option>
+                  <option>Inspiracional</option>
+                  <option>Educativo</option>
+                  <option>Motivacional</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {mode === 'business' && step === 3 && (
+            <div className="space-y-6">
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Si tenés un sitio web, podemos analizar automáticamente tu negocio para crear un perfil y briefs de contenido.
+              </p>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  URL de tu sitio web
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={data.websiteUrl}
+                    onChange={(e) => updateField('websiteUrl', e.target.value)}
+                    placeholder="https://miempresa.com"
+                    className="flex-1 px-4 py-3 rounded-lg border text-sm"
+                    style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleExtractFromWeb}
+                    disabled={!data.websiteUrl.trim() || websiteLoading}
+                    className="px-4 py-3 rounded-lg text-sm font-medium text-white whitespace-nowrap"
+                    style={{
+                      backgroundColor: data.websiteUrl.trim() && !websiteLoading ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                      color: data.websiteUrl.trim() && !websiteLoading ? 'white' : 'var(--color-text-muted)',
+                      opacity: websiteLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {websiteLoading ? '⏳ Analizando...' : '🔍 Analizar'}
+                  </button>
+                </div>
+                {websiteResult && (
+                  <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    {websiteResult}
+                  </p>
+                )}
+              </div>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  💡 Syndra analizará tu sitio web para extraer información del negocio, productos y servicios.
+                  Esto generará automáticamente briefs de contenido que puedes editar después.
+                  <br /><br />
+                  Podés omitir este paso y configurarlo después desde <strong>Mi Negocio</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {mode === 'business' && step === 4 && (
+            <div className="space-y-6">
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Conectá tus redes sociales para publicar contenido automáticamente. Podés hacerlo después desde Credenciales.
+              </p>
+
+              {/* Meta/Instagram OAuth Card */}
+              <div
+                className="p-5 rounded-xl border transition-all"
+                style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: metaConnected ? '#22c55e' : 'var(--color-border)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📸</span>
+                    <div>
+                      <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>
+                        Instagram / Facebook
+                      </h3>
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        {metaConnected
+                          ? `✅ Conectado: ${metaInfo}`
+                          : 'Conectá tu cuenta de Instagram y Facebook para publicar'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConnectMeta}
+                    disabled={metaConnected}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{
+                      backgroundColor: metaConnected ? '#22c55e' : 'var(--color-primary)',
+                      color: 'white',
+                      opacity: metaConnected ? 0.8 : 1,
+                    }}
+                  >
+                    {metaConnected ? '✓ Conectado' : 'Conectar'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  💡 Al conectar, se abrirá una ventana de Facebook/Instagram donde autorizarás a Syndra
+                  a publicar en tu página. Necesitás una página de Facebook con Instagram Business vinculado.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {mode === 'business' && step === 5 && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+                Resumen de configuración
+              </h2>
+              <div className="space-y-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
+                <SummaryRow label="Tipo" value="🏢 Empresa / Negocio" />
+                <SummaryRow label="Negocio" value={data.workspaceName} />
+                <SummaryRow label="Industria" value={industries.find((i) => i.id === data.industry)?.name || '-'} />
+                <SummaryRow label="Marca" value={data.brandName || '(pendiente)'} />
+                <SummaryRow label="Tono" value={data.brandVoice} />
+                <SummaryRow label="Sitio web" value={data.websiteUrl || '(no configurado)'} />
+                <SummaryRow label="Instagram/Facebook" value={metaConnected ? `✅ ${metaInfo}` : '⏳ Pendiente'} />
+              </div>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Se crearán automáticamente temas de contenido basados en tu industria.
+                Podrás personalizar todo después desde el dashboard.
+              </p>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════
+               CREATOR FLOW
+             ═══════════════════════════════════════════════ */}
+          {mode === 'creator' && step === 1 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Tu nombre o nombre de creador *
+                </label>
+                <input
+                  type="text"
+                  value={data.creatorName}
+                  onChange={(e) => updateField('creatorName', e.target.value)}
+                  placeholder="Tu nombre artístico o personal"
+                  className="w-full px-4 py-3 rounded-lg border text-sm"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                {data.slug && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    URL: syndra.app/{data.slug}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text)' }}>
+                  Categoría principal *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {CREATOR_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => updateField('creatorCategory', cat.id)}
+                      className="flex items-center gap-2 p-3 rounded-lg border text-sm transition-colors"
+                      style={{
+                        backgroundColor: data.creatorCategory === cat.id ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                        borderColor: data.creatorCategory === cat.id ? 'var(--color-primary)' : 'var(--color-border)',
+                        color: data.creatorCategory === cat.id ? 'white' : 'var(--color-text)',
+                      }}
+                    >
+                      <span className="text-lg">{cat.icon}</span>
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {mode === 'creator' && step === 2 && (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Temas de contenido
+                </label>
+                <textarea
+                  value={data.creatorTopics}
+                  onChange={(e) => updateField('creatorTopics', e.target.value)}
+                  placeholder="¿Sobre qué temas creas contenido? Ej: recetas veganas, rutinas de ejercicio, reviews de gadgets..."
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Syndra usará estos temas para generar ideas y contenido automático.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Fuentes de inspiración
+                </label>
+                <textarea
+                  value={data.creatorSources}
+                  onChange={(e) => updateField('creatorSources', e.target.value)}
+                  placeholder="Blogs, canales de YouTube, cuentas que seguís, sitios web de referencia..."
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-lg border text-sm resize-none"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Usaremos estas fuentes para investigar tendencias y generar contenido relevante.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Tono de voz
+                </label>
+                <select
+                  value={data.brandVoice}
+                  onChange={(e) => updateField('brandVoice', e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border text-sm"
+                  style={{ backgroundColor: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option>Casual</option>
+                  <option>Profesional</option>
+                  <option>Divertido</option>
+                  <option>Inspiracional</option>
+                  <option>Educativo</option>
+                  <option>Motivacional</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {mode === 'creator' && step === 3 && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+                Resumen de configuración
+              </h2>
+              <div className="space-y-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--color-bg-tertiary)' }}>
+                <SummaryRow label="Tipo" value="🎨 Creador de contenido" />
+                <SummaryRow label="Nombre" value={data.creatorName} />
+                <SummaryRow label="Categoría" value={CREATOR_CATEGORIES.find((c) => c.id === data.creatorCategory)?.name || '-'} />
+                <SummaryRow label="Tono" value={data.brandVoice} />
+                <SummaryRow label="Temas" value={data.creatorTopics || '(pendiente)'} />
+                <SummaryRow label="Fuentes" value={data.creatorSources || '(pendiente)'} />
+              </div>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Se crearán campañas y temas basados en tu categoría.
+                Podrás conectar tus redes sociales y personalizar todo desde el dashboard.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation Buttons */}
+        <div className="flex justify-between">
+          <button
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0}
+            className="px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              backgroundColor: 'var(--color-bg-tertiary)',
+              color: step === 0 ? 'var(--color-text-muted)' : 'var(--color-text)',
+              cursor: step === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Atrás
+          </button>
+
+          {!isLastStep ? (
+            <button
+              onClick={() => setStep((s) => s + 1)}
+              disabled={!canProceed()}
+              className="px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: canProceed() ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                color: canProceed() ? 'white' : 'var(--color-text-muted)',
+                cursor: canProceed() ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Siguiente
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+              style={{ backgroundColor: 'var(--color-primary)', opacity: loading ? 0.7 : 1 }}
+            >
+              {loading ? 'Configurando...' : '🚀 Completar configuración'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      <span className="font-medium" style={{ color: 'var(--color-text)' }}>{value}</span>
+    </div>
+  );
+}

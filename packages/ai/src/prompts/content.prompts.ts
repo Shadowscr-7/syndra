@@ -50,6 +50,22 @@ PERFIL DE CONTENIDO: ${profile.name}
 ${profile.hashtags.length ? `- Incluir hashtags: ${profile.hashtags.join(', ')}` : ''}`;
 }
 
+function buildMemoryContext(brandMemory?: {
+  frequentPhrases: Array<{ phrase: string }>;
+  usedCTAs: Array<{ cta: string }>;
+}): string {
+  if (!brandMemory) return '';
+  const hasPhrases = brandMemory.frequentPhrases?.length > 0;
+  const hasCTAs = brandMemory.usedCTAs?.length > 0;
+  if (!hasPhrases && !hasCTAs) return '';
+
+  return `
+
+MEMORIA DE MARCA (Estilo a imitar):
+${hasPhrases ? `- Frases Frecuentes (Usa alguna naturalmente si aplica):\n  "${brandMemory.frequentPhrases.slice(0, 5).map(f => f.phrase).join('", "')}"` : ''}
+${hasCTAs ? `- Estilo de CTAs previos:\n  "${brandMemory.usedCTAs.slice(0, 3).map(c => c.cta).join('", "')}"` : ''}`;
+}
+
 /**
  * Prompt principal para generar copy de un post
  */
@@ -62,8 +78,8 @@ export function buildPostCopyPrompt(params: {
   references: string[];
   maxCaptionLength: number;
   hashtagLimit: number;
-  persona?: Parameters<typeof buildPersonaContext>[0];
   contentProfile?: Parameters<typeof buildProfileContext>[0];
+  brandMemory?: Parameters<typeof buildMemoryContext>[0];
   industryContext?: string;
   businessContext?: string;
 }): string {
@@ -77,7 +93,7 @@ BRIEF:
 - CTA: ${params.cta}
 - Voz de marca: ${params.brandVoice}
 - Seed: ${params.seedPrompt}
-${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}
+${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}${buildMemoryContext(params.brandMemory)}
 
 FUENTES DE REFERENCIA:
 ${params.references.map((r, i) => `${i + 1}. ${r}`).join('\n')}
@@ -114,8 +130,8 @@ export function buildCarouselCopyPrompt(params: {
   brandVoice: string;
   references: string[];
   slideCount: number;
-  persona?: Parameters<typeof buildPersonaContext>[0];
   contentProfile?: Parameters<typeof buildProfileContext>[0];
+  brandMemory?: Parameters<typeof buildMemoryContext>[0];
   industryContext?: string;
   businessContext?: string;
 }): string {
@@ -130,7 +146,7 @@ BRIEF:
 - Voz de marca: ${params.brandVoice}
 - Seed: ${params.seedPrompt}
 - Número de slides: ${params.slideCount}
-${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}
+${buildPersonaContext(params.persona)}${buildProfileContext(params.contentProfile)}${buildMemoryContext(params.brandMemory)}
 
 FUENTES:
 ${params.references.map((r, i) => `${i + 1}. ${r}`).join('\n')}

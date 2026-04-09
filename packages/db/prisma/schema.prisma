@@ -2369,3 +2369,23 @@ model PlannedPublication {
   @@index([editorialRunId])
   @@map("planned_publications")
 }
+
+// ============================================================
+// FUNDS LEDGER (KIE API BUDGET TRACKER)
+// ============================================================
+
+model AiFundLedger {
+  id          String   @id @default(cuid())
+  amount      Float    
+  reason      String   
+  type        AiFundType
+  workspaceId String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("ai_fund_ledger")
+}
+
+enum AiFundType {
+  TOP_UP
+  RESET
+}

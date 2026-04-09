@@ -426,6 +426,9 @@ export class PaypalService {
     // Handle affiliate commission
     await this.processAffiliateCommission(sub.workspaceId, discountedAmount);
 
+    // Process AI Fund Ledger automatically
+    await this.processAiFundReserveAddition(sub.workspaceId, sub.plan?.name || '', sub.billingCycle);
+
     this.logger.log(`Subscription activated: ${sub.workspaceId} → ${sub.plan?.name}`);
   }
 
@@ -532,6 +535,9 @@ export class PaypalService {
 
       // Process affiliate commission
       await this.processAffiliateCommission(sub.workspaceId, Math.round(amountValue));
+
+      // Process AI Fund Ledger automatically
+      await this.processAiFundReserveAddition(sub.workspaceId, sub.plan?.name || '', sub.billingCycle);
     }
   }
 
@@ -580,6 +586,39 @@ export class PaypalService {
       }
     } catch (error) {
       this.logger.error('Error processing affiliate commission:', error);
+    }
+  }
+
+  // ── AI Fund Ledger helper ──────────────────────────────
+
+  private async processAiFundReserveAddition(workspaceId: string, planName: string, billingCycle: string) {
+    try {
+      let amountToAdd = 0;
+      const normalizedPlan = planName.toLowerCase();
+
+      if (normalizedPlan === 'starter') amountToAdd = 5;
+      else if (normalizedPlan === 'creator') amountToAdd = 10;
+      else if (normalizedPlan === 'pro') amountToAdd = 15;
+
+      if (amountToAdd > 0) {
+        // Multiplier for yearly subscriptions
+        if (billingCycle === 'YEARLY') {
+          amountToAdd *= 12;
+        }
+
+        await this.prisma.aiFundLedger.create({
+          data: {
+            amount: amountToAdd,
+            reason: `Pago Suscripción ${planName} (${billingCycle}) - WS: ${workspaceId}`,
+            type: 'TOP_UP',
+            workspaceId,
+          },
+        });
+        
+        this.logger.log(`AI Fund Reserve: Added $${amountToAdd} for WS ${workspaceId} (${planName})`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to update AI Fund Reserve Ledger:', error);
     }
   }
 

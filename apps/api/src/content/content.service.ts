@@ -180,13 +180,23 @@ export class ContentService {
       businessContext: businessCtx.businessContext,
       logoUrl: businessCtx.logoUrl ?? null,
     };
+
+    // 3b. Obtener memoria de marca (copys de referencia decodificados)
+    const brandMemory = await this.prisma.brandMemory.findUnique({
+      where: { workspaceId },
+    });
+    const brandMemoryCtx = brandMemory ? {
+      frequentPhrases: brandMemory.frequentPhrases as Array<{ phrase: string }>,
+      usedCTAs: brandMemory.usedCTAs as Array<{ cta: string }>,
+    } : undefined;
+
     let mainCopy: GeneratedCopy;
     const formatLower = brief.format.toLowerCase();
 
     if (formatLower === 'carousel') {
-      mainCopy = await this.generateCarouselCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy);
+      mainCopy = await this.generateCarouselCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy, brandMemoryCtx);
     } else {
-      mainCopy = await this.generatePostCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy);
+      mainCopy = await this.generatePostCopy(brief, brand, personaCtx, profileCtx, llm, businessCtxForCopy, brandMemoryCtx);
     }
 
     // 4. Crear ContentVersion principal (v1)
@@ -393,6 +403,7 @@ export class ContentService {
     contentProfile?: any,
     llm?: LLMAdapter,
     businessCtx?: { industryContext: string; businessContext: string; logoUrl: string | null },
+    brandMemory?: { frequentPhrases: Array<{ phrase: string }>; usedCTAs: Array<{ cta: string }> },
   ): Promise<GeneratedCopy> {
     const adapter = llm ?? this.fallbackLlm;
     const prompt = buildPostCopyPrompt({
@@ -406,6 +417,7 @@ export class ContentService {
       hashtagLimit: INSTAGRAM_LIMITS.HASHTAGS_MAX,
       persona,
       contentProfile,
+      brandMemory,
       industryContext: businessCtx?.industryContext,
       businessContext: businessCtx?.businessContext,
     });
@@ -425,6 +437,7 @@ export class ContentService {
     contentProfile?: any,
     llm?: LLMAdapter,
     businessCtx?: { industryContext: string; businessContext: string; logoUrl: string | null },
+    brandMemory?: { frequentPhrases: Array<{ phrase: string }>; usedCTAs: Array<{ cta: string }> },
   ): Promise<GeneratedCopy> {
     const adapter = llm ?? this.fallbackLlm;
     const prompt = buildCarouselCopyPrompt({
@@ -437,6 +450,7 @@ export class ContentService {
       slideCount: 8,
       persona,
       contentProfile,
+      brandMemory,
       industryContext: businessCtx?.industryContext,
       businessContext: businessCtx?.businessContext,
     });
