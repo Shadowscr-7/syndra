@@ -113,21 +113,13 @@ export default function AdminTicketsPage() {
                 >
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-medium text-gray-900 truncate pr-2">{t.subject}</span>
-                    <span className={\`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0
-                      \${t.priority === 'URGENT' ? 'bg-red-100 text-red-700' : 
-                        t.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : 
-                        'bg-gray-100 text-gray-600'}
-                    \`}>{t.priority}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${t.priority === 'URGENT' ? 'bg-red-100 text-red-700' : t.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>{t.priority}</span>
                   </div>
                   <div className="text-sm text-gray-500 flex justify-between items-center">
                     <span className="truncate">{t.createdBy?.email} • WS: {t.workspace?.name}</span>
                   </div>
                   <div className="mt-2 text-xs">
-                    <span className={\`px-2 py-0.5 rounded 
-                      \${t.status === 'OPEN' ? 'bg-blue-100 text-blue-700' : 
-                        t.status === 'WAITING_ON_USER' ? 'bg-purple-100 text-purple-700' : 
-                        t.status === 'RESOLVED' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}
-                    \`}>{t.status}</span>
+                    <span className={`px-2 py-0.5 rounded ${t.status === 'OPEN' ? 'bg-blue-100 text-blue-700' : t.status === 'WAITING_ON_USER' ? 'bg-purple-100 text-purple-700' : t.status === 'RESOLVED' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{t.status}</span>
                   </div>
                 </div>
               ))
