@@ -574,9 +574,9 @@ export default function UserDetailPage() {
                 className="input-field"
               >
                 <option value="">— Seleccionar —</option>
-                <option value="STARTER">Starter ($15/mes)</option>
-                <option value="CREATOR">Creator ($39/mes)</option>
-                <option value="PRO">Pro ($99/mes)</option>
+                <option value="starter">Starter ($15/mes)</option>
+                <option value="creator">Creator ($39/mes)</option>
+                <option value="pro">Pro ($99/mes)</option>
               </select>
             </div>
             <div>
