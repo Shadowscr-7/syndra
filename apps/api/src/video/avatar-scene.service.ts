@@ -159,7 +159,7 @@ export class AvatarSceneService {
 
     if (cloudName && apiKey && apiSecret) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const cloudinary = require(/* webpackIgnore: true */ 'cloudinary').v2;
+      const cloudinary = require('cloudinary').v2;
       cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
       const result = await cloudinary.uploader.upload(localPath, {
