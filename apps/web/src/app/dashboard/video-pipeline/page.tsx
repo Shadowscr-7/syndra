@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-fetch';
 import { UserMediaPicker } from '@/components/media-picker';
+import AvatarSceneTab from './avatar-scene-tab';
 
 // ── Types ──
 
-type Tab = 'compositor' | 'kie';
+type Tab = 'compositor' | 'kie' | 'avatar';
 type AspectRatio = '9:16' | '16:9' | '1:1';
 type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
 type SlideAnimation = 'ken-burns-in' | 'ken-burns-out' | 'pan-left' | 'pan-right' | 'zoom-pulse' | 'none' | 'auto';
@@ -499,6 +500,16 @@ export default function VideoPipelinePage() {
           ⚡ Kie AI Reels
           <span className="chip" style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899', borderColor: 'rgba(236,72,153,0.3)', fontSize: '0.65rem' }}>
             20 créd
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('avatar')}
+          className={tab === 'avatar' ? 'btn-primary' : 'btn-ghost'}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          🤖 Avatar + Escena
+          <span className="chip" style={{ background: 'rgba(124,58,237,0.15)', color: 'var(--color-primary-light)', borderColor: 'rgba(124,58,237,0.3)', fontSize: '0.65rem' }}>
+            ~42 créd
           </span>
         </button>
       </div>
@@ -1343,6 +1354,11 @@ export default function VideoPipelinePage() {
               </div>
             </div>
           )}
+
+          {/* ═══════════════════════════════════════ */}
+          {/* TAB 3 — Avatar + Escena                 */}
+          {/* ═══════════════════════════════════════ */}
+          {tab === 'avatar' && <AvatarSceneTab />}
 
           {/* ═══════════════════════════════════════ */}
           {/* Render Jobs (shared)                    */}

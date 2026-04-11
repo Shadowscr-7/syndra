@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { updateWorkspaceSettings } from '@/lib/actions';
 import { OperationModeSelector } from './operation-mode';
 import { LearningConfigSection } from './learning-config';
+import { VideoPreferencesSection } from './video-preferences';
 
 const TIMEZONES = [
   { value: 'Pacific/Midway', label: '(UTC-11:00) Midway, Samoa' },
@@ -175,6 +176,10 @@ export default async function SettingsPage() {
         <LearningConfigSection />
       </div>
 
+      {/* ── Video Avatar Preferences ── */}
+      <div className="max-w-3xl animate-fade-in-delay-1">
+        <VideoPreferencesSection currentPrefs={(workspace?.videoPreferences as any) ?? {}} />
+      </div>
 
     </div>
   );

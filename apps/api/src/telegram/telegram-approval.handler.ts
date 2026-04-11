@@ -9,7 +9,9 @@ import { EditorialOrchestratorService } from '../editorial/editorial-orchestrato
 import { ContentService } from '../content/content.service';
 import { MediaEngineService } from '../media/media-engine.service';
 import { VideoService } from '../video/video.service';
-import { CALLBACK_TO_ACTION } from '@automatismos/telegram';
+import { AiDirectorService } from '../video/ai-director.service';
+import { AvatarSceneService } from '../video/avatar-scene.service';
+import { CALLBACK_TO_ACTION, buildApprovalKeyboard } from '@automatismos/telegram';
 import type { TelegramCallbackQuery, TelegramMessage } from '@automatismos/telegram';
 
 /**
@@ -44,6 +46,10 @@ export class TelegramApprovalHandler {
     private readonly mediaEngine: MediaEngineService,
     @Inject(forwardRef(() => VideoService))
     private readonly videoService: VideoService,
+    @Inject(forwardRef(() => AiDirectorService))
+    private readonly aiDirector: AiDirectorService,
+    @Inject(forwardRef(() => AvatarSceneService))
+    private readonly avatarScene: AvatarSceneService,
   ) {}
 
   /**
@@ -88,6 +94,7 @@ export class TelegramApprovalHandler {
           },
         },
         campaign: true,
+        workspace: { select: { videoPreferences: true } },
       },
     });
 
@@ -97,6 +104,10 @@ export class TelegramApprovalHandler {
       return;
     }
 
+    // Determinar si el workspace prefiere formato video
+    const videoPrefs = (run.workspace?.videoPreferences ?? {}) as Record<string, unknown>;
+    const preferVideoFormat = videoPrefs['preferVideoFormat'] === true;
+
     // Resolver el chatId del owner del workspace
     const ownerChatId = await this.resolveOwnerChatId(editorialRunId);
 
@@ -105,6 +116,7 @@ export class TelegramApprovalHandler {
       version,
       run,
       ownerChatId,
+      preferVideoFormat,
     );
 
     // Registrar el evento de envío
@@ -234,6 +246,10 @@ export class TelegramApprovalHandler {
 
       case 'convert_to_video':
         await this.handleConvertToVideo(editorialRunId, messageId, chatId);
+        break;
+
+      case 'make_avatar_video':
+        await this.handleAvatarVideoRequest(editorialRunId, messageId, chatId);
         break;
 
       case 'postpone':
@@ -490,7 +506,9 @@ export class TelegramApprovalHandler {
       } | null;
     },
     chatId?: string,
+    preferVideoFormat = false,
   ): Promise<string> {
+    const keyboard = buildApprovalKeyboard(preferVideoFormat);
     // Buscar media assets para esta versión
     const mediaAssets = await this.prisma.mediaAsset.findMany({
       where: {
@@ -522,9 +540,77 @@ export class TelegramApprovalHandler {
     };
 
     if (mediaUrls.length > 0) {
-      return this.bot.sendMediaPreview(preview, mediaUrls, chatId);
+      return this.bot.sendMediaPreview(preview, mediaUrls, chatId, keyboard);
     }
 
-    return this.bot.sendPreview(preview, chatId);
+    return this.bot.sendPreview(preview, chatId, keyboard);
+  }
+
+  // ── Avatar video via Telegram ──────────────────────────────
+
+  private async handleAvatarVideoRequest(editorialRunId: string, messageId: number, chatId: string): Promise<void> {
+    await this.bot.removeKeyboard(messageId, chatId);
+    await this.bot.sendNotification(
+      '🤖 *Generando video con avatar IA...*\n\n' +
+      '1️⃣ Analizando el copy del run\n' +
+      '2️⃣ Creando storyboard con escenas\n' +
+      '3️⃣ Generando avatar + clips de escena (HeyGen + Kling)\n' +
+      '4️⃣ Composición final con FFmpeg\n\n' +
+      '⏳ Esto puede tardar 5-10 minutos. Te avisaré cuando esté listo.',
+      chatId,
+    );
+
+    try {
+      // Fetch workspace video preferences to get defaultAvatarId
+      const run = await this.prisma.editorialRun.findUniqueOrThrow({
+        where: { id: editorialRunId },
+        select: {
+          workspaceId: true,
+          workspace: { select: { videoPreferences: true } },
+        },
+      });
+
+      const videoPrefs = (run.workspace?.videoPreferences ?? {}) as Record<string, unknown>;
+      const avatarId = (videoPrefs['defaultAvatarId'] as string | undefined) ?? 'Anna_public_3_20240108';
+      const enableMusic = videoPrefs['enableMusic'] === true;
+
+      // Generate storyboard from existing editorial run copy
+      this.logger.log(`AvatarVideo: generating storyboard for run ${editorialRunId}`);
+      const storyboard = await this.aiDirector.fromEditorialRun({
+        editorialRunId,
+        durationTarget: 45,
+      });
+
+      this.logger.log(`AvatarVideo: storyboard ready — ${storyboard.segments.length} segments`);
+      await this.bot.sendNotification(
+        `🎬 *Storyboard generado* (${storyboard.segments.length} escenas, ~${storyboard.totalDurationSeconds}s)\n\n` +
+        storyboard.segments.map((s, i) => `${i + 1}. _${s.text.substring(0, 60)}..._`).join('\n') +
+        '\n\n⏳ Renderizando...',
+        chatId,
+      );
+
+      // Render the avatar scene
+      const result = await this.avatarScene.render({
+        workspaceId: run.workspaceId,
+        avatarId,
+        storyboard,
+        enableMusic,
+      });
+
+      this.logger.log(`AvatarVideo: render complete — jobId=${result.jobId}`);
+
+      await this.bot.sendNotification(
+        `✅ *Video Avatar listo!*\n\n` +
+        `⏱ Duración: ${Math.round(result.durationSeconds)}s\n` +
+        `🎬 Escenas: ${result.segmentCount}\n` +
+        `🆔 Job: \`${result.jobId}\`\n\n` +
+        `🔗 [Ver en dashboard](${process.env['APP_URL'] ?? 'https://syndra.aivanguard.app'}/dashboard/videos)\n\n` +
+        `*URL directa:*\n${result.videoUrl}`,
+        chatId,
+      );
+    } catch (error: any) {
+      this.logger.error(`AvatarVideo failed for run ${editorialRunId}:`, error);
+      await this.bot.sendError('make_avatar_video', String(error?.message ?? error), chatId);
+    }
   }
 }

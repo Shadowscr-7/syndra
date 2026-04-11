@@ -33,4 +33,25 @@ export class WorkspacesService {
     this.logger.log(`Operation mode updated: workspace=${workspaceId} mode=${mode}`);
     return ws;
   }
+
+  async updateVideoPreferences(
+    workspaceId: string,
+    prefs: { preferVideoFormat?: boolean; defaultAvatarId?: string; enableMusic?: boolean },
+  ) {
+    // Merge with existing prefs
+    const current = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { videoPreferences: true },
+    });
+    const existing = (current?.videoPreferences ?? {}) as Record<string, unknown>;
+    const merged = { ...existing, ...prefs };
+
+    const ws = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { videoPreferences: merged },
+      select: { id: true, videoPreferences: true },
+    });
+    this.logger.log(`Video preferences updated: workspace=${workspaceId}`);
+    return ws;
+  }
 }

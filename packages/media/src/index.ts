@@ -186,6 +186,14 @@ export {
   type ProVideoResult,
 } from './renderers/pro-video-renderer';
 
+// --- Avatar Scene Renderer (FFmpeg chroma key + composite) ---
+export {
+  AvatarSceneRenderer,
+  type AvatarSceneCompositeInput,
+  type AvatarSceneCompositeResult,
+  type AvatarCompositeMode,
+} from './renderers/avatar-scene-renderer';
+
 // --- Remotion Video Renderer (React-based compositor) ---
 export {
   RemotionVideoRenderer,

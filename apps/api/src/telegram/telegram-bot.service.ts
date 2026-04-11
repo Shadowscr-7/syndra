@@ -38,9 +38,10 @@ export class TelegramBotService {
   /**
    * Envía la preview de contenido al chat de aprobación con botones inline
    */
-  async sendPreview(preview: TelegramPreview, chatId?: string): Promise<string> {
+  async sendPreview(preview: TelegramPreview, chatId?: string, keyboard?: unknown): Promise<string> {
     const target = this.resolveChatId(chatId);
     const text = formatPreviewMessage(preview);
+    const replyMarkup = keyboard ?? APPROVAL_KEYBOARD;
 
     // Si hay thumbnail, enviar como foto
     if (preview.thumbnailUrl) {
@@ -49,7 +50,7 @@ export class TelegramBotService {
         photo: preview.thumbnailUrl,
         caption: text.substring(0, 1024), // Telegram caption limit
         parse_mode: 'Markdown',
-        reply_markup: APPROVAL_KEYBOARD,
+        reply_markup: replyMarkup,
       });
       return String(photoResult.message_id ?? '');
     }
@@ -59,7 +60,7 @@ export class TelegramBotService {
       chat_id: target,
       text,
       parse_mode: 'Markdown',
-      reply_markup: APPROVAL_KEYBOARD,
+      reply_markup: replyMarkup,
     });
 
     return String(result.message_id ?? '');
@@ -174,9 +175,11 @@ export class TelegramBotService {
     preview: TelegramPreview,
     mediaUrls: string[],
     chatId?: string,
+    keyboard?: unknown,
   ): Promise<string> {
     const target = this.resolveChatId(chatId);
     const text = formatPreviewMessage(preview);
+    const replyMarkup = keyboard ?? APPROVAL_KEYBOARD;
 
     if (mediaUrls.length > 1) {
       // Carrusel: enviar album primero, luego texto con botones
@@ -187,7 +190,7 @@ export class TelegramBotService {
         chat_id: target,
         text,
         parse_mode: 'Markdown',
-        reply_markup: APPROVAL_KEYBOARD,
+        reply_markup: replyMarkup,
       });
       return String(result.message_id ?? '');
     }
@@ -199,13 +202,13 @@ export class TelegramBotService {
         photo: mediaUrls[0]!,
         caption: text.substring(0, 1024),
         parse_mode: 'Markdown',
-        reply_markup: APPROVAL_KEYBOARD,
+        reply_markup: replyMarkup,
       });
       return String(photoResult.message_id ?? '');
     }
 
     // Sin media: enviar solo texto
-    return this.sendPreview(preview, target);
+    return this.sendPreview(preview, target, keyboard);
   }
 
   /**

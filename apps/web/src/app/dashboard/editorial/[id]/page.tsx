@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { approveEditorialRun, rejectEditorialRun, triggerPipeline, cancelEditorialRun, deleteEditorialRun } from '@/lib/actions';
 import { AutoRefresh } from '@/components/ui/auto-refresh';
 import { PublicationPreview } from './publication-preview';
+import { MakeVideoButton } from './make-video-modal';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: '#94a3b8',
@@ -91,7 +92,7 @@ export default async function EditorialRunDetailPage({
       <AutoRefresh status={run.status} intervalMs={4000} />
 
       {/* Action Buttons */}
-      <div className="flex gap-3 animate-fade-in-delay-1">
+      <div className="flex flex-wrap gap-3 animate-fade-in-delay-1">
         {run.status === 'PENDING' && (
           <form action={triggerPipeline}>
             <input type="hidden" name="runId" value={run.id} />
@@ -120,6 +121,12 @@ export default async function EditorialRunDetailPage({
             🗑️ Eliminar
           </button>
         </form>
+
+        {/* Avatar Video — available when there is content to convert */}
+        <MakeVideoButton
+          runId={run.id}
+          hasContent={!!run.contentBrief?.contentVersions?.length}
+        />
       </div>
 
       {/* Error Message */}

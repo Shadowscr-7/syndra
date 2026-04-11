@@ -47,6 +47,7 @@ export type ApprovalActionType =
   | 'change_tone'
   | 'regenerate_image'
   | 'convert_to_video'
+  | 'make_avatar_video'
   | 'postpone'
   | 'rejected';
 

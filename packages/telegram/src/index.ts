@@ -18,7 +18,8 @@ export interface TelegramReviewBot {
 }
 
 /**
- * Inline keyboard buttons para el flujo de aprobación
+ * Inline keyboard buttons para el flujo de aprobación.
+ * Usar buildApprovalKeyboard() en lugar de esta constante cuando sea posible.
  */
 export const APPROVAL_KEYBOARD = {
   inline_keyboard: [
@@ -36,7 +37,45 @@ export const APPROVAL_KEYBOARD = {
     ],
     [{ text: '❌ Rechazar', callback_data: 'reject' }],
   ],
-} as const;
+};
+
+/**
+ * Construye un keyboard dinámico de aprobación.
+ * Si preferVideoFormat=true, muestra "🤖 Video Avatar" como primer botón de acción.
+ */
+export function buildApprovalKeyboard(preferVideoFormat: boolean) {
+  const videoRow = preferVideoFormat
+    ? [
+        { text: '🤖 Video Avatar', callback_data: 'make_avatar_video' },
+        { text: '🎬 Convertir a video', callback_data: 'convert_to_video' },
+      ]
+    : [
+        { text: '🎬 Convertir a video', callback_data: 'convert_to_video' },
+        { text: '⏰ Posponer', callback_data: 'postpone' },
+      ];
+
+  const lastRow = preferVideoFormat
+    ? [
+        { text: '⏰ Posponer', callback_data: 'postpone' },
+        { text: '❌ Rechazar', callback_data: 'reject' },
+      ]
+    : [{ text: '❌ Rechazar', callback_data: 'reject' }];
+
+  return {
+    inline_keyboard: [
+      [
+        { text: '✅ Aprobar', callback_data: 'approve' },
+        { text: '✏️ Corregir texto', callback_data: 'correct_text' },
+      ],
+      [
+        { text: '🎭 Cambiar tono', callback_data: 'change_tone' },
+        { text: '🖼️ Regenerar imagen', callback_data: 'regenerate_image' },
+      ],
+      videoRow,
+      lastRow,
+    ],
+  };
+}
 
 /**
  * Keyboard para seleccionar tono
@@ -68,6 +107,7 @@ export const CALLBACK_TO_ACTION: Record<string, ApprovalActionType> = {
   change_tone: 'change_tone',
   regenerate_image: 'regenerate_image',
   convert_to_video: 'convert_to_video',
+  make_avatar_video: 'make_avatar_video',
   postpone: 'postpone',
   reject: 'rejected',
 };

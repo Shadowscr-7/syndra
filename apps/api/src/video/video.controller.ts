@@ -7,6 +7,9 @@ import { VideoService } from './video.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
 import { VideoCompositorService, AVAILABLE_VOICES } from './video-compositor.service';
+import { AiDirectorService } from './ai-director.service';
+import { AvatarSceneService } from './avatar-scene.service';
+import type { AvatarSceneStoryboard } from './ai-director.service';
 import { VIDEO_PRESETS } from './video-presets';
 import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
 import { UseCredits, CreditGuard } from '../credits/credit.guard';
@@ -23,6 +26,8 @@ export class VideoController {
     private readonly tierRouter: VideoTierRouterService,
     private readonly credits: VideoCreditService,
     private readonly compositor: VideoCompositorService,
+    private readonly aiDirector: AiDirectorService,
+    private readonly avatarScene: AvatarSceneService,
   ) {}
 
   // ── Rutas estáticas (ANTES de :id para evitar colisiones) ──
@@ -428,5 +433,93 @@ export class VideoController {
     }
 
     return this.compositor.improveNarration(body.text, body.intent);
+  }
+
+  // ── Avatar Scene Engine ────────────────────────────────────
+
+  /**
+   * POST /api/videos/avatar-scene/storyboard
+   * Generate a coordinated storyboard from a topic or editorial run.
+   * Does not render — returns the storyboard for preview/editing.
+   */
+  @Post('avatar-scene/storyboard')
+  @PlanCheck('VIDEOS')
+  async generateStoryboard(
+    @Body() body: {
+      // Option A: free topic
+      topic?: string;
+      intent?: string;
+      industry?: string;
+      personaTone?: string;
+      // Option B: from editorial run
+      editorialRunId?: string;
+      // Common
+      platform?: 'reels' | 'tiktok' | 'stories' | 'youtube-shorts';
+      durationTarget?: number;
+      language?: string;
+    },
+  ) {
+    if (body.editorialRunId) {
+      const storyboard = await this.aiDirector.fromEditorialRun({
+        editorialRunId: body.editorialRunId,
+        platform: body.platform ?? 'reels',
+        durationTarget: body.durationTarget,
+      });
+      return { storyboard };
+    }
+
+    if (!body.topic?.trim()) {
+      throw new BadRequestException('Se necesita topic o editorialRunId');
+    }
+
+    const storyboard = await this.aiDirector.fromTopic({
+      topic: body.topic,
+      intent: body.intent,
+      industry: body.industry,
+      personaTone: body.personaTone,
+      platform: body.platform ?? 'reels',
+      durationTarget: body.durationTarget,
+      language: body.language ?? 'es',
+    });
+
+    return { storyboard };
+  }
+
+  /**
+   * POST /api/videos/avatar-scene/render
+   * Render a full avatar+scene video from a storyboard.
+   * Requires VIDEOS plan feature. Costs credits (35 base).
+   */
+  @Post('avatar-scene/render')
+  @PlanCheck('VIDEOS')
+  async renderAvatarScene(
+    @Req() req: any,
+    @Body() body: {
+      avatarId: string;
+      voiceId?: string;
+      storyboard: AvatarSceneStoryboard;
+      enableMusic?: boolean;
+    },
+  ) {
+    const workspaceId = req.workspaceId;
+
+    if (!body.avatarId?.trim()) {
+      throw new BadRequestException('Se necesita avatarId');
+    }
+    if (!body.storyboard?.segments?.length) {
+      throw new BadRequestException('El storyboard debe tener al menos un segmento');
+    }
+
+    this.logger.log(
+      `Avatar scene render: ${body.storyboard.segments.length} segments, mode=${body.storyboard.compositeMode}`,
+    );
+
+    return this.avatarScene.render({
+      workspaceId,
+      avatarId: body.avatarId,
+      voiceId: body.voiceId,
+      storyboard: body.storyboard,
+      enableMusic: body.enableMusic ?? false,
+    });
   }
 }

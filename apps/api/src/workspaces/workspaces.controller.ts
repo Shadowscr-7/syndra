@@ -24,4 +24,13 @@ export class WorkspacesController {
     const ws = await this.workspacesService.updateOperationMode(workspaceId, body.mode);
     return { data: ws };
   }
+
+  @Patch('video-preferences')
+  async updateVideoPreferences(
+    @CurrentWorkspace() workspaceId: string,
+    @Body() body: { preferVideoFormat?: boolean; defaultAvatarId?: string; enableMusic?: boolean },
+  ) {
+    const ws = await this.workspacesService.updateVideoPreferences(workspaceId, body);
+    return { data: ws };
+  }
 }

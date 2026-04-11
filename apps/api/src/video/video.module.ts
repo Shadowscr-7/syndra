@@ -14,6 +14,8 @@ import { VideoWorkerService } from './video-worker.service';
 import { VideoTierRouterService } from './video-tier-router.service';
 import { VideoCreditService } from './video-credit.service';
 import { VideoCompositorService } from './video-compositor.service';
+import { AiDirectorService } from './ai-director.service';
+import { AvatarSceneService } from './avatar-scene.service';
 import { VideoController } from './video.controller';
 
 @Module({
@@ -25,8 +27,16 @@ import { VideoController } from './video.controller';
     CreditsModule,
     forwardRef(() => TelegramModule),
   ],
-  providers: [VideoService, VideoWorkerService, VideoTierRouterService, VideoCreditService, VideoCompositorService],
+  providers: [
+    VideoService,
+    VideoWorkerService,
+    VideoTierRouterService,
+    VideoCreditService,
+    VideoCompositorService,
+    AiDirectorService,
+    AvatarSceneService,
+  ],
   controllers: [VideoController],
-  exports: [VideoService, VideoTierRouterService, VideoCreditService, VideoCompositorService],
+  exports: [VideoService, VideoTierRouterService, VideoCreditService, VideoCompositorService, AiDirectorService, AvatarSceneService],
 })
 export class VideoModule {}

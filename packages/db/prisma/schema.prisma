@@ -102,6 +102,7 @@ model Workspace {
   operationMode OperationMode @default(APPROVAL_REQUIRED) @map("operation_mode")
   useOwnCredentials Boolean @default(false) @map("use_own_credentials") // true = user's own API keys (no credits), false = platform keys (credits)
   learningConfig Json?  @map("learning_config") // {autoApply: bool, dimensions: string[], minConfidence: float}
+  videoPreferences Json? @map("video_preferences") // {preferVideoFormat: bool, defaultAvatarId: string?, enableMusic: bool}
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

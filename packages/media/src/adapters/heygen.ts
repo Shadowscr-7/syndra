@@ -37,6 +37,18 @@ export class HeyGenVideoAdapter implements AvatarVideoAdapter {
   }
 
   async generate(script: VideoScript, options?: VideoGenOptions): Promise<GeneratedVideo> {
+    return this.generateInternal(script, options, false);
+  }
+
+  /**
+   * Same as generate() but uses a green screen background (#00FF00)
+   * so the avatar can be chroma-keyed over cinematic scenes.
+   */
+  async generateWithGreenScreen(script: VideoScript, options?: VideoGenOptions): Promise<GeneratedVideo> {
+    return this.generateInternal(script, options, true);
+  }
+
+  private async generateInternal(script: VideoScript, options?: VideoGenOptions, greenScreen = false): Promise<GeneratedVideo> {
     const fullText = script.blocks.map((b) => b.text).join(' ');
 
     const body = {
@@ -53,10 +65,9 @@ export class HeyGenVideoAdapter implements AvatarVideoAdapter {
             voice_id: options?.voiceId ?? this.defaultVoiceId,
             speed: 1.0,
           },
-          background: {
-            type: 'color',
-            value: '#FFFFFF',
-          },
+          background: greenScreen
+            ? { type: 'color', value: '#00FF00' }
+            : { type: 'color', value: '#FFFFFF' },
         },
       ],
       dimension: this.getDimension(options?.aspectRatio ?? '9:16'),
