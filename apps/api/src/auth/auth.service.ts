@@ -678,6 +678,25 @@ export class AuthService {
     };
   }
 
+  // ── Admin: Set password directly ────────────────────────
+
+  async adminSetPassword(userId: string, newPassword: string): Promise<{ success: boolean }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+    // Invalidate all refresh tokens (force re-login)
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    this.logger.log(`🔑 Admin password reset for: ${user.email}`);
+    return { success: true };
+  }
+
   // ── Helpers ─────────────────────────────────────────────
 
   private sanitizeUser(user: any) {

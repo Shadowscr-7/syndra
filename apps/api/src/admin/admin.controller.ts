@@ -423,6 +423,51 @@ export class AdminController {
     return { data: result };
   }
 
+  /** PATCH /api/admin/users/:id/email — Change user email */
+  @Roles('ADMIN')
+  @Patch('users/:id/email')
+  async changeUserEmail(
+    @Param('id') userId: string,
+    @Body() body: { email: string },
+    @CurrentUser() admin: JwtPayload,
+  ) {
+    if (!body.email || !body.email.includes('@')) {
+      return { error: 'Email inválido' };
+    }
+    const result = await this.admin.changeUserEmail(userId, body.email);
+    this.admin.logAudit({ action: 'user.email_change', category: 'USER_MGMT', performedBy: admin.sub, targetId: userId, targetType: 'User', details: { newEmail: body.email } }).catch(() => {});
+    return { data: result };
+  }
+
+  /** POST /api/admin/users/:id/reset-password — Set a new password directly */
+  @Roles('ADMIN')
+  @Post('users/:id/reset-password')
+  async resetUserPassword(
+    @Param('id') userId: string,
+    @Body() body: { newPassword: string },
+    @CurrentUser() admin: JwtPayload,
+  ) {
+    if (!body.newPassword || body.newPassword.length < 8) {
+      return { error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+    const result = await this.authService.adminSetPassword(userId, body.newPassword);
+    this.admin.logAudit({ action: 'user.password_reset', category: 'USER_MGMT', performedBy: admin.sub, targetId: userId, targetType: 'User' }).catch(() => {});
+    return { data: result };
+  }
+
+  /** POST /api/admin/users/:id/add-credits — Add credits to user's workspace */
+  @Roles('ADMIN')
+  @Post('users/:id/add-credits')
+  async addCredits(
+    @Param('id') userId: string,
+    @Body() body: { amount: number; reason?: string },
+    @CurrentUser() admin: JwtPayload,
+  ) {
+    const result = await this.admin.addCreditsToUser(userId, body.amount, body.reason);
+    this.admin.logAudit({ action: 'user.credits_added', category: 'USER_MGMT', performedBy: admin.sub, targetId: userId, targetType: 'User', details: { amount: body.amount } }).catch(() => {});
+    return { data: result };
+  }
+
   /** POST /api/admin/users/:id/change-plan — Change a user's plan */
   @Roles('ADMIN')
   @Post('users/:id/change-plan')

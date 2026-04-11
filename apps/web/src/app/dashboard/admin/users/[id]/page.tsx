@@ -61,6 +61,21 @@ export default function UserDetailPage() {
   const [toast, setToast] = useState<{ text: string; type: 'ok' | 'err' } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Change email state
+  const [newEmail, setNewEmail] = useState('');
+
+  // Reset password state
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Change plan state
+  const [selectedPlan, setSelectedPlan] = useState('');
+  const [selectedCycle, setSelectedCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+
+  // Add credits state
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditReason, setCreditReason] = useState('');
+
   const notify = (text: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 3500);
@@ -77,7 +92,17 @@ export default function UserDetailPage() {
     }
   };
 
-  useEffect(() => { fetchUser(); }, [userId]);
+  useEffect(() => {
+    fetchUser();
+  }, [userId]);
+
+  useEffect(() => {
+    if (user) {
+      const defaultWs = user.workspaces.find((w) => w.isDefault) || user.workspaces[0];
+      const sub = defaultWs?.workspace?.subscription;
+      if (sub && !selectedPlan) setSelectedPlan(sub.plan.name);
+    }
+  }, [user]);
 
   // ── Actions ──
   const handleBlock = async (block: boolean) => {
@@ -113,6 +138,75 @@ export default function UserDetailPage() {
       notify('Usuario eliminado');
       setTimeout(() => router.push('/dashboard/admin/users'), 500);
     } catch (e: any) { notify(e.message, 'err'); setActionLoading(false); }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!newEmail || !newEmail.includes('@')) {
+      notify('Ingresa un email válido', 'err');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await apiFetch(`/api/admin/users/${userId}/email`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newEmail }),
+      });
+      notify('Email actualizado correctamente');
+      setNewEmail('');
+      fetchUser();
+    } catch (e: any) { notify(e.message, 'err'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      notify('La contraseña debe tener al menos 8 caracteres', 'err');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await apiFetch(`/api/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+      notify('Contraseña cambiada correctamente');
+      setNewPassword('');
+    } catch (e: any) { notify(e.message, 'err'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleChangePlan = async () => {
+    if (!selectedPlan) { notify('Selecciona un plan', 'err'); return; }
+    setActionLoading(true);
+    try {
+      await apiFetch(`/api/admin/users/${userId}/change-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planName: selectedPlan, billingCycle: selectedCycle }),
+      });
+      notify(`Plan cambiado a ${selectedPlan}`);
+      fetchUser();
+    } catch (e: any) { notify(e.message, 'err'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleAddCredits = async () => {
+    const amount = parseInt(creditAmount);
+    if (!amount || amount <= 0) { notify('Ingresa una cantidad válida', 'err'); return; }
+    setActionLoading(true);
+    try {
+      const data = await apiFetch(`/api/admin/users/${userId}/add-credits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, reason: creditReason || undefined }),
+      });
+      notify(`+${amount} créditos agregados. Balance: ${data.data.currentBalance}`);
+      setCreditAmount('');
+      setCreditReason('');
+    } catch (e: any) { notify(e.message, 'err'); }
+    finally { setActionLoading(false); }
   };
 
   const handleGenerateReferralCode = async () => {
@@ -380,6 +474,139 @@ export default function UserDetailPage() {
               </p>
             </div>
           )}
+
+          {/* Change Email */}
+          <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
+            <h2 className="section-title">📧 Cambiar Email</h2>
+            <div>
+              <label className="input-label">Nuevo email</label>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder={user.email}
+                className="input-field"
+              />
+            </div>
+            <button
+              onClick={handleChangeEmail}
+              disabled={actionLoading || !newEmail}
+              className="btn-primary w-full text-sm disabled:opacity-50"
+            >
+              {actionLoading ? 'Guardando...' : '📧 Actualizar email'}
+            </button>
+            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+              Se marcará como no verificado. El usuario no recibirá notificación automática.
+            </p>
+          </div>
+
+          {/* Reset Password */}
+          <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
+            <h2 className="section-title">🔑 Resetear Contraseña</h2>
+            <div>
+              <label className="input-label">Nueva contraseña</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  className="input-field pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm opacity-60 hover:opacity-100"
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={handleResetPassword}
+              disabled={actionLoading || !newPassword}
+              className="btn-primary w-full text-sm disabled:opacity-50"
+            >
+              {actionLoading ? 'Guardando...' : '🔑 Establecer contraseña'}
+            </button>
+            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+              El usuario deberá iniciar sesión de nuevo con la nueva contraseña.
+            </p>
+          </div>
+
+          {/* Change Plan */}
+          <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
+            <h2 className="section-title">📦 Cambiar Plan</h2>
+            <div>
+              <label className="input-label">Plan</label>
+              <select
+                value={selectedPlan}
+                onChange={(e) => setSelectedPlan(e.target.value)}
+                disabled={actionLoading}
+                className="input-field"
+              >
+                <option value="">— Seleccionar —</option>
+                <option value="STARTER">Starter ($15/mes)</option>
+                <option value="CREATOR">Creator ($39/mes)</option>
+                <option value="PRO">Pro ($99/mes)</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">Ciclo</label>
+              <select
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(e.target.value as 'MONTHLY' | 'YEARLY')}
+                disabled={actionLoading}
+                className="input-field"
+              >
+                <option value="MONTHLY">Mensual</option>
+                <option value="YEARLY">Anual</option>
+              </select>
+            </div>
+            <button
+              onClick={handleChangePlan}
+              disabled={actionLoading || !selectedPlan}
+              className="btn-primary w-full text-sm disabled:opacity-50"
+            >
+              {actionLoading ? 'Cambiando...' : '📦 Aplicar plan'}
+            </button>
+          </div>
+
+          {/* Add Credits */}
+          <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
+            <h2 className="section-title">⚡ Recargar Créditos</h2>
+            <div>
+              <label className="input-label">Cantidad de créditos</label>
+              <input
+                type="number"
+                min="1"
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                placeholder="Ej: 100"
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="input-label">Motivo (opcional)</label>
+              <input
+                type="text"
+                value={creditReason}
+                onChange={(e) => setCreditReason(e.target.value)}
+                placeholder="Ej: Compensación por error"
+                className="input-field"
+              />
+            </div>
+            <button
+              onClick={handleAddCredits}
+              disabled={actionLoading || !creditAmount}
+              className="btn-primary w-full text-sm disabled:opacity-50"
+            >
+              {actionLoading ? 'Recargando...' : '⚡ Agregar créditos'}
+            </button>
+            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+              Se registra como recarga de tipo PROMO en el historial del workspace.
+            </p>
+          </div>
         </div>
       </div>
     </div>

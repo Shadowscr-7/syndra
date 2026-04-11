@@ -444,6 +444,66 @@ export class AdminService {
     return { ...updated, alreadyHad: false };
   }
 
+  /** Change a user's email address */
+  async changeUserEmail(userId: string, newEmail: string) {
+    const normalized = newEmail.trim().toLowerCase();
+
+    const existing = await this.prisma.user.findUnique({ where: { email: normalized } });
+    if (existing && existing.id !== userId) {
+      throw new ConflictException('Ese email ya está en uso por otro usuario');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { email: normalized, emailVerified: false },
+      select: { id: true, email: true, emailVerified: true },
+    });
+
+    this.logger.log(`📧 Email changed for user ${userId}: ${normalized}`);
+    return updated;
+  }
+
+  /** Add credits to a user's default workspace (admin gift) */
+  async addCreditsToUser(userId: string, amount: number, reason?: string) {
+    if (amount <= 0) throw new BadRequestException('El monto debe ser mayor a 0');
+
+    const wsRelation = await this.prisma.workspaceUser.findFirst({
+      where: { userId, isDefault: true },
+    }) ?? await this.prisma.workspaceUser.findFirst({ where: { userId } });
+
+    if (!wsRelation) throw new NotFoundException('El usuario no tiene workspace');
+
+    const workspaceId = wsRelation.workspaceId;
+
+    // Upsert credit balance
+    const balance = await this.prisma.creditBalance.upsert({
+      where: { workspaceId },
+      update: {
+        totalPurchased: { increment: amount },
+        currentBalance: { increment: amount },
+      },
+      create: {
+        workspaceId,
+        totalPurchased: amount,
+        currentBalance: amount,
+      },
+    });
+
+    // Record credit ledger entry
+    await this.prisma.aICredit.create({
+      data: {
+        workspaceId,
+        amount,
+        balance: balance.currentBalance,
+        source: 'PROMO',
+        description: reason || `Recarga manual por administrador (+${amount} créditos)`,
+      },
+    });
+
+    this.logger.log(`💰 Credits added: workspace=${workspaceId} amount=${amount} balance=${balance.currentBalance}`);
+    return { workspaceId, added: amount, currentBalance: balance.currentBalance };
+  }
+
   /** Generate unique referral code */
   private async generateReferralCode(name: string): Promise<string> {
     const base = name.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
