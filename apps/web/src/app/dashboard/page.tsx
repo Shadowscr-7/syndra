@@ -4,24 +4,26 @@ import { ExecutiveSummary } from '@/components/dashboard/executive-summary';
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 import { GrowthEngineCard } from '@/components/dashboard/growth-engine-card';
 import { prisma } from '@automatismos/db';
+import { getSession } from '@/lib/session';
 import Link from 'next/link';
 
-async function getStats() {
+async function getStats(workspaceId: string) {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const [publishedToday, inQueue, pendingReview, recentRuns] = await Promise.all([
       prisma.publication.count({
-        where: { publishedAt: { gte: today }, status: 'PUBLISHED' },
+        where: { workspaceId, publishedAt: { gte: today }, status: 'PUBLISHED' },
       }),
       prisma.editorialRun.count({
-        where: { status: { in: ['PENDING', 'RESEARCH', 'STRATEGY', 'CONTENT', 'MEDIA', 'COMPLIANCE'] } },
+        where: { workspaceId, status: { in: ['PENDING', 'RESEARCH', 'STRATEGY', 'CONTENT', 'MEDIA', 'COMPLIANCE'] } },
       }),
       prisma.editorialRun.count({
-        where: { status: 'REVIEW' },
+        where: { workspaceId, status: 'REVIEW' },
       }),
       prisma.editorialRun.findMany({
+        where: { workspaceId },
         include: {
           contentBrief: { select: { angle: true, format: true, tone: true } },
           campaign: { select: { name: true } },
@@ -32,7 +34,7 @@ async function getStats() {
     ]);
 
     const avgEngagement = await prisma.publication.aggregate({
-      where: { engagementRate: { not: null } },
+      where: { workspaceId, engagementRate: { not: null } },
       _avg: { engagementRate: true },
     });
 
@@ -49,7 +51,9 @@ const STATUS_ICON: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const { publishedToday, inQueue, pendingReview, recentRuns, avgRate, dbOk } = await getStats();
+  const session = await getSession();
+  const workspaceId = session?.workspaceId ?? '';
+  const { publishedToday, inQueue, pendingReview, recentRuns, avgRate, dbOk } = await getStats(workspaceId);
 
   return (
     <div className="space-y-8">
