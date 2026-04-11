@@ -322,7 +322,7 @@ export default function UserDetailPage() {
         </div>
       </div>
 
-      {/* ══ Main Grid ══ */}
+      {/* ══ Main Grid: Info + Quick Actions ══ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-delay-1">
 
         {/* ── LEFT: Info Cards ── */}
@@ -367,7 +367,7 @@ export default function UserDetailPage() {
           )}
         </div>
 
-        {/* ── RIGHT: Actions Panel ── */}
+        {/* ── RIGHT: Referral + Quick Actions ── */}
         <div className="space-y-4">
 
           {/* Referral Code Card */}
@@ -474,17 +474,39 @@ export default function UserDetailPage() {
               </p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ══ Bottom Grid: Account Management ══ */}
+      <div className="animate-fade-in-delay-2">
+        {/* User context banner */}
+        <div
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium"
+          style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', color: 'var(--color-text-muted)' }}
+        >
+          <span style={{ color: '#a78bfa' }}>⚙️</span>
+          Gestión de cuenta de <span className="font-semibold ml-1" style={{ color: 'var(--color-text-secondary)' }}>{user.name || user.email}</span>
+          <span className="ml-1 font-mono text-[10px] opacity-60">({user.email})</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* Change Email */}
           <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
             <h2 className="section-title">📧 Cambiar Email</h2>
+            <div
+              className="text-[11px] px-3 py-2 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
+            >
+              Email actual: <span className="font-mono font-medium" style={{ color: 'var(--color-text-secondary)' }}>{user.email}</span>
+            </div>
             <div>
               <label className="input-label">Nuevo email</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                placeholder={user.email}
+                placeholder="nuevo@email.com"
                 className="input-field"
               />
             </div>
@@ -503,6 +525,12 @@ export default function UserDetailPage() {
           {/* Reset Password */}
           <div className="glass-card p-5 space-y-3" style={{ transform: 'none' }}>
             <h2 className="section-title">🔑 Resetear Contraseña</h2>
+            <div
+              className="text-[11px] px-3 py-2 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
+            >
+              Contraseña de: <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{user.name || user.email}</span>
+            </div>
             <div>
               <label className="input-label">Nueva contraseña</label>
               <div className="relative">
