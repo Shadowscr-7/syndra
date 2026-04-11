@@ -61,8 +61,9 @@ export class AiDirectorService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY', '');
-    this.llm = new OpenAIAdapter({ apiKey, model: 'gpt-4o' });
+    const apiKey = this.config.get<string>('LLM_API_KEY', '') || this.config.get<string>('OPENAI_API_KEY', '');
+    const model = this.config.get<string>('LLM_MODEL', 'gpt-4o');
+    this.llm = new OpenAIAdapter({ apiKey, model });
   }
 
   // ── Public API ────────────────────────────────────────────
