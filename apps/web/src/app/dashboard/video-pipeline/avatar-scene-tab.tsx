@@ -137,7 +137,7 @@ export default function AvatarSceneTab() {
         ? { editorialRunId: runId.trim(), platform: 'reels' as const, durationTarget: duration }
         : { topic: topic.trim(), intent, personaTone: tone, platform: 'reels' as const, durationTarget: duration };
 
-      const res = await apiFetch<{ storyboard: Storyboard }>('/api/videos/avatar-scene/storyboard', {
+      const res = await apiFetch<{ storyboard: Storyboard }>('/videos/avatar-scene/storyboard', {
         method: 'POST',
         body,
       });
@@ -197,7 +197,7 @@ export default function AvatarSceneTab() {
     }
 
     try {
-      const res = await apiFetch<RenderResult>('/api/videos/avatar-scene/render', {
+      const res = await apiFetch<RenderResult>('/videos/avatar-scene/render', {
         method: 'POST',
         body: {
           avatarId: finalAvatarId,

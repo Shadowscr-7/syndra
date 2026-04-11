@@ -101,7 +101,7 @@ function MakeVideoModal({ runId, onClose }: { runId: string; onClose: () => void
     setStep('generating');
     setError('');
     try {
-      const res = await apiFetch<{ storyboard: Storyboard }>('/api/videos/avatar-scene/storyboard', {
+      const res = await apiFetch<{ storyboard: Storyboard }>('/videos/avatar-scene/storyboard', {
         method: 'POST',
         body: { editorialRunId: runId, platform: 'reels', durationTarget: 30 },
       });
@@ -129,7 +129,7 @@ function MakeVideoModal({ runId, onClose }: { runId: string; onClose: () => void
     setError('');
     const finalAvatarId = useCustom ? customId.trim() : avatarId;
     try {
-      const res = await apiFetch<RenderResult>('/api/videos/avatar-scene/render', {
+      const res = await apiFetch<RenderResult>('/videos/avatar-scene/render', {
         method: 'POST',
         body: { avatarId: finalAvatarId, storyboard, enableMusic },
       });
