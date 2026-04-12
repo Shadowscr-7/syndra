@@ -47,6 +47,7 @@ import { CreditsModule } from './credits/credits.module';
 import { WeeklyPlannerModule } from './weekly-planner/weekly-planner.module';
 import { ReferenceCopyModule } from './reference-copy/reference-copy.module';
 import { SupportModule } from './support/support.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { SupportModule } from './support/support.module';
     CreditsModule,
     WeeklyPlannerModule,
     SupportModule,
+    AssistantModule,
   ],
 })
 export class AppModule implements NestModule {

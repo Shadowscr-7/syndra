@@ -10,6 +10,7 @@ import { PlanLimitInterceptor } from '@/components/plan/plan-limit-interceptor';
 import { UsageWarningNotifier } from '@/components/plan/usage-warning-notifier';
 import { PaymentToast } from '@/components/dashboard/payment-toast';
 import { Suspense } from 'react';
+import { AssistantBubble } from '@/components/assistant/AssistantBubble';
 
 // All dashboard pages require auth + DB access — never statically generate them
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <ProcessesPanel />
           <ToastContainer />
+          <AssistantBubble />
         </BackgroundTasksProvider>
       </PlanProvider>
     </ToastProvider>
