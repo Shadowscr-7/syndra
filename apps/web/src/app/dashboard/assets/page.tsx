@@ -11,7 +11,13 @@ export default async function AssetsPage() {
 
   try {
     assets = await prisma.mediaAsset.findMany({
-      where: { workspaceId: wsId },
+      where: {
+        contentVersion: {
+          brief: {
+            editorialRun: { workspaceId: wsId },
+          },
+        },
+      },
       include: {
         contentVersion: {
           select: {
