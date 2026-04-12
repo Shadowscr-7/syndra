@@ -1,5 +1,6 @@
 import { prisma } from '@automatismos/db';
 import Link from 'next/link';
+import { getSession } from '@/lib/session';
 
 const PUB_STATUS_COLORS: Record<string, string> = {
   QUEUED: '#94a3b8',
@@ -25,12 +26,14 @@ export default async function PublicationsPage({
   searchParams: Promise<{ platform?: string; status?: string }>;
 }) {
   const params = await searchParams;
+  const session = await getSession();
+  const wsId = session?.workspaceId ?? '';
   let publications: any[] = [];
   let stats = { total: 0, published: 0, failed: 0, queued: 0 };
   let dbOk = true;
 
   try {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { workspaceId: wsId };
     if (params.platform) where.platform = params.platform;
     if (params.status) where.status = params.status;
 
@@ -62,6 +65,7 @@ export default async function PublicationsPage({
 
     const counts = await prisma.publication.groupBy({
       by: ['status'],
+      where: { workspaceId: wsId },
       _count: true,
     });
 

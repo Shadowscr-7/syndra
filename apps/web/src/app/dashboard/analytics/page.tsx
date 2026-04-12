@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { prisma } from '@automatismos/db';
+import { getSession } from '@/lib/session';
 
 // ============================================================
 // Analytics Dashboard — Vista general de rendimiento
 // ============================================================
 
-async function getAnalyticsData() {
+async function getAnalyticsData(workspaceId: string) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -13,16 +14,16 @@ async function getAnalyticsData() {
     const [totalPub, last30, last7, avgMetrics, topPosts, worstPosts, insights] =
       await Promise.all([
         prisma.publication.count({
-          where: { status: 'PUBLISHED' },
+          where: { workspaceId, status: 'PUBLISHED' },
         }),
         prisma.publication.count({
-          where: { status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
+          where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
         }),
         prisma.publication.count({
-          where: { status: 'PUBLISHED', publishedAt: { gte: sevenDaysAgo } },
+          where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: sevenDaysAgo } },
         }),
         prisma.publication.aggregate({
-          where: { status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
+          where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
           _avg: {
             likes: true,
             comments: true,
@@ -34,7 +35,7 @@ async function getAnalyticsData() {
           },
         }),
         prisma.publication.findMany({
-          where: { status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
+          where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
           orderBy: { engagementRate: 'desc' },
           take: 5,
           include: {
@@ -44,7 +45,7 @@ async function getAnalyticsData() {
           },
         }),
         prisma.publication.findMany({
-          where: { status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo }, engagementRate: { not: null } },
+          where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo }, engagementRate: { not: null } },
           orderBy: { engagementRate: 'asc' },
           take: 3,
           include: {
@@ -55,6 +56,7 @@ async function getAnalyticsData() {
         }),
         prisma.performanceInsight.findMany({
           where: {
+            workspaceId,
             isActive: true,
             OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
           },
@@ -90,7 +92,9 @@ const insightIcons: Record<string, string> = {
 };
 
 export default async function AnalyticsPage() {
-  const data = await getAnalyticsData();
+  const session = await getSession();
+  const workspaceId = session?.workspaceId ?? '';
+  const data = await getAnalyticsData(workspaceId);
 
   if (!data) {
     return (

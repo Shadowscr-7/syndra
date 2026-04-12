@@ -1,13 +1,17 @@
 import { prisma } from '@automatismos/db';
+import { getSession } from '@/lib/session';
 import { DbWarningBanner } from '@/lib/safe-db';
 import { AssetCard } from './asset-card';
 
 export default async function AssetsPage() {
+  const session = await getSession();
+  const wsId = session?.workspaceId ?? '';
   let assets: Awaited<ReturnType<typeof prisma.mediaAsset.findMany>> = [];
   let dbOk = true;
 
   try {
     assets = await prisma.mediaAsset.findMany({
+      where: { workspaceId: wsId },
       include: {
         contentVersion: {
           select: {

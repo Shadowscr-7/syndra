@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@automatismos/db';
+import { getSession } from '@/lib/session';
 
 // ============================================================
 // Analytics Breakdown — Rendimiento por tema, formato y tono
@@ -16,12 +17,12 @@ interface BreakdownRow {
   avgEngagement: number;
 }
 
-async function getBreakdowns() {
+async function getBreakdowns(workspaceId: string) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   try {
     const publications = await prisma.publication.findMany({
-      where: { status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
+      where: { workspaceId, status: 'PUBLISHED', publishedAt: { gte: thirtyDaysAgo } },
       include: {
         editorialRun: {
           include: { contentBrief: { include: { theme: true } } },
@@ -164,7 +165,9 @@ function BreakdownTable({ title, icon, rows, delay = 0 }: { title: string; icon:
 }
 
 export default async function BreakdownPage() {
-  const data = await getBreakdowns();
+  const session = await getSession();
+  const workspaceId = session?.workspaceId ?? '';
+  const data = await getBreakdowns(workspaceId);
 
   if (!data) {
     return (

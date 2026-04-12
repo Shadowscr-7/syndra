@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import { prisma } from '@automatismos/db';
+import { getSession } from '@/lib/session';
 
 // ============================================================
 // Analytics — Mejores Horas y Días de Publicación
 // ============================================================
 
-async function getTimeAnalytics() {
+async function getTimeAnalytics(workspaceId: string) {
   try {
     const publications = await prisma.publication.findMany({
       where: {
+        workspaceId,
         status: 'PUBLISHED',
         publishedAt: { not: null },
       },
@@ -120,7 +122,9 @@ function TimeBar({ label, value, maxValue, count, likes, reach, rank }: {
 }
 
 export default async function HoursPage() {
-  const data = await getTimeAnalytics();
+  const session = await getSession();
+  const workspaceId = session?.workspaceId ?? '';
+  const data = await getTimeAnalytics(workspaceId);
 
   if (!data) {
     return (
