@@ -95,8 +95,6 @@ export function useAssistant(currentPage?: string) {
         setMessages((prev) => [...prev, assistantMsg]);
       } catch (err) {
         setError('No se pudo conectar con Aria. Intenta de nuevo.');
-        // Remove the user message on error so they can retry
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
       } finally {
         setLoading(false);
       }
