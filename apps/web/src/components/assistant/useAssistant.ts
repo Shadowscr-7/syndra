@@ -63,7 +63,7 @@ export function useAssistant(currentPage?: string) {
       setError(null);
 
       try {
-        const res = await fetch('/api/assistant', {
+        const res = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -107,7 +107,7 @@ export function useAssistant(currentPage?: string) {
     setMessages([]);
     setError(null);
     if (sid) {
-      await fetch('/api/assistant', {
+      await fetch('/api/assistant/session', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sid }),
