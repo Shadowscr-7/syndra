@@ -193,8 +193,8 @@ export default function TrendsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] text-white p-8 flex items-center justify-center">
-        <div className="animate-pulse text-gray-400">Cargando tendencias...</div>
+      <div className="flex items-center justify-center py-24">
+        <div className="animate-pulse" style={{ color: 'var(--color-text-muted)' }}>Cargando tendencias...</div>
       </div>
     );
   }
@@ -211,7 +211,7 @@ export default function TrendsPage() {
   const avgScore = trends.length > 0 ? trends.reduce((s, t) => s + t.finalScore, 0) / trends.length : 0;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white p-6 md:p-8 space-y-8">
+    <div className="space-y-8">
       {/* Toast */}
       {toastMsg && (
         <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg border backdrop-blur-sm animate-in slide-in-from-top-2 transition-all ${
@@ -230,14 +230,14 @@ export default function TrendsPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">
             📈 Trend Detection
           </h1>
-          <p className="text-gray-400 mt-1">
+          <p className="page-subtitle mt-1">
             Tendencias emergentes detectadas automáticamente desde tus fuentes
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowSources(!showSources)}
-            className="px-4 py-2.5 rounded-xl bg-[#1a1a2e] border border-gray-700 hover:border-purple-500/50 transition-all font-medium text-sm"
+            className="btn-ghost text-sm"
           >
             ⚙️ Fuentes ({sources.length || '…'})
           </button>
@@ -253,10 +253,10 @@ export default function TrendsPage() {
 
       {/* Sources Management Panel */}
       {showSources && (
-        <div className="bg-[#1a1a2e] rounded-2xl border border-purple-500/20 p-6 space-y-4">
+        <div className="glass-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-purple-300">⚙️ Fuentes de Detección</h2>
-            <button onClick={() => setShowSources(false)} className="text-gray-500 hover:text-white">✕</button>
+            <button onClick={() => setShowSources(false)} className="opacity-50 hover:opacity-100 transition-opacity" style={{ color: 'var(--color-text-muted)' }}>✕</button>
           </div>
 
           {/* Add source form */}
@@ -264,7 +264,7 @@ export default function TrendsPage() {
             <select
               value={newSource.type}
               onChange={e => setNewSource(s => ({ ...s, type: e.target.value }))}
-              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+              className="input-field"
             >
               <option value="RSS">📰 RSS Feed</option>
               <option value="BLOG">📝 Blog</option>
@@ -275,13 +275,13 @@ export default function TrendsPage() {
               value={newSource.name}
               onChange={e => setNewSource(s => ({ ...s, name: e.target.value }))}
               placeholder="Nombre (ej: TechCrunch)"
-              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+              className="input-field"
             />
             <input
               value={newSource.url}
               onChange={e => setNewSource(s => ({ ...s, url: e.target.value }))}
               placeholder={newSource.type === 'REDDIT' ? 'Subreddit (ej: marketing)' : 'URL del feed'}
-              className="bg-[#0a0a0f] border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-purple-500 outline-none"
+              className="input-field"
             />
             <button
               onClick={handleAddSource}
@@ -293,7 +293,7 @@ export default function TrendsPage() {
           </div>
 
           {/* Help text */}
-          <div className="text-xs text-gray-500 space-y-1">
+          <div className="text-xs space-y-1" style={{ color: 'var(--color-text-muted)' }}>
             <p>📰 <strong>RSS/Blog:</strong> URL del feed RSS (ej: https://techcrunch.com/feed/)</p>
             <p>🤖 <strong>Reddit:</strong> Nombre del subreddit sin r/ (ej: marketing, socialmedia, entrepreneur)</p>
             <p>🔔 <strong>Google Alert:</strong> Crea una alerta en <a href="https://www.google.com/alerts" target="_blank" rel="noopener" className="text-purple-400 hover:underline">google.com/alerts</a>, selecciona &quot;Feed RSS&quot; como método de entrega, y pega la URL del feed aquí</p>
@@ -303,19 +303,19 @@ export default function TrendsPage() {
           {sources.length > 0 ? (
             <div className="space-y-2">
               {sources.map(src => (
-                <div key={src.id} className="flex items-center justify-between bg-[#0a0a0f] rounded-lg px-4 py-3 border border-gray-800">
+                <div key={src.id} className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)' }}>
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-lg shrink-0">
                       {src.type === 'REDDIT' ? '🤖' : src.type === 'GOOGLE_ALERT' ? '🔔' : src.type === 'BLOG' ? '📝' : '📰'}
                     </span>
                     <div className="min-w-0">
                       <div className="font-medium text-sm text-white truncate">{src.name}</div>
-                      <div className="text-xs text-gray-500 truncate">{src.type} · {src.url}</div>
+                      <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{src.type} · {src.url}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {src.lastFetched && (
-                      <span className="text-xs text-gray-600 hidden md:inline">
+                      <span className="text-xs hidden md:inline" style={{ color: 'var(--color-text-muted)' }}>
                         Último: {new Date(src.lastFetched).toLocaleDateString('es')}
                       </span>
                     )}
@@ -340,7 +340,7 @@ export default function TrendsPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500 text-center py-4">No hay fuentes configuradas. Agrega feeds RSS, subreddits o Google Alerts.</p>
+            <p className="text-sm text-center py-4" style={{ color: 'var(--color-text-muted)' }}>No hay fuentes configuradas. Agrega feeds RSS, subreddits o Google Alerts.</p>
           )}
         </div>
       )}
@@ -354,7 +354,7 @@ export default function TrendsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-800 pb-2 overflow-x-auto">
+      <div className="flex gap-2 border-b pb-2 overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         {tabs.map(tab => (
           <button
             key={tab.value}
@@ -362,8 +362,9 @@ export default function TrendsPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === tab.value
                 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                : 'hover:bg-white/5'
             }`}
+            style={activeTab !== tab.value ? { color: 'var(--color-text-muted)' } : {}})
           >
             {tab.icon} {tab.label}
           </button>
@@ -385,10 +386,10 @@ export default function TrendsPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-[#1a1a2e] rounded-2xl border border-gray-800 p-12 text-center">
+        <div className="glass-card p-12 text-center">
           <div className="text-5xl mb-4">🔍</div>
           <h2 className="text-xl font-bold mb-2">No hay tendencias {activeTab !== 'all' ? `con estado "${activeTab}"` : ''}</h2>
-          <p className="text-gray-400 mb-6 max-w-md mx-auto">
+          <p className="mb-6 max-w-md mx-auto" style={{ color: 'var(--color-text-muted)' }}>
             {activeTab === 'all' || activeTab === 'NEW'
               ? 'Ejecuta una detección manual o espera al siguiente ciclo automático (cada 4 horas).'
               : 'Cambia de filtro para ver otras tendencias.'}
@@ -423,7 +424,7 @@ function StatCard({ label, value, icon, color = 'purple' }: {
     <div className={`bg-gradient-to-br ${colors[color] ?? colors.purple} border rounded-xl p-4`}>
       <div className="text-2xl mb-1">{icon}</div>
       <div className="text-2xl font-bold text-white">{value}</div>
-      <div className="text-xs text-gray-400 mt-1">{label}</div>
+      <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{label}</div>
     </div>
   );
 }
@@ -452,7 +453,8 @@ function TrendCard({ trend, loading, onDismiss, onCreateRun, onAddToPlan }: {
   const windowExpired = hoursLeft <= 0;
 
   return (
-    <div className="bg-[#1a1a2e] rounded-xl border border-gray-800 hover:border-orange-500/30 transition-all p-5">
+    <div className="glass-card rounded-xl p-5 hover:border-orange-500/30 transition-all"
+         style={{ borderColor: 'var(--color-border)' }}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -476,7 +478,7 @@ function TrendCard({ trend, loading, onDismiss, onCreateRun, onAddToPlan }: {
         <p className="text-sm text-purple-300 mb-2">{trend.headline}</p>
       )}
       {trend.excerpt && (
-        <p className="text-sm text-gray-400 leading-relaxed mb-3 line-clamp-3">{trend.excerpt}</p>
+        <p className="text-sm leading-relaxed mb-3 line-clamp-3" style={{ color: 'var(--color-text-secondary)' }}>{trend.excerpt}</p>
       )}
 
       {/* Suggested Angle */}
@@ -497,7 +499,7 @@ function TrendCard({ trend, loading, onDismiss, onCreateRun, onAddToPlan }: {
       </div>
 
       {/* Meta */}
-      <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
+      <div className="flex items-center gap-3 text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
         <span>📰 {trend.sourceType}</span>
         <span>🕐 {new Date(trend.createdAt).toLocaleDateString('es')}</span>
         {trend.sourceUrl && (
@@ -527,7 +529,7 @@ function TrendCard({ trend, loading, onDismiss, onCreateRun, onAddToPlan }: {
           <button
             onClick={onDismiss}
             disabled={loading}
-            className="px-3 py-2 rounded-lg bg-gray-700/30 text-gray-400 border border-gray-600/30 hover:bg-gray-700/50 text-sm transition-all disabled:opacity-50"
+            className="btn-ghost text-sm disabled:opacity-50"
           >
             ✕
           </button>
@@ -568,7 +570,7 @@ function ScorePill({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center">
       <div className={`text-xs font-bold ${color}`}>{pct}%</div>
-      <div className="text-[10px] text-gray-500 truncate">{label}</div>
+      <div className="text-[10px] truncate" style={{ color: 'var(--color-text-muted)' }}>{label}</div>
     </div>
   );
 }
