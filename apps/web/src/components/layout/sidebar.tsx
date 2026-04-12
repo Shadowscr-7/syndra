@@ -15,6 +15,7 @@ interface SidebarItem {
   href: string;
   icon: string;
   minPlan?: string; // 'starter' | 'creator' | 'pro' — undefined = all plans
+  comingSoon?: boolean; // only ADMIN can access; others see a "coming soon" modal
 }
 
 interface SidebarSection {
@@ -59,8 +60,8 @@ const allSections: SidebarSection[] = [
     label: 'Media',
     items: [
       { name: 'Biblioteca', href: '/dashboard/media', icon: '📂' },
-      { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator' },
-      { name: 'Editor de Video', href: '/dashboard/video-editor', icon: '✂️', minPlan: 'creator' },
+      { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator', comingSoon: true },
+      { name: 'Editor de Video', href: '/dashboard/video-editor', icon: '✂️', minPlan: 'creator', comingSoon: true },
       { name: 'Créditos IA', href: '/dashboard/credits', icon: '💎' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },
     ],
@@ -141,6 +142,9 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
   const router = useRouter();
   const { isAtLeast, loading: planLoading, planName } = usePlan();
   const { runningCount, setShowPanel } = useBackgroundTasks();
+
+  // ── Coming Soon modal ──
+  const [comingSoonItem, setComingSoonItem] = useState<string | null>(null);
 
   // ── Badge counts for alerts & approvals ──
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
@@ -288,6 +292,27 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
                       pathname === item.href ||
                       (item.href !== '/dashboard' && pathname?.startsWith(item.href));
                     const isLocked = !planLoading && item.minPlan && !isAtLeast(item.minPlan);
+                    const isComingSoon = item.comingSoon && userRole !== 'ADMIN';
+
+                    if (isComingSoon) {
+                      return (
+                        <button
+                          key={item.href}
+                          onClick={() => setComingSoonItem(item.name)}
+                          className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 group relative"
+                          style={{ color: 'rgba(160,160,192,0.7)', borderLeft: '2px solid transparent' }}
+                        >
+                          <span className="text-base">{item.icon}</span>
+                          <span>{item.name}</span>
+                          <span
+                            className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'rgba(124,58,237,0.15)', color: '#a78bfa', letterSpacing: '0.05em' }}
+                          >
+                            PRONTO
+                          </span>
+                        </button>
+                      );
+                    }
 
                     if (isLocked) {
                       return (
@@ -429,6 +454,74 @@ export function Sidebar({ userEmail, userRole = 'USER' }: { userEmail: string; u
           ← Cerrar sesión
         </button>
       </div>
+
+      {/* ── Coming Soon Modal ──────── */}
+      {comingSoonItem && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setComingSoonItem(null)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl p-8 text-center space-y-5 animate-fade-in"
+            style={{
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(6,182,212,0.06))',
+              border: '1px solid rgba(124,58,237,0.25)',
+              backdropFilter: 'blur(20px)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setComingSoonItem(null)}
+              className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(160,160,192,0.7)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+            >
+              ✕
+            </button>
+
+            <div className="relative inline-flex items-center justify-center">
+              <div
+                className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl"
+                style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(6,182,212,0.1))', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                {comingSoonItem === 'Video Pipeline' ? '🎬' : '✂️'}
+              </div>
+              <span
+                className="absolute -top-2 -right-2 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)', color: '#fff' }}
+              >
+                PRONTO
+              </span>
+            </div>
+
+            <div>
+              <h2 className="text-xl font-extrabold mb-2" style={{ color: 'var(--color-text)' }}>
+                {comingSoonItem}
+              </h2>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                Esta función está en desarrollo y estará disponible muy pronto.
+                Estamos trabajando para ofrecerte la mejor experiencia posible.
+              </p>
+            </div>
+
+            <div
+              className="rounded-xl px-4 py-3 text-xs"
+              style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.15)', color: 'var(--color-text-muted)' }}
+            >
+              🚀 Síguenos en Telegram para enterarte cuando esté disponible
+            </div>
+
+            <button
+              onClick={() => setComingSoonItem(null)}
+              className="w-full btn-primary text-sm"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
