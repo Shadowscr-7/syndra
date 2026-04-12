@@ -364,7 +364,7 @@ export default function TrendsPage() {
                 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
                 : 'hover:bg-white/5'
             }`}
-            style={activeTab !== tab.value ? { color: 'var(--color-text-muted)' } : {}})
+            style={activeTab !== tab.value ? { color: 'var(--color-text-muted)' } : {}}
           >
             {tab.icon} {tab.label}
           </button>
