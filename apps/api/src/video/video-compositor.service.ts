@@ -454,6 +454,8 @@ export class VideoCompositorService {
             outputType: input.outputType,
             palette: input.palette ?? 'tech-azul',
             renderer: 'remotion-carousel',
+            // Store all carousel image URLs so the frontend can show each slide
+            carouselUrls: input.outputType === 'carousel' ? outputUrls : undefined,
           } as any,
           status: 'COMPLETED',
           outputUrl: outputUrls[0] ?? '',

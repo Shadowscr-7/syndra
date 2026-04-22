@@ -40,6 +40,8 @@ interface RenderJob {
   progress?: number;
   errorMessage?: string;
   createdAt: string;
+  // carousel mode: inputPayload contains carouselUrls array
+  inputPayload?: { outputType?: string; carouselUrls?: string[]; slideCount?: number; [key: string]: unknown };
 }
 
 const ACTIVE_STATUSES = new Set(['QUEUED', 'RENDERING', 'COMPOSING', 'UPLOADING', 'PROCESSING']);
@@ -1888,8 +1890,44 @@ export default function VideoPipelinePage() {
                           </p>
                         )}
 
+                        {/* Carousel result — grid of slides */}
+                        {isDone && j.inputPayload?.outputType === 'carousel' && j.inputPayload?.carouselUrls?.length && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                              🖼️ {j.inputPayload.carouselUrls.length} slides generados — descarga cada uno:
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              {(j.inputPayload.carouselUrls as string[]).map((url, idx) => (
+                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                                  <img
+                                    src={url}
+                                    alt={`Slide ${idx + 1}`}
+                                    style={{ width: '5rem', height: '5rem', objectFit: 'cover', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.1)' }}
+                                  />
+                                  <a
+                                    href={url}
+                                    download={`slide-${idx + 1}.png`}
+                                    className="btn-ghost text-xs"
+                                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem' }}
+                                  >
+                                    ⬇ S{idx + 1}
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                            <a
+                              href={j.outputUrl}
+                              download="slide-1.png"
+                              className="btn-ghost text-xs"
+                              style={{ padding: '0.4rem 0.9rem', alignSelf: 'flex-start' }}
+                            >
+                              ⬇ Descargar todos (ZIP no disponible — descarga uno a uno)
+                            </a>
+                          </div>
+                        )}
+
                         {/* Video result */}
-                        {isDone && j.outputUrl && (
+                        {isDone && j.outputUrl && j.inputPayload?.outputType !== 'carousel' && (
                           <div className="flex items-center gap-3">
                             {j.thumbnailUrl && (
                               <img
