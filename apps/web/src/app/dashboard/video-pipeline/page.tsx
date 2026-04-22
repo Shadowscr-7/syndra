@@ -143,6 +143,9 @@ export default function VideoPipelinePage() {
   const [compAccentColor, setCompAccentColor] = useState('#FFD700');
   const [compTalkingHeadUrl, setCompTalkingHeadUrl] = useState('');
 
+  // ── Manual audio state ──
+  const [manualEnableTTS, setManualEnableTTS] = useState(false);
+
   // ── Manual slides state ──
   const [contentMode, setContentMode] = useState<ContentMode>('auto');
   const [outputType, setOutputType] = useState<OutputType>('video');
@@ -418,7 +421,9 @@ export default function VideoPipelinePage() {
       const body: Record<string, unknown> = {
         aspectRatio: outputType === 'carousel' ? '1:1' : compAspect,
         outputType,
-        narrationText: contentMode === 'auto' ? compNarration : manualSlides.map(s => s.text).join('\n'),
+        narrationText: contentMode === 'auto'
+          ? compNarration
+          : (manualEnableTTS ? manualSlides.map(s => s.text).join('\n') : undefined),
         voiceId: compVoiceId,
         voiceSpeed: compVoiceSpeed,
         voiceEngine: compVoiceEngine,
@@ -770,6 +775,115 @@ export default function VideoPipelinePage() {
                   >
                     + Agregar slide
                   </button>
+                </div>
+              )}
+
+              {/* Manual Audio Section — only in manual mode */}
+              {contentMode === 'manual' && (
+                <div className="glass-card p-5 space-y-4">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🔊 Audio y subtítulos</h3>
+
+                  {/* TTS toggle */}
+                  <div className="rounded-lg p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>🎙️ Narración por voz (TTS)</span>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {manualEnableTTS ? 'El texto de cada slide se convertirá a audio' : 'Sin voz — ideal para carruseles o videos con música sola'}
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={manualEnableTTS}
+                        onChange={e => setManualEnableTTS(e.target.checked)}
+                        className="accent-purple-500 w-5 h-5"
+                      />
+                    </label>
+
+                    {manualEnableTTS && (
+                      <div className="grid grid-cols-3 gap-3 pt-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                        <div>
+                          <label className="input-label">Voz</label>
+                          <select value={compVoiceId} onChange={e => setCompVoiceId(e.target.value)} className="input-field" style={{ fontSize: '0.8rem' }}>
+                            {voices.map(v => <option key={v.id} value={v.id}>{v.label} ({v.gender === 'F' ? '♀' : '♂'})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="input-label">Motor</label>
+                          <select value={compVoiceEngine} onChange={e => setCompVoiceEngine(e.target.value as 'edge' | 'piper')} className="input-field" style={{ fontSize: '0.8rem' }}>
+                            <option value="edge">🔊 Edge TTS</option>
+                            <option value="piper">🎙️ Piper (Natural)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="input-label">Velocidad</label>
+                          <select value={compVoiceSpeed} onChange={e => setCompVoiceSpeed(e.target.value as 'slow' | 'normal' | 'fast')} className="input-field" style={{ fontSize: '0.8rem' }}>
+                            <option value="slow">Lenta</option>
+                            <option value="normal">Normal</option>
+                            <option value="fast">Rápida</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subtitles */}
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={compSubtitles}
+                        onChange={e => setCompSubtitles(e.target.checked)}
+                        className="accent-purple-500 w-4 h-4"
+                      />
+                      <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>💬 Subtítulos automáticos</span>
+                    </label>
+                    {compSubtitles && (
+                      <select
+                        value={compSubtitleStyle}
+                        onChange={e => setCompSubtitleStyle(e.target.value as typeof compSubtitleStyle)}
+                        className="input-field"
+                        style={{ maxWidth: '10rem', padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}
+                      >
+                        <option value="pill">💊 Píldora</option>
+                        <option value="minimal">✏️ Minimal</option>
+                        <option value="word-by-word">💬 Palabra×Palabra</option>
+                        <option value="karaoke">🎤 Karaoke</option>
+                        <option value="neon">💡 Neón</option>
+                        <option value="kinetic">⚡ Kinetic</option>
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Music */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={compMusic}
+                        onChange={e => setCompMusic(e.target.checked)}
+                        className="accent-purple-500 w-4 h-4"
+                      />
+                      <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                        🎵 Música de fondo
+                        <span className="chip ml-2" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', borderColor: 'rgba(245,158,11,0.2)', fontSize: '0.6rem' }}>+3 créd</span>
+                      </span>
+                    </label>
+                    {compMusic && (
+                      <select
+                        value={compMusicStyle}
+                        onChange={e => setCompMusicStyle(e.target.value as typeof compMusicStyle)}
+                        className="input-field"
+                        style={{ maxWidth: '14rem' }}
+                      >
+                        <option value="upbeat">🎵 Upbeat / Alegre</option>
+                        <option value="calm">🎶 Calm / Relajado</option>
+                        <option value="corporate">🏢 Corporate / Profesional</option>
+                        <option value="energetic">⚡ Energetic / Dinámico</option>
+                        <option value="cinematic">🎬 Cinematic / Épico</option>
+                      </select>
+                    )}
+                  </div>
                 </div>
               )}
 
