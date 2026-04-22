@@ -145,6 +145,11 @@ export default function VideoPipelinePage() {
   const [compAccentColor, setCompAccentColor] = useState('#FFD700');
   const [compTalkingHeadUrl, setCompTalkingHeadUrl] = useState('');
 
+  // ── Manual style state ──
+  const [manualPalette, setManualPalette] = useState<'tech-azul' | 'anthropic' | 'openai' | 'google' | 'dark-purple' | 'custom'>('tech-azul');
+  const [manualAccentColor, setManualAccentColor] = useState('#00D4FF');
+  const [manualMotions, setManualMotions] = useState(true);
+
   // ── Manual audio state ──
   const [manualEnableTTS, setManualEnableTTS] = useState(false);
 
@@ -495,10 +500,11 @@ export default function VideoPipelinePage() {
             })),
             outputType,
             aspectRatio: outputType === 'carousel' ? '1:1' : compAspect,
-            palette: 'tech-azul',
+            palette: manualPalette,
+            accentColor: manualPalette === 'custom' ? manualAccentColor : undefined,
             handle: undefined,
-            techGrid: true,
-            particles: true,
+            techGrid: manualMotions,
+            particles: manualMotions,
             enableTTS: manualEnableTTS,
             narrationText: manualEnableTTS ? manualSlides.map(s => s.text).join('\n') : undefined,
             voiceId: compVoiceId,
@@ -1053,8 +1059,8 @@ export default function VideoPipelinePage() {
               </div>
               )}
 
-              {/* Presets */}
-              {presets.length > 0 && (
+              {/* Presets — auto mode only */}
+              {contentMode === 'auto' && presets.length > 0 && (
                 <div className="glass-card p-5 space-y-3">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
                     🎭 Presets Rápidos
@@ -1076,8 +1082,101 @@ export default function VideoPipelinePage() {
                 </div>
               )}
 
-              {/* Mode selector */}
-              <div className="glass-card p-5 space-y-4">
+              {/* ── MANUAL STYLE SECTION ─────────────────────────────── */}
+              {contentMode === 'manual' && (
+                <div className="glass-card p-5 space-y-4">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎨 Estilo visual</h3>
+
+                  {/* Palette chips */}
+                  <div>
+                    <label className="text-xs font-medium block mb-2" style={{ color: 'var(--color-text-muted)' }}>Paleta de color</label>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        { id: 'tech-azul',   label: '🔵 Tech Azul',    bg: '#0A1628', accent: '#00D4FF' },
+                        { id: 'dark-purple', label: '🟣 Dark Purple',  bg: '#0D0A1E', accent: '#A855F7' },
+                        { id: 'anthropic',   label: '🟠 Anthropic',    bg: '#0A1628', accent: '#CC785C' },
+                        { id: 'openai',      label: '🟢 OpenAI',       bg: '#0A0A0A', accent: '#10A37F' },
+                        { id: 'google',      label: '🔷 Google',       bg: '#050810', accent: '#4285F4' },
+                        { id: 'custom',      label: '✏️ Custom',       bg: '#000',    accent: manualAccentColor },
+                      ] as const).map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setManualPalette(p.id); if (p.id !== 'custom') setManualAccentColor(p.accent); }}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '100px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            border: manualPalette === p.id ? `2px solid ${p.accent}` : '1px solid rgba(255,255,255,0.1)',
+                            background: manualPalette === p.id ? `${p.accent}22` : 'rgba(255,255,255,0.03)',
+                            color: manualPalette === p.id ? p.accent : 'rgba(255,255,255,0.6)',
+                            boxShadow: manualPalette === p.id ? `0 0 10px ${p.accent}44` : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.accent, display: 'inline-block', boxShadow: `0 0 6px ${p.accent}` }} />
+                            {p.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom accent color picker */}
+                  {manualPalette === 'custom' && (
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Color de acento:</label>
+                      <input
+                        type="color"
+                        value={manualAccentColor}
+                        onChange={e => setManualAccentColor(e.target.value)}
+                        style={{ width: '2.5rem', height: '2rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', cursor: 'pointer' }}
+                      />
+                      <span className="text-xs font-mono" style={{ color: 'rgba(255,255,255,0.5)' }}>{manualAccentColor}</span>
+                    </div>
+                  )}
+
+                  {/* Aspect ratio */}
+                  <div>
+                    <label className="text-xs font-medium block mb-2" style={{ color: 'var(--color-text-muted)' }}>Proporción</label>
+                    <div className="flex gap-2">
+                      {(['9:16', '1:1', '16:9'] as const).map(ar => (
+                        <button
+                          key={ar}
+                          onClick={() => setCompAspect(ar)}
+                          className={outputType !== 'carousel' && compAspect === ar ? 'btn-primary' : 'btn-ghost'}
+                          style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', opacity: outputType === 'carousel' ? 0.4 : 1 }}
+                          disabled={outputType === 'carousel'}
+                          title={outputType === 'carousel' ? 'Carrusel usa 1:1 siempre' : undefined}
+                        >
+                          {ar}
+                        </button>
+                      ))}
+                    </div>
+                    {outputType === 'carousel' && <p className="text-[0.65rem] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Carrusel usa 1:1 siempre</p>}
+                  </div>
+
+                  {/* Graphic motions toggle */}
+                  <label className="flex items-center justify-between cursor-pointer rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--color-border-subtle)' }}>
+                    <div>
+                      <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>⚡ Graphic Motions</span>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                        {manualMotions ? 'Partículas animadas + TechGrid + glow borders activos' : 'Fondo degradado limpio sin overlays animados'}
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={manualMotions}
+                      onChange={e => setManualMotions(e.target.checked)}
+                      className="accent-purple-500 w-5 h-5"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Mode selector — auto mode only */}
+              {contentMode === 'auto' && <div className="glass-card p-5 space-y-4">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Modo de video</h3>
                 <div className="flex gap-3">
                   <button
@@ -1100,10 +1199,10 @@ export default function VideoPipelinePage() {
                     Modo producto: agrega logo, imagen de producto, precio y CTA al video.
                   </p>
                 )}
-              </div>
+              </div>}
 
-              {/* Logo (general mode) */}
-              {compMode === 'general' && (
+              {/* Logo (general mode) — auto mode only */}
+              {contentMode === 'auto' && compMode === 'general' && (
                 <div className="glass-card p-5 space-y-3">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🏷️ Logo de marca <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(opcional)</span></h3>
                   <UserMediaPicker
@@ -1118,8 +1217,8 @@ export default function VideoPipelinePage() {
                 </div>
               )}
 
-              {/* Images from library */}
-              <div className="glass-card p-5 space-y-3">
+              {/* Images from library — auto mode only */}
+              {contentMode === 'auto' && <div className="glass-card p-5 space-y-3">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
                   📷 Imágenes de biblioteca <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(hasta 10)</span>
                 </h3>
@@ -1142,10 +1241,10 @@ export default function VideoPipelinePage() {
                     </label>
                   </div>
                 )}
-              </div>
+              </div>}
 
-              {/* Storyboard Panel */}
-              {storyboardEnabled && storyboardSlides.length > 0 && (
+              {/* Storyboard Panel — auto mode only */}
+              {contentMode === 'auto' && storyboardEnabled && storyboardSlides.length > 0 && (
                 <div className="glass-card p-5 space-y-3">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
                     🎬 Storyboard
@@ -1200,8 +1299,8 @@ export default function VideoPipelinePage() {
                 </div>
               )}
 
-              {/* AI Image Generation */}
-              <div className="glass-card p-5 space-y-3">
+              {/* AI Image Generation — auto mode only */}
+              {contentMode === 'auto' && <div className="glass-card p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
                     🎨 Generar imágenes con IA
@@ -1320,10 +1419,10 @@ export default function VideoPipelinePage() {
                     Selecciona imágenes de tu biblioteca o genera nuevas con IA.
                   </p>
                 )}
-              </div>
+              </div>}
 
-              {/* Product fields (conditional) */}
-              {compMode === 'product' && (
+              {/* Product fields (conditional) — auto mode only */}
+              {contentMode === 'auto' && compMode === 'product' && (
                 <div className="glass-card p-5 space-y-3">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🛍️ Datos del Producto</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -1499,8 +1598,8 @@ export default function VideoPipelinePage() {
               </div>
               )}
 
-              {/* Options: Subtitles + Music */}
-              <div className="glass-card p-5 space-y-4">
+              {/* Options: Subtitles + Music — auto mode only */}
+              {contentMode === 'auto' && <div className="glass-card p-5 space-y-4">
                 <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>⚙️ Opciones</h3>
                 <div className="flex gap-6 flex-wrap">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1646,7 +1745,7 @@ export default function VideoPipelinePage() {
                     <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>Si se provee, la persona ocupa pantalla completa con imágenes como insertos</p>
                   </div>
                 </div>
-              </div>
+              </div>}
 
               {/* Submit */}
               <div className="flex items-center gap-4">
