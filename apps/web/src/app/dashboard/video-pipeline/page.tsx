@@ -41,7 +41,7 @@ interface RenderJob {
   errorMessage?: string;
   createdAt: string;
   // carousel mode: inputPayload contains carouselUrls array
-  inputPayload?: { outputType?: string; carouselUrls?: string[]; slideCount?: number; [key: string]: unknown };
+  inputPayload?: { outputType?: string; carouselUrls?: string[]; slideCount?: number; userMediaIds?: string[]; [key: string]: unknown };
 }
 
 const ACTIVE_STATUSES = new Set(['QUEUED', 'RENDERING', 'COMPOSING', 'UPLOADING', 'PROCESSING']);
@@ -113,6 +113,7 @@ export default function VideoPipelinePage() {
   const [tab, setTab] = useState<Tab>('compositor');
   const [credits, setCredits] = useState<Credits | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [savedToLibrary, setSavedToLibrary] = useState<number>(0); // count of assets just saved
   const [presets, setPresets] = useState<VideoPreset[]>([]);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -489,7 +490,7 @@ export default function VideoPipelinePage() {
 
       if (contentMode === 'manual') {
         // ── Manual mode → CarouselComposition ──
-        await apiFetch('/videos/compositor/render-manual', {
+        const manualResult = await apiFetch<{ outputUrls: string[]; outputType: string; creditsUsed: number; userMediaIds: string[] }>('/videos/compositor/render-manual', {
           method: 'POST',
           body: {
             slides: manualSlides.map((s, i) => ({
@@ -516,6 +517,10 @@ export default function VideoPipelinePage() {
             musicStyle: compMusic ? compMusicStyle : undefined,
           },
         });
+        if (manualResult?.userMediaIds?.length) {
+          setSavedToLibrary(manualResult.userMediaIds.length);
+          setTimeout(() => setSavedToLibrary(0), 6000);
+        }
       } else {
         // ── Auto mode → VideoComposition (existing) ──
         await apiFetch('/videos/compositor/render', {
@@ -1777,6 +1782,15 @@ export default function VideoPipelinePage() {
                     Esto puede tardar unos minutos...
                   </span>
                 )}
+                {savedToLibrary > 0 && (
+                  <a
+                    href="/dashboard/brand-kit"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium animate-fade-in"
+                    style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#10b981', textDecoration: 'none' }}
+                  >
+                    ✓ {savedToLibrary} archivo{savedToLibrary > 1 ? 's guardados' : ' guardado'} en tu biblioteca de medios — Ver →
+                  </a>
+                )}
               </div>
             </div>
           )}
@@ -1959,6 +1973,16 @@ export default function VideoPipelinePage() {
                               <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                                 {j.creditsUsed} créd
                               </span>
+                            )}
+                            {j.inputPayload?.userMediaIds?.length && (
+                              <a
+                                href="/dashboard/brand-kit"
+                                className="text-xs"
+                                style={{ color: '#10b981', textDecoration: 'none' }}
+                                title="Ver en biblioteca de medios"
+                              >
+                                📁 en biblioteca
+                              </a>
                             )}
                           </div>
                           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>

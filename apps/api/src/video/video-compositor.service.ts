@@ -124,6 +124,8 @@ export interface ManualCompositorResult {
   outputUrls: string[];
   outputType: 'video' | 'carousel';
   creditsUsed: number;
+  /** UserMedia IDs for the saved assets in the media library */
+  userMediaIds: string[];
 }
 
 // ── Available voices ──
@@ -435,6 +437,40 @@ export class VideoCompositorService {
       }
       await renderer.cleanup(result.tempDir);
 
+      // 7b. Save each output as UserMedia so it persists in the media library
+      const userMediaIds: string[] = [];
+      for (let i = 0; i < outputUrls.length; i++) {
+        const url = outputUrls[i]!;
+        const isCarousel = input.outputType === 'carousel';
+        const label = isCarousel
+          ? `Carousel slide ${i + 1} — ${new Date().toLocaleDateString('es')}`
+          : `Video — ${new Date().toLocaleDateString('es')}`;
+        try {
+          const um = await this.prisma.userMedia.create({
+            data: {
+              userId,
+              filename: label,
+              url,
+              mimeType: isCarousel ? 'image/png' : 'video/mp4',
+              sizeBytes: 0,
+              category: 'OTHER',
+              tags: isCarousel
+                ? ['carousel', 'ai-generated', input.palette ?? 'tech-azul']
+                : ['video', 'ai-generated', input.palette ?? 'tech-azul'],
+              metadata: {
+                source: 'video-pipeline',
+                outputType: input.outputType,
+                palette: input.palette ?? 'tech-azul',
+                slideIndex: isCarousel ? i : undefined,
+              },
+            },
+          });
+          userMediaIds.push(um.id);
+        } catch (e) {
+          this.logger.warn(`Failed to save UserMedia for output ${i}: ${(e as Error).message}`);
+        }
+      }
+
       // 8. Consume credits
       const creditType = input.outputType === 'carousel' ? 'VIDEO_COMPOSITOR' : 'VIDEO_COMPOSITOR';
       await this.credits.consumeCredits(workspaceId, creditType, `Manual ${input.outputType}: ${input.slides.length} slides`);
@@ -456,6 +492,7 @@ export class VideoCompositorService {
             renderer: 'remotion-carousel',
             // Store all carousel image URLs so the frontend can show each slide
             carouselUrls: input.outputType === 'carousel' ? outputUrls : undefined,
+            userMediaIds,
           } as any,
           status: 'COMPLETED',
           outputUrl: outputUrls[0] ?? '',
@@ -469,7 +506,7 @@ export class VideoCompositorService {
 
       this.logger.log(`Manual render complete: ${outputUrls.length} file(s), ${totalCredits} credits`);
 
-      return { outputUrls, outputType: input.outputType, creditsUsed: totalCredits };
+      return { outputUrls, outputType: input.outputType, creditsUsed: totalCredits, userMediaIds };
     } catch (error: any) {
       this.logger.error(`Manual render failed: ${error.message}`);
       throw error;
