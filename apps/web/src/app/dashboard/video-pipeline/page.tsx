@@ -68,6 +68,16 @@ interface ImagePromptEntry {
   userMediaId?: string;
 }
 
+type ContentMode = 'auto' | 'manual';
+type OutputType = 'video' | 'carousel';
+
+interface ManualSlide {
+  id: string;
+  text: string;
+  imageId?: string;
+  imageUrl?: string;
+}
+
 // ── Status styles ──
 
 const statusStyles: Record<string, { bg: string; color: string; border: string }> = {
@@ -127,6 +137,15 @@ export default function VideoPipelinePage() {
   const [compStylePrompt, setCompStylePrompt] = useState('');
   const [compAccentColor, setCompAccentColor] = useState('#FFD700');
   const [compTalkingHeadUrl, setCompTalkingHeadUrl] = useState('');
+
+  // ── Manual slides state ──
+  const [contentMode, setContentMode] = useState<ContentMode>('auto');
+  const [outputType, setOutputType] = useState<OutputType>('video');
+  const [manualSlides, setManualSlides] = useState<ManualSlide[]>([
+    { id: `ms_${Date.now()}_1`, text: '' },
+    { id: `ms_${Date.now()}_2`, text: '' },
+    { id: `ms_${Date.now()}_3`, text: '' },
+  ]);
 
   // ── AI Image Generation state ──
   const [imagePrompts, setImagePrompts] = useState<ImagePromptEntry[]>([]);
@@ -368,16 +387,17 @@ export default function VideoPipelinePage() {
 
   // ── Submit Compositor ──
   const submitCompositor = async () => {
-    if (!compNarration.trim()) return;
-    // Allow submitting with generated image URLs if no library images selected
+    if (contentMode === 'auto' && !compNarration.trim()) return;
+    if (contentMode === 'manual' && manualSlides.every(s => !s.text.trim())) return;
+
     const generatedUrls = imagePrompts.filter(p => p.resultUrl).map(p => p.resultUrl!);
-    if (!compImageIds.length && !generatedUrls.length && !compAutoGenImages) return;
 
     setCompSubmitting(true);
     try {
       const body: Record<string, unknown> = {
-        aspectRatio: compAspect,
-        narrationText: compNarration,
+        aspectRatio: outputType === 'carousel' ? '1:1' : compAspect,
+        outputType,
+        narrationText: contentMode === 'auto' ? compNarration : manualSlides.map(s => s.text).join('\n'),
         voiceId: compVoiceId,
         voiceSpeed: compVoiceSpeed,
         voiceEngine: compVoiceEngine,
@@ -398,7 +418,16 @@ export default function VideoPipelinePage() {
         talkingHeadVideoUrl: compTalkingHeadUrl.trim() || undefined,
       };
 
-      if (storyboardEnabled && storyboardSlides.length > 0) {
+      if (contentMode === 'manual') {
+        // Build imageSlides from manual slides
+        body.imageSlides = manualSlides.map((s, i) => ({
+          mediaId: s.imageId || undefined,
+          url: s.imageUrl || undefined,
+          role: 'slide',
+          order: i,
+          caption: s.text || undefined,
+        }));
+      } else if (storyboardEnabled && storyboardSlides.length > 0) {
         body.imageSlides = storyboardSlides.map((s, i) => ({
           mediaId: s.mediaId,
           role: s.role,
@@ -409,9 +438,10 @@ export default function VideoPipelinePage() {
         }));
       } else if (compImageIds.length) {
         body.imageIds = compImageIds;
-      } else {
+      } else if (generatedUrls.length) {
         body.imageUrls = generatedUrls;
       }
+      // If no images provided at all → backend handles it (auto-generate or text-only)
 
       await apiFetch('/videos/compositor/render', {
         method: 'POST',
@@ -448,6 +478,30 @@ export default function VideoPipelinePage() {
     } finally {
       setKieSubmitting(false);
     }
+  };
+
+  // ── Manual slides helpers ──
+  const addManualSlide = () => {
+    setManualSlides(prev => [...prev, { id: `ms_${Date.now()}_${Math.random().toString(36).slice(2,5)}`, text: '' }]);
+  };
+
+  const updateManualSlide = (id: string, patch: Partial<ManualSlide>) => {
+    setManualSlides(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+
+  const removeManualSlide = (id: string) => {
+    if (manualSlides.length <= 1) return;
+    setManualSlides(prev => prev.filter(s => s.id !== id));
+  };
+
+  const moveManualSlide = (idx: number, dir: -1 | 1) => {
+    setManualSlides(prev => {
+      const arr = [...prev];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target]!, arr[idx]!];
+      return arr;
+    });
   };
 
   // ── Cost calculation ──
@@ -523,7 +577,160 @@ export default function VideoPipelinePage() {
           {/* ═══════════════════════════════════════ */}
           {tab === 'compositor' && (
             <div className="space-y-4 animate-fade-in">
-              {/* AI Script Generator */}
+              {/* Content Mode + Output Type */}
+              <div className="glass-card p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎛️ Modo de creación</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium block mb-2" style={{ color: 'var(--color-text-muted)' }}>Contenido</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setContentMode('auto')}
+                        className={contentMode === 'auto' ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1, fontSize: '0.85rem' }}
+                      >
+                        🤖 Automático
+                      </button>
+                      <button
+                        onClick={() => setContentMode('manual')}
+                        className={contentMode === 'manual' ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1, fontSize: '0.85rem' }}
+                      >
+                        ✍️ Manual
+                      </button>
+                    </div>
+                    <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {contentMode === 'auto' ? 'La IA genera el guión y estructura el video' : 'Vos definís cada slide: texto, imagen y orden'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium block mb-2" style={{ color: 'var(--color-text-muted)' }}>Tipo de salida</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setOutputType('video')}
+                        className={outputType === 'video' ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1, fontSize: '0.85rem' }}
+                      >
+                        🎬 Video MP4
+                      </button>
+                      <button
+                        onClick={() => setOutputType('carousel')}
+                        className={outputType === 'carousel' ? 'btn-primary' : 'btn-ghost'}
+                        style={{ flex: 1, fontSize: '0.85rem' }}
+                      >
+                        🖼️ Carrusel
+                      </button>
+                    </div>
+                    <p className="text-[0.65rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {outputType === 'video' ? 'Video renderizado con audio y subtítulos' : 'Imágenes 1:1 por slide (sin audio)'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual Slides Editor */}
+              {contentMode === 'manual' && (
+                <div className="glass-card p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>✍️ Slides manuales</h3>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                        Configurá cada slide con su texto e imagen. {outputType === 'video' ? 'El texto se usará como narración y/o caption.' : 'Cada slide será una imagen del carrusel.'}
+                      </p>
+                    </div>
+                    <span className="chip" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8', borderColor: 'rgba(99,102,241,0.2)', fontSize: '0.65rem' }}>
+                      {manualSlides.length} slide{manualSlides.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {manualSlides.map((slide, idx) => (
+                      <div
+                        key={slide.id}
+                        className="rounded-xl p-4 space-y-3"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border-subtle)' }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-xs font-bold flex items-center justify-center rounded-full"
+                              style={{
+                                width: '1.5rem', height: '1.5rem',
+                                background: 'rgba(168,85,247,0.15)',
+                                color: '#a855f7',
+                                border: '1px solid rgba(168,85,247,0.25)',
+                              }}
+                            >
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Slide {idx + 1}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => moveManualSlide(idx, -1)}
+                              disabled={idx === 0}
+                              className="btn-ghost"
+                              style={{ padding: '0.2rem 0.4rem', fontSize: '0.65rem', opacity: idx === 0 ? 0.3 : 1 }}
+                            >▲</button>
+                            <button
+                              onClick={() => moveManualSlide(idx, 1)}
+                              disabled={idx === manualSlides.length - 1}
+                              className="btn-ghost"
+                              style={{ padding: '0.2rem 0.4rem', fontSize: '0.65rem', opacity: idx === manualSlides.length - 1 ? 0.3 : 1 }}
+                            >▼</button>
+                            <button
+                              onClick={() => removeManualSlide(slide.id)}
+                              disabled={manualSlides.length <= 1}
+                              className="btn-ghost"
+                              style={{ padding: '0.2rem 0.4rem', fontSize: '0.65rem', color: '#ef4444', opacity: manualSlides.length <= 1 ? 0.3 : 1 }}
+                            >✕</button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="col-span-2">
+                            <label className="text-[0.65rem] font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                              {outputType === 'video' ? '🎙️ Texto / Narración' : '📝 Texto del slide'}
+                            </label>
+                            <textarea
+                              value={slide.text}
+                              onChange={e => updateManualSlide(slide.id, { text: e.target.value })}
+                              placeholder={outputType === 'video' ? 'Texto que se narrará en este slide...' : 'Texto que aparecerá en este slide...'}
+                              className="input-field"
+                              rows={3}
+                              style={{ fontSize: '0.85rem' }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[0.65rem] font-medium block mb-1" style={{ color: 'var(--color-text-muted)' }}>🖼️ Imagen <span style={{ opacity: 0.6 }}>(opcional)</span></label>
+                            <UserMediaPicker
+                              selectedIds={slide.imageId ? [slide.imageId] : []}
+                              onChange={(ids) => updateManualSlide(slide.id, { imageId: ids[0] || undefined })}
+                              max={1}
+                            />
+                            {slide.imageId && (
+                              <p className="text-[0.6rem] mt-1" style={{ color: '#10b981' }}>✓ Imagen asignada</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={addManualSlide}
+                    className="btn-ghost w-full"
+                    style={{ padding: '0.6rem', fontSize: '0.85rem', borderStyle: 'dashed' }}
+                  >
+                    + Agregar slide
+                  </button>
+                </div>
+              )}
+
+              {/* AI Script Generator (only in auto mode) (only in auto mode) */}
+              {contentMode === 'auto' && (
               <div className="glass-card p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>
@@ -653,6 +860,7 @@ export default function VideoPipelinePage() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Presets */}
               {presets.length > 0 && (
@@ -982,7 +1190,8 @@ export default function VideoPipelinePage() {
                 </div>
               )}
 
-              {/* Narration */}
+              {/* Narration (only in auto mode) */}
+              {contentMode === 'auto' && (
               <div className="glass-card p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>🎙️ Narración</h3>
@@ -1097,6 +1306,7 @@ export default function VideoPipelinePage() {
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Options: Subtitles + Music */}
               <div className="glass-card p-5 space-y-4">
@@ -1251,15 +1461,26 @@ export default function VideoPipelinePage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={submitCompositor}
-                  disabled={!hasImages || !compNarration.trim() || compSubmitting}
+                  disabled={
+                    compSubmitting ||
+                    (contentMode === 'auto' && !compNarration.trim()) ||
+                    (contentMode === 'manual' && manualSlides.every(s => !s.text.trim()))
+                  }
                   className="btn-primary"
                   style={{
-                    opacity: (!hasImages || !compNarration.trim() || compSubmitting) ? 0.5 : 1,
+                    opacity: (compSubmitting ||
+                      (contentMode === 'auto' && !compNarration.trim()) ||
+                      (contentMode === 'manual' && manualSlides.every(s => !s.text.trim()))) ? 0.5 : 1,
                     padding: '0.75rem 2rem',
                     fontSize: '0.95rem',
                   }}
                 >
-                  {compSubmitting ? '⏳ Renderizando...' : `🎬 Crear Video (${compositorCost} créditos)`}
+                  {compSubmitting
+                    ? '⏳ Renderizando...'
+                    : outputType === 'carousel'
+                      ? `🖼️ Crear Carrusel (${compositorCost} créditos)`
+                      : `🎬 Crear Video (${compositorCost} créditos)`
+                  }
                 </button>
                 {compSubmitting && (
                   <span className="text-xs animate-pulse" style={{ color: 'var(--color-text-muted)' }}>
