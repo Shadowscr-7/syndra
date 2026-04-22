@@ -1,0 +1,132 @@
+{
+  "name": "Cargador de Ejemplos - Presupuestos",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cargar-ejemplo-presupuesto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "244d1626-2bf5-4aa4-ac1a-782fe769f5ca",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [32, 288],
+      "webhookId": "cargar-ejemplo-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recibe: { input_base64, output_base64, nombre_archivo, nota }\nconst body = $input.item.json.body || $input.item.json;\n\nconst inputBase64  = body.input_base64  || body.input;\nconst outputBase64 = body.output_base64 || body.output;\nconst nombreArchivo = body.nombre || body.nombre_archivo || 'ejemplo.xlsx';\nconst nota = body.nota || '';\n\nif (!inputBase64)  throw new Error('Falta input_base64');\nif (!outputBase64) throw new Error('Falta output_base64');\n\nconst cleanInput  = inputBase64.replace(/^data:[^;]+;base64,/, '');\nconst cleanOutput = outputBase64.replace(/^data:[^;]+;base64,/, '');\n\nreturn [{\n  json: { nombreArchivo, nota, cleanInput, cleanOutput }\n}];"
+      },
+      "id": "1ce67fe8-38c4-4bc3-84b7-712fa3e89c84",
+      "name": "Validar input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 288]
+    },
+    {
+      "parameters": {
+        "jsCode": "const XLSX = require('xlsx');\nconst { nombreArchivo, nota, cleanInput, cleanOutput } = $input.item.json;\n\n// --- INPUT: convertir a texto plano para contexto de la IA ---\nconst bufInput = Buffer.from(cleanInput, 'base64');\nconst wbInput  = XLSX.read(bufInput, { type: 'buffer' });\nconst wsInput  = wbInput.Sheets[wbInput.SheetNames[0]];\nconst rowsInput = XLSX.utils.sheet_to_json(wsInput, { header: 1, defval: null });\n\nconst textoInput = rowsInput\n  .filter(row => row.some(v => v !== null && v !== undefined && v !== ''))\n  .map(row => {\n    const headers = rowsInput[0];\n    return row\n      .map((v, i) => {\n        const key = (headers && headers[i]) ? headers[i] : `col${i}`;\n        return v !== null && v !== undefined && v !== '' ? `${key}: ${v}` : null;\n      })\n      .filter(Boolean)\n      .join(' | ');\n  })\n  .filter(Boolean)\n  .join('\\n');\n\n// --- OUTPUT: guardar tal cual como JSON, sin transformar ni filtrar columnas ---\n// El xlsx de salida YA ES el formato final validado, solo se parsea a JSON\nconst bufOutput  = Buffer.from(cleanOutput, 'base64');\nconst wbOutput   = XLSX.read(bufOutput, { type: 'buffer' });\nconst wsOutput   = wbOutput.Sheets[wbOutput.SheetNames[0]];\nconst rowsOutput = XLSX.utils.sheet_to_json(wsOutput, { defval: null });\n\n// Filtrar solo filas completamente vacías\nconst filasOutput = rowsOutput.filter(row =>\n  Object.values(row).some(v => v !== null && v !== undefined && v !== '')\n);\n\nconst outputJson = JSON.stringify(filasOutput);\n\n// Truncar input si supera límite de Sheets (50.000 chars)\nconst inputTruncado = textoInput.substring(0, 40000);\n\nreturn [{\n  json: {\n    nombreArchivo,\n    nota,\n    input_excel: inputTruncado,\n    output_json: outputJson,\n    cant_filas_input: rowsInput.length,\n    cant_filas_output: filasOutput.length\n  }\n}];"
+      },
+      "id": "26d4fd7c-2413-4a90-a3bf-6cf02cd1de1c",
+      "name": "Procesar ambos Excel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [432, 288]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM",
+          "mode": "list",
+          "cachedResultName": "Ejemplos presupuesto rgk",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 327491109,
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit#gid=327491109"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nombre_archivo": "={{ $json.nombreArchivo }}",
+            "fecha": "={{ new Date().toISOString() }}",
+            "input_excel": "={{ $json.input_excel }}",
+            "output_json": "={{ $json.output_json }}",
+            "aprobado": "APROBADO"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "nombre_archivo", "displayName": "nombre_archivo", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "fecha", "displayName": "fecha", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "input_excel", "displayName": "input_excel", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "output_json", "displayName": "output_json", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "aprobado", "displayName": "aprobado", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c527ccc0-8cb1-4849-9de1-14b693fbbe4f",
+      "name": "Guardar en Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [640, 288],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0lihPm3QzXMRhkTO",
+          "name": "Google Sheets rgkgestion@gmail.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, mensaje: 'Ejemplo guardado como APROBADO', nombre_archivo: $('Procesar ambos Excel').item.json.nombreArchivo, filas_input: $('Procesar ambos Excel').item.json.cant_filas_input, filas_output: $('Procesar ambos Excel').item.json.cant_filas_output }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [832, 288],
+      "id": "aed005b8-1f5b-46ad-b995-ef6a4b794039",
+      "name": "Responder OK"
+    },
+    {
+      "parameters": {
+        "content": "## CARGADOR DE EJEMPLOS\nRecibe 2 Excel en base64 (input + output ya validado), los procesa y guarda en Sheets como APROBADO.\n\n**El output_xlsx NO se transforma — se guarda tal cual como JSON.**\nLa IA aprende del ejemplo real sin intervención del flujo.\n\n**Body esperado:**\n```json\n{\n  \"nombre_archivo\": \"PACIFICA.xlsx\",\n  \"input_base64\": \"base64 del Excel original...\",\n  \"output_base64\": \"base64 del Excel de importacion YA VALIDADO...\",\n  \"nota\": \"Presupuesto de construccion residencial\"\n}\n```",
+        "height": 516,
+        "width": 1020,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "b16006c0-0a52-4beb-aaa9-bff9439d224e",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Validar input", "type": "main", "index": 0}]]
+    },
+    "Validar input": {
+      "main": [[{"node": "Procesar ambos Excel", "type": "main", "index": 0}]]
+    },
+    "Procesar ambos Excel": {
+      "main": [[{"node": "Guardar en Sheets", "type": "main", "index": 0}]]
+    },
+    "Guardar en Sheets": {
+      "main": [[{"node": "Responder OK", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

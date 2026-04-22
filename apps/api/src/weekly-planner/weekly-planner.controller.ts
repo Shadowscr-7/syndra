@@ -256,8 +256,8 @@ export class WeeklyPlannerController {
   }
 
   @Post('items/:id/convert-video')
-  async convertToVideo(@Req() req: any, @Param('id') id: string, @Body() body: { type?: string; slideCount?: number }) {
-    const data = await this.weeklyPlanner.convertToVideo(id, req.workspaceId, body?.type as any, body?.slideCount);
+  async convertToVideo(@Req() req: any, @Param('id') id: string, @Body() body: { type?: string; slideCount?: number; voiceGender?: 'female' | 'male' }) {
+    const data = await this.weeklyPlanner.convertToVideo(id, req.workspaceId, body?.type as any, body?.slideCount, body?.voiceGender);
     return { data };
   }
 

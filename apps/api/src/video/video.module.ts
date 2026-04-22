@@ -16,6 +16,7 @@ import { VideoCreditService } from './video-credit.service';
 import { VideoCompositorService } from './video-compositor.service';
 import { AiDirectorService } from './ai-director.service';
 import { AvatarSceneService } from './avatar-scene.service';
+import { ReelComposerService } from './reel-composer.service';
 import { VideoController } from './video.controller';
 
 @Module({
@@ -35,8 +36,9 @@ import { VideoController } from './video.controller';
     VideoCompositorService,
     AiDirectorService,
     AvatarSceneService,
+    ReelComposerService,
   ],
   controllers: [VideoController],
-  exports: [VideoService, VideoTierRouterService, VideoCreditService, VideoCompositorService, AiDirectorService, AvatarSceneService],
+  exports: [VideoService, VideoTierRouterService, VideoCreditService, VideoCompositorService, AiDirectorService, AvatarSceneService, ReelComposerService],
 })
 export class VideoModule {}

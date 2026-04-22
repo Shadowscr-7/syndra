@@ -45,6 +45,16 @@ export interface RemotionRenderInput {
 
   // NEW: Whisper-extracted per-word timecodes (precise subtitle sync)
   timedWords?: TimedWordInput[];
+
+  // Reel template overlay (Phase 5)
+  reelTemplate?: 'product' | 'negocio' | 'testimonial' | 'default';
+  productName?: string;
+  productPrice?: string;
+  productCta?: string;
+  brandName?: string;
+  tagline?: string;
+  quote?: string;
+  quoteAuthor?: string;
 }
 
 export interface SubtitleGroupInput {
@@ -151,6 +161,14 @@ export class RemotionVideoRenderer {
         stylePrompt: input.stylePrompt ?? '',
         accentColor: input.accentColor ?? '#FFD700',
         talkingHeadVideoUrl: input.talkingHeadVideoUrl ?? null,
+        reelTemplate: input.reelTemplate ?? 'default',
+        productName: input.productName,
+        productPrice: input.productPrice,
+        productCta: input.productCta,
+        brandName: input.brandName,
+        tagline: input.tagline,
+        quote: input.quote,
+        quoteAuthor: input.quoteAuthor,
       };
 
       // 7. Render video — with TOTAL TIMEOUT protection

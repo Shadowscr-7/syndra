@@ -256,7 +256,7 @@ export default function ApprovalsPage() {
     } catch (e: any) { toast('err', e.message); }
   };
 
-  const handleConvertVideo = async (itemId: string, videoType?: string, slideCount?: number) => {
+  const handleConvertVideo = async (itemId: string, videoType?: string, slideCount?: number, voiceGender?: 'female' | 'male') => {
     if (!videoType) {
       setModal({ type: 'convert-video', itemId });
       return;
@@ -264,8 +264,15 @@ export default function ApprovalsPage() {
     try {
       const body: any = { type: videoType };
       if (slideCount) body.slideCount = slideCount;
+      if (voiceGender) body.voiceGender = voiceGender;
       await doAction(itemId, 'convert-video', body);
-      toast('ok', videoType === 'slides' ? `🎞️ Generando video con ${slideCount ?? 1} slides...` : 'Video en proceso de generación');
+      const toastMessages: Record<string, string> = {
+        'slides': `🎞️ Generando video con ${slideCount ?? 1} slides...`,
+        'remotion-reel': '🎬 Generando Reel Remotion con voz IA... puede tardar unos minutos',
+        'video': '🎬 Video IA en generación...',
+        'avatar': '🧑‍💼 Video con avatar en generación...',
+      };
+      toast('ok', toastMessages[videoType] ?? 'Video en proceso de generación');
       setModal(null);
       await fetchItems();
     } catch (e: any) { toast('err', e.message); }
@@ -557,7 +564,7 @@ export default function ApprovalsPage() {
       {modal?.type === 'convert-video' && (
         <VideoTypeModal
           loading={!!actionLoading}
-          onSelect={(videoType, slideCount) => handleConvertVideo(modal.itemId, videoType, slideCount)}
+          onSelect={(videoType, slideCount, voiceGender) => handleConvertVideo(modal.itemId, videoType, slideCount, voiceGender)}
           onClose={() => setModal(null)}
         />
       )}
@@ -632,6 +639,7 @@ function ApprovalCard({
   const videoUrl = videoAsset?.optimizedUrl || videoAsset?.originalUrl;
   // Check if there's a video being generated (PENDING status)
   const pendingVideo = version?.mediaAssets?.find((a: any) => (a.type === 'VIDEO' || a.type === 'AVATAR_VIDEO') && a.status === 'PENDING');
+  const isRemotionReel = (pendingVideo?.metadata as any)?.videoType === 'remotion-reel';
   const isPending = item.status === 'PENDING_REVIEW' || item.status === 'MODIFIED';
   const canEdit = isPending;
   const configName = item.batch?.config?.name ?? 'Planificador';
@@ -712,9 +720,13 @@ function ApprovalCard({
           ) : null}
           {!videoUrl && !mediaUrl && null}
           {pendingVideo && (
-            <div className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 mb-1">
-              <div className="animate-spin rounded-full h-3 w-3 border border-t-transparent border-amber-400" />
-              🎬 Video IA en generación...
+            <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg mb-1 ${
+              isRemotionReel
+                ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400'
+                : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
+            }`}>
+              <div className={`animate-spin rounded-full h-3 w-3 border border-t-transparent ${isRemotionReel ? 'border-orange-400' : 'border-amber-400'}`} />
+              {isRemotionReel ? '🎬 Reel Remotion renderizando... (puede tardar unos minutos)' : '🎬 Video IA en generación...'}
             </div>
           )}
 
@@ -1430,27 +1442,49 @@ function ConfirmModal({ title, message, icon, confirmLabel, confirmColor, onConf
 
 // ── Video Type Selector Modal ──
 
-const VIDEO_TYPE_OPTIONS = [
+type VideoStep = 'type' | 'slideCount' | 'remotion-voice';
+
+interface VideoTypeOption {
+  type: string;
+  icon: string;
+  label: string;
+  description: string;
+  credits: number;
+  color: string;
+  disabled?: boolean;
+  badge?: string;
+}
+
+const VIDEO_TYPE_OPTIONS: VideoTypeOption[] = [
+  {
+    type: 'remotion-reel',
+    icon: '🎬',
+    label: 'Reel Profesional (sin avatar)',
+    description: 'Reel animado con Ken Burns, subtítulos dinámicos, voz IA argentina y colores de tu marca. Gratis.',
+    credits: 0,
+    color: '#f97316',
+    badge: '⭐ Recomendado',
+  },
   {
     type: 'slides',
     icon: '🎞️',
     label: 'Video con Slides',
-    description: 'Slideshow animado con tus imágenes + narración de voz. Gratis, renderizado local.',
+    description: 'Slideshow simple con tus imágenes + narración de voz. Renderizado local con FFmpeg.',
     credits: 0,
     color: '#06b6d4',
   },
   {
     type: 'video',
-    icon: '🎬',
-    label: 'Video IA',
-    description: 'Video generado por IA desde el contenido. Escenas cinemáticas profesionales.',
+    icon: '🤖',
+    label: 'Video IA (Kling)',
+    description: 'Video generado por IA desde el contenido. Escenas cinemáticas generadas por Kling 2.6.',
     credits: 15,
     color: '#8b5cf6',
   },
   {
     type: 'avatar',
     icon: '🧑‍💼',
-    label: 'Video con Avatar',
+    label: 'Con Avatar (próximamente)',
     description: 'Avatar parlante con narración de voz IA. Perfecto para explicaciones y tutoriales.',
     credits: 25,
     color: '#f59e0b',
@@ -1459,11 +1493,60 @@ const VIDEO_TYPE_OPTIONS = [
 ];
 
 function VideoTypeModal({ loading, onSelect, onClose }: {
-  loading: boolean; onSelect: (type: string, slideCount?: number) => void; onClose: () => void;
+  loading: boolean; onSelect: (type: string, slideCount?: number, voiceGender?: 'female' | 'male') => void; onClose: () => void;
 }) {
-  const [step, setStep] = useState<'type' | 'slideCount'>('type');
+  const [step, setStep] = useState<VideoStep>('type');
   const [slideCount, setSlideCount] = useState(3);
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male'>('female');
 
+  // ── Step: Remotion voice selection ──
+  if (step === 'remotion-voice') {
+    return (
+      <ModalWrapper title="🎙️ Voz para el Reel" onClose={onClose}>
+        <div className="space-y-4">
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Elegí la voz de narración para el reel. Ambas voces son argentinas (Microsoft Edge TTS).
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { value: 'female' as const, icon: '👩', name: 'Elena', desc: 'Voz femenina argentina · Elena Neural', color: '#ec4899' },
+              { value: 'male' as const, icon: '👨', name: 'Tomás', desc: 'Voz masculina argentina · Tomás Neural', color: '#3b82f6' },
+            ]).map((v) => (
+              <button
+                key={v.value}
+                onClick={() => setVoiceGender(v.value)}
+                className="p-4 rounded-xl text-left transition-all hover:scale-[1.02]"
+                style={{
+                  backgroundColor: voiceGender === v.value ? `${v.color}15` : 'rgba(255,255,255,0.03)',
+                  border: `2px solid ${voiceGender === v.value ? v.color : 'var(--color-border)'}`,
+                }}
+              >
+                <div className="text-2xl mb-2">{v.icon}</div>
+                <div className="text-sm font-semibold mb-0.5" style={{ color: voiceGender === v.value ? v.color : 'var(--color-text)' }}>{v.name}</div>
+                <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{v.desc}</div>
+              </button>
+            ))}
+          </div>
+          <div className="rounded-xl p-3 text-xs" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', color: 'var(--color-text-muted)' }}>
+            💡 El reel usará automáticamente tus colores de marca, logo y fotos de productos de tu biblioteca.
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setStep('type')} className="btn-ghost text-sm flex-1">← Volver</button>
+            <button
+              disabled={loading}
+              onClick={() => onSelect('remotion-reel', undefined, voiceGender)}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+              style={{ backgroundColor: 'rgba(249,115,22,0.2)', color: '#f97316', border: '1px solid rgba(249,115,22,0.3)' }}
+            >
+              🎬 Generar Reel con voz de {voiceGender === 'female' ? 'Elena' : 'Tomás'}
+            </button>
+          </div>
+        </div>
+      </ModalWrapper>
+    );
+  }
+
+  // ── Step: Slide count (for slides type) ──
   if (step === 'slideCount') {
     return (
       <ModalWrapper title="🎞️ Cantidad de Slides" onClose={onClose}>
@@ -1508,6 +1591,7 @@ function VideoTypeModal({ loading, onSelect, onClose }: {
     );
   }
 
+  // ── Step: Type selection ──
   return (
     <ModalWrapper title="🎬 Convertir a Video" onClose={onClose}>
       <div className="space-y-3">
@@ -1520,15 +1604,13 @@ function VideoTypeModal({ loading, onSelect, onClose }: {
             disabled={loading || opt.disabled}
             onClick={() => {
               if (opt.disabled) return;
-              if (opt.type === 'slides') {
-                setStep('slideCount');
-              } else {
-                onSelect(opt.type);
-              }
+              if (opt.type === 'slides') setStep('slideCount');
+              else if (opt.type === 'remotion-reel') setStep('remotion-voice');
+              else onSelect(opt.type);
             }}
             className="w-full text-left p-4 rounded-xl transition-all hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             style={{
-              backgroundColor: 'rgba(255,255,255,0.03)',
+              backgroundColor: opt.type === 'remotion-reel' ? 'rgba(249,115,22,0.06)' : 'rgba(255,255,255,0.03)',
               border: `1px solid ${opt.color}33`,
             }}
           >
@@ -1538,6 +1620,11 @@ function VideoTypeModal({ loading, onSelect, onClose }: {
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{opt.label}</span>
                   <div className="flex items-center gap-2">
+                    {opt.badge && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: `${opt.color}20`, color: opt.color, border: `1px solid ${opt.color}40` }}>
+                        {opt.badge}
+                      </span>
+                    )}
                     {opt.disabled && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/30">
                         🚧 Próximamente

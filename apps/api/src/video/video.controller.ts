@@ -9,6 +9,7 @@ import { VideoCreditService } from './video-credit.service';
 import { VideoCompositorService, AVAILABLE_VOICES } from './video-compositor.service';
 import { AiDirectorService } from './ai-director.service';
 import { AvatarSceneService } from './avatar-scene.service';
+import { ReelComposerService } from './reel-composer.service';
 import type { AvatarSceneStoryboard } from './ai-director.service';
 import { VIDEO_PRESETS } from './video-presets';
 import { PlanLimitsGuard, PlanCheck, RequireFeature } from '../plans/plan-limits.guard';
@@ -28,6 +29,7 @@ export class VideoController {
     private readonly compositor: VideoCompositorService,
     private readonly aiDirector: AiDirectorService,
     private readonly avatarScene: AvatarSceneService,
+    private readonly reelComposer: ReelComposerService,
   ) {}
 
   // ── Rutas estáticas (ANTES de :id para evitar colisiones) ──
@@ -286,6 +288,38 @@ export class VideoController {
   @Post('credits/add')
   async addCredits(@Body() body: { workspaceId: string; amount: number }) {
     return this.credits.addCredits(body.workspaceId, body.amount);
+  }
+
+  // ── Remotion Reel (sin avatar) ────────────────────────────────────────────
+
+  /**
+   * POST /api/videos/render-reel — Generate a Remotion reel from an editorial run.
+   * Uses Argentine TTS voices (Elena/Tomás), VisualStyleProfile branding,
+   * and UserMedia product/logo assets. Free (local render, no external API).
+   */
+  @Post('render-reel')
+  @PlanCheck('VIDEOS')
+  async renderReel(
+    @Req() req: any,
+    @Body() body: {
+      editorialRunId: string;
+      voiceGender?: 'female' | 'male';
+      subtitleStyle?: 'pill' | 'word-by-word' | 'karaoke' | 'minimal' | 'neon' | 'kinetic';
+      aspectRatio?: '9:16' | '16:9' | '1:1';
+    },
+  ) {
+    const workspaceId = req.workspaceId;
+    if (!body.editorialRunId?.trim()) {
+      throw new BadRequestException('editorialRunId requerido');
+    }
+    this.logger.log(`Render reel: run=${body.editorialRunId}, voice=${body.voiceGender ?? 'female'}`);
+    return this.reelComposer.enqueueReel({
+      editorialRunId: body.editorialRunId,
+      workspaceId,
+      voiceGender: body.voiceGender,
+      subtitleStyle: body.subtitleStyle,
+      aspectRatio: body.aspectRatio,
+    });
   }
 
   // ── Video Compositor (Opción 1 — FFmpeg Pro) ──

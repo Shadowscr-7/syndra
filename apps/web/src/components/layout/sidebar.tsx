@@ -53,6 +53,7 @@ const allSections: SidebarSection[] = [
       { name: 'Perfiles IA', href: '/dashboard/profiles', icon: '🤖' },
       { name: 'Scheduler', href: '/dashboard/scheduler', icon: '📅' },
       { name: 'Aprobaciones', href: '/dashboard/approvals', icon: '✅' },
+      { name: 'Mis Publicaciones', href: '/dashboard/my-publications', icon: '📦' },
     ],
   },
   // ── Archivos y producción ──
@@ -60,7 +61,7 @@ const allSections: SidebarSection[] = [
     label: 'Media',
     items: [
       { name: 'Biblioteca', href: '/dashboard/media', icon: '📂' },
-      { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator', comingSoon: true },
+      { name: 'Video Pipeline', href: '/dashboard/video-pipeline', icon: '🎬', minPlan: 'creator' },
       { name: 'Editor de Video', href: '/dashboard/video-editor', icon: '✂️', minPlan: 'creator', comingSoon: true },
       { name: 'Créditos IA', href: '/dashboard/credits', icon: '💎' },
       { name: 'Assets', href: '/dashboard/assets', icon: '🖼️' },

@@ -1,5 +1,7 @@
 // Shared types for Remotion video composition
 
+export type ReelTemplate = 'product' | 'negocio' | 'testimonial' | 'default';
+
 export type SlideRole = 'slide' | 'logo' | 'product' | 'intro' | 'outro' | 'background';
 export type SlideAnimation =
   | 'ken-burns-in' | 'ken-burns-out'
@@ -68,4 +70,17 @@ export interface VideoCompositionProps {
   // Talking-head video — person speaking on camera
   // If provided: renders as full-screen base; slides appear as scene inserts
   talkingHeadVideoUrl?: string | null;
+
+  // Reel template overlay (Phase 5)
+  reelTemplate?: ReelTemplate;
+  // product template fields
+  productName?: string;
+  productPrice?: string;
+  productCta?: string;
+  // negocio template fields
+  brandName?: string;
+  tagline?: string;
+  // testimonial template fields
+  quote?: string;
+  quoteAuthor?: string;
 }

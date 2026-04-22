@@ -52,26 +52,147 @@ const COMPOSITE_MODES = [
 type Step = 'idle' | 'generating' | 'review' | 'rendering' | 'done';
 
 // ══════════════════════════════════════════════════════════════
-// MakeVideoButton — renders the trigger button
+// MakeVideoButton — renders trigger buttons (Reel + Avatar)
 // ══════════════════════════════════════════════════════════════
 
 export function MakeVideoButton({ runId, hasContent }: { runId: string; hasContent: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [openAvatar, setOpenAvatar] = useState(false);
+  const [openReel, setOpenReel]     = useState(false);
 
   if (!hasContent) return null;
 
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpenReel(true)}
+        className="btn-primary text-sm"
+        style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+      >
+        🎬 Reel Profesional
+      </button>
+
+      <button
+        onClick={() => setOpenAvatar(true)}
         className="btn-primary text-sm"
         style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
       >
-        🤖 Hacer Video Avatar
+        🤖 Video Avatar
       </button>
 
-      {open && <MakeVideoModal runId={runId} onClose={() => setOpen(false)} />}
+      {openReel   && <ReelModal   runId={runId} onClose={() => setOpenReel(false)} />}
+      {openAvatar && <MakeVideoModal runId={runId} onClose={() => setOpenAvatar(false)} />}
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ReelModal — simple voice selector → fire render_remotion_reel
+// ══════════════════════════════════════════════════════════════
+
+function ReelModal({ runId, onClose }: { runId: string; onClose: () => void }) {
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male'>('female');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'queued' | 'error'>('idle');
+  const [error, setError] = useState('');
+
+  async function handleGenerate() {
+    setStatus('loading');
+    setError('');
+    try {
+      await apiFetch('/weekly-planner/items/' + runId + '/convert-video', {
+        method: 'POST',
+        body: { type: 'remotion-reel', voiceGender },
+      }).catch(async () => {
+        // Fallback: call video endpoint directly with editorialRunId
+        await apiFetch('/videos/render-reel', {
+          method: 'POST',
+          body: { editorialRunId: runId, voiceGender },
+        });
+      });
+      setStatus('queued');
+    } catch (err: any) {
+      setError(err.message ?? 'Error al encolar el reel');
+      setStatus('error');
+    }
+  }
+
+  const voiceColor = voiceGender === 'female' ? '#ec4899' : '#3b82f6';
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ width: '100%', maxWidth: '480px', borderRadius: '1rem', overflow: 'hidden', background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }}>
+        {/* Header */}
+        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 className="font-semibold" style={{ color: 'var(--color-text)', fontSize: '1rem' }}>🎬 Reel Profesional</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              Animaciones Ken Burns · Subtítulos dinámicos · Voz IA argentina · Colores de tu marca
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '1.25rem' }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.25rem 1.5rem' }} className="space-y-4">
+          {status === 'queued' ? (
+            <div className="text-center space-y-3 py-4">
+              <div style={{ fontSize: '2.5rem' }}>✅</div>
+              <p className="font-semibold" style={{ color: '#10b981' }}>¡Reel en cola!</p>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                El reel se está renderizando en segundo plano. Aparecerá en la sección de aprobaciones cuando esté listo (puede tardar unos minutos).
+              </p>
+              <button onClick={onClose} className="btn-primary w-full" style={{ justifyContent: 'center', marginTop: '0.5rem' }}>Cerrar</button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Elegí la voz de narración. El reel usará automáticamente tus imágenes, colores de marca y logo.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { value: 'female' as const, icon: '👩', name: 'Elena', desc: 'Voz femenina argentina', color: '#ec4899' },
+                  { value: 'male'   as const, icon: '👨', name: 'Tomás', desc: 'Voz masculina argentina', color: '#3b82f6' },
+                ]).map((v) => (
+                  <button
+                    key={v.value}
+                    onClick={() => setVoiceGender(v.value)}
+                    style={{
+                      padding: '1rem', borderRadius: '0.75rem', textAlign: 'left', cursor: 'pointer', transition: 'all 0.15s',
+                      backgroundColor: voiceGender === v.value ? `${v.color}15` : 'rgba(255,255,255,0.03)',
+                      border: `2px solid ${voiceGender === v.value ? v.color : 'var(--color-border)'}`,
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{v.icon}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.875rem', color: voiceGender === v.value ? v.color : 'var(--color-text)', marginBottom: '0.15rem' }}>{v.name}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{v.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '0.625rem', padding: '0.75rem', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                💡 El reel incluirá: animaciones Ken Burns sobre tus imágenes · subtítulos con efectos dinámicos · voz de <strong style={{ color: voiceColor }}>{voiceGender === 'female' ? 'Elena Neural' : 'Tomás Neural'}</strong> · colores y logo de tu perfil de marca.
+              </div>
+
+              {error && (
+                <p style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}>{error}</p>
+              )}
+
+              <button
+                onClick={handleGenerate}
+                disabled={status === 'loading'}
+                className="btn-primary w-full"
+                style={{ justifyContent: 'center' }}
+              >
+                {status === 'loading' ? '⏳ Encolando...' : '🎬 Generar Reel'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

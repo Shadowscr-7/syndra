@@ -1,0 +1,233 @@
+{
+  "name": "Convertidor de Presupuestos Inteligente",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "convertir-presupuesto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "faaa5059-3055-4a99-bdde-93129917c925",
+      "name": "Webhook1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [48, 112],
+      "webhookId": "16510ae8-52cc-4a9b-a4ef-e92a3e745c79"
+    },
+    {
+      "parameters": {
+        "jsCode": "/* ═══════════════════════════════════════════════════\n   CONFIGURACIÓN — editá solo este nodo\n   ═══════════════════════════════════════════════════ */\n\nconst OPENAI_API_KEY = 'PEGAR_API_KEY_AQUI'; // <-- tu key de OpenAI\n\n/* ═══════════════════════════════════════════════════ */\n\n// Pasar el body del webhook hacia adelante sin modificarlo\nreturn [{\n  json: {\n    ...$input.item.json,\n    _config: { OPENAI_API_KEY }\n  }\n}];"
+      },
+      "id": "cfg-0000-0000-0000-000000000001",
+      "name": "Configuración",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 112]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst base64 = body.archivo || body.file || body.base64;\nif (!base64) throw new Error('No se recibió el campo archivo/file/base64 en el body');\nconst base64Clean = base64.replace(/^data:[^;]+;base64,/, '');\nconst nombreArchivo = body.nombre || body.filename || 'presupuesto.xlsx';\nreturn [{\n  json: { nombreArchivo, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },\n  binary: {\n    data: {\n      data: base64Clean,\n      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n      fileName: nombreArchivo,\n      fileExtension: nombreArchivo.split('.').pop()\n    }\n  }\n}];"
+      },
+      "id": "e771ab25-d0ad-43bf-8f2d-b583852a7681",
+      "name": "Decodificar base",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 112]
+    },
+    {
+      "parameters": {
+        "options": { "rawData": false }
+      },
+      "id": "f47378c3-b45a-4acd-b202-ad5e4785e3a4",
+      "name": "Leer Excel1",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [640, 112]
+    },
+    {
+      "parameters": {
+        "jsCode": "const filas = $input.all().map(item => item.json);\nconst texto = filas.map(fila => {\n  return Object.entries(fila)\n    .filter(([k, v]) => v !== null && v !== undefined && v !== '')\n    .map(([k, v]) => `${k}: ${v}`)\n    .join(' | ');\n}).join('\\n');\nconst nombreArchivo = $('Decodificar base').item.json.nombreArchivo;\nreturn [{\n  json: {\n    nombreArchivo,\n    contenidoExcel: texto,\n    cantidadFilas: filas.length\n  }\n}];"
+      },
+      "id": "b07c7669-68a7-4622-a9a8-69d4d66d5de1",
+      "name": "Preparar contenido1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 112]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM",
+          "mode": "list",
+          "cachedResultName": "Ejemplos presupuesto rgk",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [{ "lookupColumn": "aprobado", "lookupValue": "APROBADO" }]
+        },
+        "options": {}
+      },
+      "id": "01815e2f-62ad-45ef-ac25-4a4af2e023c1",
+      "name": "Buscar ejemplos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1040, 112],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0lihPm3QzXMRhkTO",
+          "name": "Google Sheets rgkgestion@gmail.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { nombreArchivo, contenidoExcel } = $('Preparar contenido1').item.json;\n\nconst ejemplosRaw = $input.all();\nconst MAX_EJEMPLOS = 6;\nconst MAX_CHARS_EJEMPLOS = 30000;\n\nlet bloqueEjemplos = '';\nconst ejemplosValidos = ejemplosRaw.filter(e => e.json.input_excel);\n\nif (ejemplosValidos.length > 0) {\n  const seleccionados = ejemplosValidos.slice(-MAX_EJEMPLOS);\n  let charsUsados = 0;\n  const bloques = [];\n\n  for (const ej of seleccionados) {\n    const inputText  = (ej.json.input_excel || '').substring(0, 8000);\n    const outputText = (ej.json.output_json || '').substring(0, 6000);\n    const bloque = `\\n--- EJEMPLO (${ej.json.nombre_archivo || 'archivo'}) ---\\nINPUT:\\n${inputText}\\nOUTPUT CORRECTO:\\n${outputText}\\n`;\n    if (charsUsados + bloque.length > MAX_CHARS_EJEMPLOS) break;\n    bloques.push(bloque);\n    charsUsados += bloque.length;\n  }\n\n  if (bloques.length > 0) {\n    bloqueEjemplos = `\\n\\nEJEMPLOS DE CONVERSIONES ANTERIORES CORRECTAS (aprendé de estos patrones):\\n`;\n    bloqueEjemplos += bloques.join('');\n    bloqueEjemplos += `\\n--- FIN DE EJEMPLOS (${bloques.length} usados de ${ejemplosValidos.length} disponibles) ---\\n`;\n  }\n}\n\nconst systemPrompt = `Sos un experto en transformación de presupuestos de construcción.\nTu tarea es convertir presupuestos de cualquier formato al formato de importación estándar.\n\nEl formato de salida es un JSON con un array de filas, cada una con estos campos:\n- Indice: string o número (ej: 1, 1.1, 1.1.1, 2, 2.1)\n- Descripcion: string\n- Codigo: string o null\n- Cantidad: número o null\n- Unidad: string (usar estas unidades estándar: tn, kg, l, un, gr, ml, m, cm, m2, m3, caja, pqt, doc, par, roll, bidon, dia, mes, glob, pomo, balde, plts, prto, hs, min, bol, mln)\n- Modo: uno de estos valores exactos: RUBRO, AGRUPADOR, COMPONENTE, ARTICULO, RECETA\n\nReglas para asignar Modo:\n- RUBRO: sección principal nivel 1. Sin cantidad propia.\n- AGRUPADOR: agrupa componentes dentro de un rubro, sin cantidad propia\n- COMPONENTE: sub-sección nivel 2 que agrupa artículos. Tiene cantidad y unidad.\n- ARTICULO: ítem concreto con cantidad y unidad. Material, servicio o mano de obra.\n- RECETA: ítem que corresponde a una mezcla existente (hormigón, pintura, revoque, etc.)\n\nReglas para el Índice:\n- RUBRO: 1, 2, 3...\n- COMPONENTE: 1.1, 1.2, 2.1...\n- ARTICULO/RECETA: 1.1.1, 1.1.2, 1.2.1...\n\nReglas para la Cantidad:\n- Si tiene fórmula Excel (ej: =250+400), calcular el resultado numérico\n- Si no tiene cantidad (rubros, agrupadores), poner null\n- Redondear a 2 decimales máximo\n${bloqueEjemplos}\nRespondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin backticks.\nFormato exacto: [{\"Indice\":\"1\",\"Descripcion\":\"...\",\"Codigo\":null,\"Cantidad\":1,\"Unidad\":\"glob\",\"Modo\":\"RUBRO\"}, ...]`;\n\nreturn [{\n  json: { nombreArchivo, contenidoExcel, systemPrompt, cantidadEjemplos: ejemplosValidos.length }\n}];"
+      },
+      "id": "2ddd266e-4e26-4954-b7fe-c240e7a8c053",
+      "name": "Armar prompt con ejemplos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 112]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { nombreArchivo, contenidoExcel, systemPrompt } = $input.item.json;\n\n// API key desde el nodo Configuración al inicio del flujo\nconst apiKey = $('Configuración').item.json._config.OPENAI_API_KEY;\nif (!apiKey || apiKey === 'PEGAR_API_KEY_AQUI') {\n  throw new Error('Configurá tu OPENAI_API_KEY en el nodo Configuración');\n}\n\nconst userPrompt = `Convertí este presupuesto al formato estándar:\\n\\nArchivo: ${nombreArchivo}\\n\\nContenido:\\n${contenidoExcel}`;\n\nconst https = require('https');\n\nconst body = JSON.stringify({\n  model: 'gpt-4o',\n  max_tokens: 8000,\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userPrompt }\n  ]\n});\n\nconst texto = await new Promise((resolve, reject) => {\n  const req = https.request({\n    hostname: 'api.openai.com',\n    path: '/v1/chat/completions',\n    method: 'POST',\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': `Bearer ${apiKey}`\n    }\n  }, (res) => {\n    let data = '';\n    res.on('data', chunk => data += chunk);\n    res.on('end', () => {\n      try {\n        const parsed = JSON.parse(data);\n        if (parsed.error) reject(new Error(parsed.error.message));\n        else resolve(parsed.choices[0].message.content.trim());\n      } catch(e) {\n        reject(new Error('Error parsing response: ' + data.substring(0, 200)));\n      }\n    });\n  });\n  req.on('error', reject);\n  req.write(body);\n  req.end();\n});\n\nlet filas;\ntry {\n  const limpio = texto.replace(/^```json\\n?/, '').replace(/\\n?```$/, '').trim();\n  filas = JSON.parse(limpio);\n} catch(e) {\n  throw new Error(`Error al parsear respuesta de IA: ${e.message}\\nRespuesta: ${texto.substring(0, 500)}`);\n}\n\nreturn [{\n  json: { nombreArchivo, contenidoExcel, filas, outputJson: texto, cantidadFilas: filas.length }\n}];"
+      },
+      "id": "576127fa-9d75-4aa7-ac77-e32bd2be5ce0",
+      "name": "OpenAI - Transformar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 112]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM",
+          "mode": "list",
+          "cachedResultName": "Ejemplos presupuesto rgk",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DNFcmOq8fzUbayGhNMp16aIOhQom5EqLs-5ND2OZQVM/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nombre_archivo": "={{ $json.nombreArchivo }}",
+            "fecha": "={{ new Date().toISOString() }}",
+            "input_excel": "={{ $json.contenidoExcel }}",
+            "output_json": "={{ $json.outputJson }}",
+            "aprobado": "PENDIENTE"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "nombre_archivo", "displayName": "nombre_archivo", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "fecha", "displayName": "fecha", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "input_excel", "displayName": "input_excel", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "output_json", "displayName": "output_json", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "aprobado", "displayName": "aprobado", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "66b371db-f99f-4487-bc88-d93d755d36f7",
+      "name": "Guardar ejemplo",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1640, 224],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0lihPm3QzXMRhkTO",
+          "name": "Google Sheets rgkgestion@gmail.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const XLSX = require('xlsx');\nconst { nombreArchivo, filas } = $input.item.json;\n\nconst headers = ['Indice', 'Descripcion', 'Codigo', 'Cantidad', 'Unidad', 'Modo'];\nconst wsData = [headers];\nfor (const fila of filas) {\n  wsData.push([\n    fila.Indice ?? '',\n    fila.Descripcion ?? '',\n    fila.Codigo ?? null,\n    fila.Cantidad ?? null,\n    fila.Unidad ?? '',\n    fila.Modo ?? ''\n  ]);\n}\nconst ws = XLSX.utils.aoa_to_sheet(wsData);\nws['!cols'] = [{ wch: 12 },{ wch: 60 },{ wch: 15 },{ wch: 12 },{ wch: 10 },{ wch: 15 }];\n\nconst configData = [\n  ['Unidad', null, null, 'Tipo', null, 'Moneda'],\n  ['Toneladas','tn',null,'RUBRO','Nivel 1','USD'],\n  ['Kilos','kg',null,'AGRUPADOR','Agrupador de componentes','ARS'],\n  ['Litros','l',null,'COMPONENTE','Nivel 2','UYU'],\n  ['Unidad','un',null,'ARTICULO','Nivel 3','COL'],\n  ['Gramo','gr',null,'RECETA','Asociado a una receta existente','PYG'],\n  ['Mililitro','ml'],['Metro','m'],['Centímetro','cm'],['Metro cuadrado','m2'],\n  ['Metro cúbico','m3'],['Caja','caja'],['Paquete','pqt'],['Docena','doc'],\n  ['Par','par'],['Rollo','roll'],['Bidón','bidon'],['Dia','dia'],['Mes','mes'],\n  ['Global','glob'],['Pomo','pomo'],['Balde','balde'],['Pallets','plts'],\n  ['Proyecto','prto'],['Horas','hs'],['Minutos','min'],['Bolsa','bol'],['Metro lineal','mln']\n];\nconst wsConfig = XLSX.utils.aoa_to_sheet(configData);\n\nconst wb = XLSX.utils.book_new();\nXLSX.utils.book_append_sheet(wb, ws, 'Presupuesto');\nXLSX.utils.book_append_sheet(wb, wsConfig, 'Configuraciones');\n\nconst buffer = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });\nconst nombreSalida = nombreArchivo.replace(/\\.(xlsx|xls)$/i, '') + '_importacion.xlsx';\n\nreturn [{\n  json: { nombreSalida, cantidadFilas: filas.length },\n  binary: {\n    data: {\n      data: buffer,\n      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n      fileName: nombreSalida,\n      fileExtension: 'xlsx'\n    }\n  }\n}];"
+      },
+      "id": "1145ac99-f5e2-4e6e-aabb-7086b8ce3240",
+      "name": "Generar Excel salida1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 112]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+              { "name": "Content-Disposition", "value": "attachment; filename=\"presupuesto_importacion.xlsx\"" }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1840, 112],
+      "id": "80ee9f61-8fd0-49c8-9cd1-15062a744a14",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "content": "## PRESUPUESTOS INTELIGENTES\n### Flujo principal: convierte + aprende de ejemplos anteriores\n\n⚙️ **Para configurar:** editá el nodo \"Configuración\" (2do nodo) y pegá tu API key de OpenAI.\n\nUsa hasta 6 ejemplos APROBADOS del Sheet (los más recientes), con cap de 30.000 chars.",
+        "height": 340,
+        "width": 2100,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "421969e3-c326-49df-9902-073c65eeae41",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "💾 Guarda cada conversión en Sheets como PENDIENTE.\nCambiá 'aprobado' a APROBADO en el Sheet\npara que se use como ejemplo futuro.",
+        "height": 120,
+        "width": 300,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1540, 384],
+      "id": "509bf340-146b-4c3e-8c99-ff46bbd67b40",
+      "name": "Sticky Note2"
+    }
+  ],
+  "connections": {
+    "Webhook1":               { "main": [[{"node": "Configuración",           "type": "main", "index": 0}]] },
+    "Configuración":          { "main": [[{"node": "Decodificar base",         "type": "main", "index": 0}]] },
+    "Decodificar base":       { "main": [[{"node": "Leer Excel1",              "type": "main", "index": 0}]] },
+    "Leer Excel1":            { "main": [[{"node": "Preparar contenido1",      "type": "main", "index": 0}]] },
+    "Preparar contenido1":    { "main": [[{"node": "Buscar ejemplos",          "type": "main", "index": 0}]] },
+    "Buscar ejemplos":        { "main": [[{"node": "Armar prompt con ejemplos","type": "main", "index": 0}]] },
+    "Armar prompt con ejemplos": { "main": [[{"node": "OpenAI - Transformar",  "type": "main", "index": 0}]] },
+    "OpenAI - Transformar":   { "main": [[
+      {"node": "Guardar ejemplo",      "type": "main", "index": 0},
+      {"node": "Generar Excel salida1","type": "main", "index": 0}
+    ]]},
+    "Generar Excel salida1":  { "main": [[{"node": "Respond to Webhook1",      "type": "main", "index": 0}]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -11,6 +11,7 @@ import { TelegramBotService } from '../telegram/telegram-bot.service';
 import { ContentService } from '../content/content.service';
 import { MediaEngineService } from '../media/media-engine.service';
 import { VideoService } from '../video/video.service';
+import { ReelComposerService } from '../video/reel-composer.service';
 import { CreditService, CREDIT_COSTS } from '../credits/credits.service';
 import { BackgroundTasksService } from '../media/background-tasks.service';
 
@@ -60,6 +61,7 @@ export class WeeklyPlannerService {
     private readonly contentService: ContentService,
     private readonly mediaEngine: MediaEngineService,
     private readonly videoService: VideoService,
+    private readonly reelComposer: ReelComposerService,
     private readonly creditService: CreditService,
     private readonly backgroundTasks: BackgroundTasksService,
   ) {}
@@ -610,10 +612,30 @@ export class WeeklyPlannerService {
   }
 
   /** Convert publication to video */
-  async convertToVideo(itemId: string, workspaceId: string, videoType?: 'slides' | 'video' | 'avatar', slideCount?: number) {
+  async convertToVideo(
+    itemId: string,
+    workspaceId: string,
+    videoType?: 'slides' | 'video' | 'avatar' | 'remotion-reel',
+    slideCount?: number,
+    voiceGender?: 'female' | 'male',
+  ) {
     const { editorialRunId, versionId, isDirect, batchId } = await this.getMainVersionId(itemId, workspaceId);
 
-    // Charge credits based on video type (slides=0, video=15, avatar=25)
+    // ── Remotion Reel (no avatar, async local render, Argentine TTS) ──
+    if (videoType === 'remotion-reel') {
+      const result = await this.reelComposer.enqueueReel({
+        editorialRunId,
+        workspaceId,
+        voiceGender: voiceGender ?? 'female',
+      });
+      if (!isDirect) {
+        await this.prisma.plannedPublication.update({ where: { id: itemId }, data: { status: 'MODIFIED' } });
+        await this.updateBatchStatus(batchId!);
+      }
+      return result;
+    }
+
+    // ── Charge credits for other video types ──
     if (videoType) {
       await this.creditService.consumeCredits(
         workspaceId,

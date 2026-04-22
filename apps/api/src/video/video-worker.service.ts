@@ -5,6 +5,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { QueueService } from '../queue/queue.service';
 import { VideoService } from './video.service';
+import { ReelComposerService } from './reel-composer.service';
 import { QUEUES, MAX_RETRIES } from '@automatismos/shared';
 
 const POLL_INTERVAL_MS = 10_000; // Cada 10s (videos tardan minutos)
@@ -21,6 +22,7 @@ export class VideoWorkerService implements OnModuleInit {
   constructor(
     private readonly queueService: QueueService,
     private readonly videoService: VideoService,
+    private readonly reelComposer: ReelComposerService,
   ) {}
 
   onModuleInit() {
@@ -59,8 +61,19 @@ export class VideoWorkerService implements OnModuleInit {
 
     try {
       if (type === 'generate_video' || type === 'generate_avatar') {
-        // Iniciar polling del render status
+        // Iniciar polling del render status (HeyGen/KIE async jobs)
         await this.startRenderPolling(mediaAssetId, editorialRunId, String(job.msgId));
+      } else if (type === 'render_remotion_reel') {
+        // Remotion reel: render locally in background (blocking, but in worker thread)
+        const reelMediaAssetId = payload['mediaAssetId'] as string;
+        await this.reelComposer.processReel({
+          mediaAssetId: reelMediaAssetId,
+          editorialRunId,
+          workspaceId: payload['workspaceId'] as string,
+          voiceGender: (payload['voiceGender'] as 'female' | 'male') ?? 'female',
+          subtitleStyle: payload['subtitleStyle'] as any ?? undefined,
+          aspectRatio: (payload['aspectRatio'] as '9:16' | '16:9' | '1:1') ?? '9:16',
+        });
       }
     } catch (error) {
       this.logger.error(`Video job failed: ${error}`);

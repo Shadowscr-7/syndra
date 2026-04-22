@@ -1,0 +1,91 @@
+{
+  "name": "Instagram Funnel Bot - Julio Gomez",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["comments", "messages", "mentions"],
+        "options": {}
+      },
+      "id": "a1111111-1111-1111-1111-111111111111",
+      "name": "Instagram Trigger",
+      "type": "n8n-nodes-instagram.instagramTrigger",
+      "typeVersion": 1,
+      "position": [240, 360],
+      "webhookId": "ig-funnel-trigger",
+      "credentials": {
+        "instagramWebhookApi": {
+          "id": "PENDIENTE",
+          "name": "Instagram Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/* ============================================================\n   STATE MACHINE + ENVIO DE MENSAJES\n   Credencial instagramApi se usa en los nodos de accion.\n   Para adjuntos (video/imagen/audio) se usa el token via $vars:\n     IG_ACCESS_TOKEN -> Long-lived Page Access Token\n     IG_PAGE_ID      -> ID numerico de la cuenta Instagram\n     SALES_LINK      -> Link de venta\n     VIDEO_GHOST_FACELESS, IMAGE_PACK_EXTREMO, AUDIO_VENTAS\n     IMAGEN_ALUMNOS_1 .. IMAGEN_ALUMNOS_6\n   ============================================================ */\n\nconst ACCESS_TOKEN = $vars.IG_ACCESS_TOKEN || '';\nconst PAGE_ID      = $vars.IG_PAGE_ID      || '';\nconst SALES_LINK   = $vars.SALES_LINK      || 'https://tu-link-de-venta.com';\n\nconst MEDIA = {\n  VIDEO_GHOST_FACELESS: $vars.VIDEO_GHOST_FACELESS || '',\n  IMAGE_PACK_EXTREMO:   $vars.IMAGE_PACK_EXTREMO   || '',\n  AUDIO_VENTAS:         $vars.AUDIO_VENTAS         || '',\n  IMAGEN_ALUMNOS_1:     $vars.IMAGEN_ALUMNOS_1     || '',\n  IMAGEN_ALUMNOS_2:     $vars.IMAGEN_ALUMNOS_2     || '',\n  IMAGEN_ALUMNOS_3:     $vars.IMAGEN_ALUMNOS_3     || '',\n  IMAGEN_ALUMNOS_4:     $vars.IMAGEN_ALUMNOS_4     || '',\n  IMAGEN_ALUMNOS_5:     $vars.IMAGEN_ALUMNOS_5     || '',\n  IMAGEN_ALUMNOS_6:     $vars.IMAGEN_ALUMNOS_6     || '',\n};\n\nconst delay = ms => new Promise(r => setTimeout(r, ms));\n\nasync function sendDM(userId, message) {\n  const res = await fetch(`https://graph.facebook.com/v21.0/${PAGE_ID}/messages`, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ACCESS_TOKEN}` },\n    body: JSON.stringify({ recipient: { id: userId }, message, messaging_type: 'RESPONSE' })\n  });\n  const data = await res.json();\n  if (data.error) console.error('[sendDM]', JSON.stringify(data.error));\n  return data;\n}\n\nasync function sendAttachment(userId, type, url) {\n  return sendDM(userId, { attachment: { type, payload: { url, is_reusable: true } } });\n}\n\n/* --- Parseo del trigger --- */\nconst item = $input.first().json;\nconst field = item.field || '';\n\nlet eventType = 'unknown';\nlet senderId  = null;\nlet senderName = 'amigo';\nlet messageText = '';\nlet commentId = null;\n\nif (field === 'messages') {\n  eventType   = 'dm';\n  senderId    = item.sender?.id;\n  messageText = item.message?.text || '';\n  // Story reply / story mention via messaging\n  const atts  = item.message?.attachments || [];\n  if (atts.some(a => a.type === 'story_mention')) eventType = 'story_mention';\n  if (atts.some(a => a.type === 'story_reply'))   eventType = 'story_reply';\n} else if (field === 'comments') {\n  eventType   = 'comment';\n  senderId    = item.value?.from?.id;\n  senderName  = item.value?.from?.username || item.value?.from?.name || 'amigo';\n  commentId   = item.value?.id;\n  messageText = item.value?.text || '';\n} else if (field === 'mentions') {\n  eventType   = 'story_mention';\n  senderId    = item.sender?.id || item.value?.commenter_id;\n  senderName  = item.value?.from?.username || 'amigo';\n  messageText = item.value?.text || '';\n}\n\nif (!senderId) return [{ json: { status: 'no_sender_id', field } }];\n\n/* --- State machine --- */\nconst sd = $getWorkflowStaticData('global');\nif (!sd.users) sd.users = {};\nif (!sd.users[senderId]) sd.users[senderId] = { state: 0, name: senderName };\nconst user = sd.users[senderId];\nconst text = (messageText || '').toLowerCase().trim();\nif (senderName !== 'amigo') user.name = senderName;\nconst name = user.name || 'amigo';\n\nconst KW = ['nexus','informacion','información','obtener','informações','info'];\nconst hasKW = KW.some(k => text.includes(k));\n\nlet action = 'none';\nif (['comment','story_mention','story_reply'].includes(eventType)) {\n  action = 'send_step_0'; user.state = 1; user.commentId = commentId;\n} else if (eventType === 'dm') {\n  if      (user.state === 0 || hasKW)                                               { action = 'send_step_0'; user.state = 1; }\n  else if (user.state === 1 && (text.includes('me gustar') || text.includes('💪'))) { action = 'send_step_1'; user.state = 2; }\n  else if (user.state === 2 && (text.includes('me gustar') || text.includes('💪'))) { action = 'send_step_2'; user.state = 3; }\n  else if (user.state === 3 && (text.includes('si elias') || text.includes('🤯')))  { action = 'send_step_3'; user.state = 4; }\n  else if (user.state === 4 &&  text.includes('si elias'))                          { action = 'send_step_4'; user.state = 5; }\n}\nsd.users[senderId] = user;\n\nif (action === 'none') return [{ json: { status: 'no_action', state: user.state } }];\n\n/* ============================================================\n   PASO 0 - Intro\n   La respuesta al comentario la maneja el nodo 'Responder Comentario'\n   Este nodo solo envia el DM inicial\n   ============================================================ */\nif (action === 'send_step_0') {\n  await sendDM(senderId, {\n    text: `¡Hola ${name}, gracias por tu interes en querer emprender! 🙌\\n\\nEstoy emocionado de compartir mas detalles contigo de como es que hoy en dia podes generar mas ingresos con tus redes sociales.\\n\\n¿Conoces ya sobre negocios digitales? Por favor elegi una respuesta de aqui abajo 👇`,\n    quick_replies: [{ content_type: 'text', title: 'me gustaría Elias 💪', payload: 'STEP1_YES' }]\n  });\n}\n\n/* ============================================================\n   PASO 1 - Ghost Faceless + Video\n   ============================================================ */\nelse if (action === 'send_step_1') {\n  await sendDM(senderId, { text: `Genial! Te paso a comentar que es METODO GHOST FACELESS 👻\\n\\nEste metodo permite tener un producto digital YA CREADO Y LISTO PARA DEJARTE GANANCIAS desde la primera semana gracias a las clases virtuales para poner en practica los 5 pasos del negocio.\\n\\n¿Te imaginas hacer 2000 USD extra por mes solo subiendo contenido previamente creado? 🤯 Podés verlo en mi destacada VIP 👆` });\n  await delay(1000);\n  await sendAttachment(senderId, 'video', MEDIA.VIDEO_GHOST_FACELESS);\n  await delay(1500);\n  await sendDM(senderId, {\n    text: `Aca podes ver como recibo pagos en automatico y es lo que quiero que aprendas hoy... ¿Te gustaria? 🚀`,\n    quick_replies: [{ content_type: 'text', title: 'me gustaría Elias 💪', payload: 'STEP2_YES' }]\n  });\n}\n\n/* ============================================================\n   PASO 2 - Pack Extremo\n   ============================================================ */\nelse if (action === 'send_step_2') {\n  await sendDM(senderId, { text: `¿Estas listo para convertirte en un maestro del marketing? 🚀\\n\\nCon el Pack Extremo tenes todo para generar 2.000 USD al mes 🤩\\n\\n🗓️ Guias de 90 dias\\n🚀 Planes de lanzamiento\\n🧲 101 Llamados a la accion\\n💥 101 Ganchos para Reels\\n🎬 Pack de videos Faceless\\n\\nTodo esto por menos de 30 USD! 🤯` });\n  await delay(1000);\n  await sendAttachment(senderId, 'image', MEDIA.IMAGE_PACK_EXTREMO);\n  await delay(1000);\n  await sendDM(senderId, {\n    text: `¿Te gustaria ver resultados de alumnos ya ganando con el Pack Emprender? 👀`,\n    quick_replies: [{ content_type: 'text', title: 'si Elias!! 🤯', payload: 'STEP3_YES' }]\n  });\n}\n\n/* ============================================================\n   PASO 3 - Resultados de alumnos (6 imagenes)\n   ============================================================ */\nelse if (action === 'send_step_3') {\n  await sendDM(senderId, { text: 'TE DEJO ACA DEBAJO GANANCIAS DE ALUMNOS 👇👇' });\n  await delay(500);\n  for (const k of ['IMAGEN_ALUMNOS_1','IMAGEN_ALUMNOS_2','IMAGEN_ALUMNOS_3','IMAGEN_ALUMNOS_4','IMAGEN_ALUMNOS_5','IMAGEN_ALUMNOS_6']) {\n    await sendAttachment(senderId, 'image', MEDIA[k]);\n    await delay(800);\n  }\n  await sendDM(senderId, {\n    text: 'TE GUSTARIA COMENZAR Y SER UNO DE ELLOS? TAMBIEN VAS A RECIBIR LA FORMULA DE MI BOT AUTOMATICO DE GANANCIAS 🤖💰',\n    quick_replies: [{ content_type: 'text', title: 'SI ELIAS!!', payload: 'STEP4_YES' }]\n  });\n}\n\n/* ============================================================\n   PASO 4 - Audio + Link de venta\n   ============================================================ */\nelse if (action === 'send_step_4') {\n  await sendDM(senderId, { text: `${name.toUpperCase()}\\nESCUCHA ATENTAMENTE ESTE AUDIO 🎧` });\n  await delay(500);\n  await sendAttachment(senderId, 'audio', MEDIA.AUDIO_VENTAS);\n  await delay(2000);\n  await sendDM(senderId, { text: `AHORA SI PASEMOS A LA MEJOR PARTE 🔥\\n\\nTe dejo el link a nuestra pagina CON EL DESCUENTO DEL 50% 👇\\n\\n${SALES_LINK}` });\n}\n\nreturn [{ json: { action, senderId, senderName: name, commentId: user.commentId || commentId, state: user.state, eventType } }];"
+      },
+      "id": "d4444444-4444-4444-4444-444444444444",
+      "name": "State Machine + Envio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-is-comment",
+              "leftValue": "={{ $json.eventType }}",
+              "rightValue": "comment",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5555555-5555-5555-5555-555555555555",
+      "name": "Es comentario?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 360]
+    },
+    {
+      "parameters": {
+        "resource": "comments",
+        "operation": "sendPrivateReply",
+        "node": "={{ $vars.IG_PAGE_ID }}",
+        "graphApiVersion": "v21.0",
+        "commentId": "={{ $json.commentId }}",
+        "privateReplyText": "={{ '¡Hola ' + $json.senderName + '! Te acabo de enviar un mensaje privado con mas informacion 🚀' }}"
+      },
+      "id": "f6666666-6666-6666-6666-666666666666",
+      "name": "Responder Comentario",
+      "type": "n8n-nodes-instagram.instagram",
+      "typeVersion": 1,
+      "position": [960, 260],
+      "credentials": {
+        "instagramApi": {
+          "id": "PENDIENTE",
+          "name": "Instagram API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Instagram Trigger": {
+      "main": [[{"node": "State Machine + Envio", "type": "main", "index": 0}]]
+    },
+    "State Machine + Envio": {
+      "main": [[{"node": "Es comentario?", "type": "main", "index": 0}]]
+    },
+    "Es comentario?": {
+      "main": [
+        [{"node": "Responder Comentario", "type": "main", "index": 0}],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

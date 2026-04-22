@@ -19,6 +19,11 @@ import type {
   OverlayTheme,
   SubtitleStyle,
 } from './types';
+import {
+  ProductReelOverlay,
+  NegocioReelOverlay,
+  TestimonialReelOverlay,
+} from './ReelTemplates';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const clamp = (v: number, min = 0, max = 1) => Math.min(max, Math.max(min, v));
@@ -760,6 +765,14 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
   stylePrompt = '',
   accentColor: propAccentColor = '#FFD700',
   talkingHeadVideoUrl,
+  reelTemplate,
+  productName,
+  productPrice,
+  productCta,
+  brandName,
+  tagline,
+  quote,
+  quoteAuthor,
 }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
@@ -877,6 +890,17 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
           />
         )}
 
+        {/* Reel template overlays */}
+        {reelTemplate === 'product' && (
+          <ProductReelOverlay accentColor={effectiveAccent} productName={productName} productPrice={productPrice} productCta={productCta} logoUrl={effectiveLogoUrl} />
+        )}
+        {reelTemplate === 'negocio' && (
+          <NegocioReelOverlay accentColor={effectiveAccent} brandName={brandName} tagline={tagline} logoUrl={effectiveLogoUrl} />
+        )}
+        {reelTemplate === 'testimonial' && (
+          <TestimonialReelOverlay accentColor={effectiveAccent} quote={quote} author={quoteAuthor} />
+        )}
+
         {/* Audio: TTS comes from the video itself (muted=false above), music is added */}
         {musicAudioSrc && <Audio src={musicAudioSrc} volume={musicVolume * 0.4} />}
       </AbsoluteFill>
@@ -923,6 +947,17 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({
           groups={subtitleGroups} subtitleStyle={subtitleStyle}
           accentColor={effectiveAccent} sizeBoost={subtitleSizeBoost}
         />
+      )}
+
+      {/* Reel template overlays */}
+      {reelTemplate === 'product' && (
+        <ProductReelOverlay accentColor={effectiveAccent} productName={productName} productPrice={productPrice} productCta={productCta} logoUrl={effectiveLogoUrl} />
+      )}
+      {reelTemplate === 'negocio' && (
+        <NegocioReelOverlay accentColor={effectiveAccent} brandName={brandName} tagline={tagline} logoUrl={effectiveLogoUrl} />
+      )}
+      {reelTemplate === 'testimonial' && (
+        <TestimonialReelOverlay accentColor={effectiveAccent} quote={quote} author={quoteAuthor} />
       )}
 
       {ttsAudioSrc   && <Audio src={ttsAudioSrc}   volume={1} />}
