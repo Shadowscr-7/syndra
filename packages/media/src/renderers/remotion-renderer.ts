@@ -76,10 +76,12 @@ export interface RemotionRenderResult {
   tempDir: string;
 }
 
+// 720p for server-side rendering — much lighter on 2 vCPU than 1080p
+// Reels (9:16) and Stories still look great at 720×1280 on mobile
 const ASPECT_DIMENSIONS: Record<string, { w: number; h: number }> = {
-  '9:16': { w: 1080, h: 1920 },
-  '16:9': { w: 1920, h: 1080 },
-  '1:1': { w: 1080, h: 1080 },
+  '9:16': { w: 720, h: 1280 },
+  '16:9': { w: 1280, h: 720 },
+  '1:1': { w: 720, h: 720 },
 };
 
 const FPS = 30;
@@ -176,11 +178,13 @@ export class RemotionVideoRenderer {
       const { renderMedia, selectComposition } = await import('@remotion/renderer');
       const chromiumPath = this.findChromium();
 
-      // disableWebSecurity allows Chromium (http://localhost:3000) to load
-      // file:// resources — safe here since this is a server-side headless renderer
+      // disableWebSecurity allows Chromium to load file:// and data: resources.
+      // gl:'swiftshader' is the recommended software renderer for headless Linux servers
+      // — prevents GPU-related hangs on the last frame.
       const chromiumOptions = {
         enableMultiProcessOnLinux: true,
         disableWebSecurity: true,
+        gl: 'swiftshader' as const,
       };
 
       const composition = await this.withTimeout(
@@ -208,22 +212,27 @@ export class RemotionVideoRenderer {
           },
           serveUrl: bundleUrl,
           codec: 'h264',
-          x264Preset: 'fast',              // faster encoding with minimal quality loss
+          // 'ultrafast' uses more disk/bitrate but frees CPU for Chromium to render —
+          // critical on 2 vCPU servers to prevent the encoder from starving frame rendering.
+          x264Preset: 'ultrafast',
           outputLocation: outputPath,
           inputProps,
-          concurrency: 2,
-          timeoutInMilliseconds: 60_000,   // per-frame timeout (Remotion native)
+          // concurrency:1 avoids Chromium + FFmpeg competing for the same 2 cores
+          concurrency: 1,
+          timeoutInMilliseconds: 90_000,   // 90s per-frame timeout
           chromiumOptions,
           browserExecutable: chromiumPath,
-          onProgress: ({ renderedFrames, encodedFrames }) => {
+          onProgress: ({ renderedFrames, encodedFrames, stitchStage }) => {
             const now = Date.now();
-            if (now - lastProgressLog > 15_000) { // log every 15s
+            if (now - lastProgressLog > 10_000) { // log every 10s
               const renderPct = Math.round((renderedFrames / durationInFrames) * 100);
               const encodePct = Math.round((encodedFrames / durationInFrames) * 100);
-              if (renderedFrames >= durationInFrames) {
-                console.log(`[Remotion] Encoding ${encodePct}% (${encodedFrames}/${durationInFrames} frames encoded, stitching...)`);
+              if (stitchStage === 'muxing') {
+                console.log(`[Remotion] Muxing audio+video... (${encodePct}% encoded)`);
+              } else if (renderedFrames >= durationInFrames) {
+                console.log(`[Remotion] All frames rendered — encoding ${encodePct}% (${encodedFrames}/${durationInFrames})`);
               } else {
-                console.log(`[Remotion] Rendering ${renderPct}% (${renderedFrames}/${durationInFrames} frames rendered, encoded: ${encodePct}%)`);
+                console.log(`[Remotion] Rendering ${renderPct}% (${renderedFrames}/${durationInFrames} frames) | Encoding ${encodePct}%`);
               }
               lastProgressLog = now;
             }

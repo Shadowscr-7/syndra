@@ -562,7 +562,10 @@ export class VideoCompositorService {
    * Get total VTT duration in ms from the last cue's end time.
    */
   private getVttDurationMs(vtt: string): number {
-    const timeRegex = /-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/g;
+    // Edge TTS generates VTT with format: MM:SS.mmm or HH:MM:SS.mmm
+    // We capture all end timestamps (after -->) and return the last one.
+    // Regex handles both 2-part (mm:ss.mmm) and 3-part (hh:mm:ss.mmm) formats.
+    const timeRegex = /--> *(\d{1,2}:\d{2}(?::\d{2})?[.,]\d{1,3})/g;
     let lastEnd = 0;
     let match: RegExpExecArray | null;
     while ((match = timeRegex.exec(vtt)) !== null) {
@@ -572,11 +575,21 @@ export class VideoCompositorService {
   }
 
   private timeToMs(timestamp: string): number {
-    const parts = timestamp.split(':');
-    const h = parseInt(parts[0]!, 10);
-    const m = parseInt(parts[1]!, 10);
-    const [s, ms] = parts[2]!.split('.');
-    return h * 3600000 + m * 60000 + parseInt(s!, 10) * 1000 + parseInt(ms!, 10);
+    // Normalize separator: VTT allows both '.' and ','
+    const normalized = timestamp.replace(',', '.');
+    const parts = normalized.split(':');
+    if (parts.length === 3) {
+      // HH:MM:SS.mmm
+      const h = parseInt(parts[0]!, 10);
+      const m = parseInt(parts[1]!, 10);
+      const [s, ms] = parts[2]!.split('.');
+      return h * 3_600_000 + m * 60_000 + parseInt(s!, 10) * 1_000 + parseInt((ms ?? '0').padEnd(3, '0').slice(0, 3), 10);
+    } else {
+      // MM:SS.mmm
+      const m = parseInt(parts[0]!, 10);
+      const [s, ms] = parts[1]!.split('.');
+      return m * 60_000 + parseInt(s!, 10) * 1_000 + parseInt((ms ?? '0').padEnd(3, '0').slice(0, 3), 10);
+    }
   }
 
   // ── Upload ──
