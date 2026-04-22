@@ -36,6 +36,7 @@ export const RemotionRoot: React.FC = () => {
           techGrid: true,
           particles: true,
           musicVolume: 0.22,
+          renderMode: 'video',
         }}
       />
     </>

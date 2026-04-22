@@ -377,6 +377,10 @@ export class RemotionVideoRenderer {
         gl: 'swiftshader' as const,
       };
 
+      // For stills, use carousel renderMode (skips entrance animations, fully rendered).
+      // For video, use default 'video' mode so animations play through.
+      const renderMode = input.mode === 'stills' ? 'carousel' : 'video';
+
       const inputProps = {
         slides: input.slides,
         framesPerSlide,
@@ -391,6 +395,7 @@ export class RemotionVideoRenderer {
         ttsAudioUrl: input.ttsAudioUrl,
         musicAudioUrl: input.musicAudioUrl,
         musicVolume: input.musicVolume ?? 0.22,
+        renderMode,
       };
 
       const { selectComposition } = await import('@remotion/renderer');
@@ -413,7 +418,7 @@ export class RemotionVideoRenderer {
         const outputPaths: string[] = [];
 
         for (let i = 0; i < input.slides.length; i++) {
-          const frame = i * framesPerSlide + 8; // offset a bit for entrance anim to settle
+          const frame = i * framesPerSlide + Math.floor(framesPerSlide / 2); // mid-frame: fully rendered, no animation interruption
           const outputPath = join(tempDir, `slide-${i + 1}.jpg`);
 
           await this.withTimeout(
