@@ -381,6 +381,75 @@ export class VideoController {
   // ── Kie AI Reels (Opción 2 — Kling 2.6) ──
 
   /**
+   * POST /api/videos/compositor/render-manual — Render tech carousel / manual video
+   */
+  @Post('compositor/render-manual')
+  async renderManual(
+    @Req() req: any,
+    @Body() body: {
+      slides: Array<{
+        text: string;
+        imageId?: string;
+        imageUrl?: string;
+        role?: 'hook' | 'body' | 'cta' | 'slide';
+        caption?: string;
+      }>;
+      outputType?: 'video' | 'carousel';
+      aspectRatio?: '9:16' | '16:9' | '1:1';
+      palette?: 'tech-azul' | 'anthropic' | 'openai' | 'google' | 'dark-purple' | 'custom';
+      accentColor?: string;
+      handle?: string;
+      logoId?: string;
+      techGrid?: boolean;
+      particles?: boolean;
+      enableTTS?: boolean;
+      narrationText?: string;
+      voiceId?: string;
+      voiceSpeed?: 'slow' | 'normal' | 'fast';
+      voiceEngine?: 'edge' | 'piper';
+      enableSubtitles?: boolean;
+      subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon';
+      enableMusic?: boolean;
+      musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
+    },
+  ) {
+    const userId = req.user?.sub;
+    const workspaceId = req.workspaceId;
+
+    if (!body.slides?.length) {
+      throw new BadRequestException('Se necesita al menos un slide');
+    }
+    if (body.slides.length > 20) {
+      throw new BadRequestException('Máximo 20 slides');
+    }
+
+    this.logger.log(`Manual render: ${body.slides.length} slides, output=${body.outputType ?? 'carousel'}`);
+
+    return this.compositor.renderManual({
+      workspaceId,
+      userId,
+      slides: body.slides,
+      outputType: body.outputType ?? 'carousel',
+      aspectRatio: body.aspectRatio,
+      palette: body.palette,
+      accentColor: body.accentColor,
+      handle: body.handle,
+      logoId: body.logoId,
+      techGrid: body.techGrid,
+      particles: body.particles,
+      enableTTS: body.enableTTS,
+      narrationText: body.narrationText,
+      voiceId: body.voiceId,
+      voiceSpeed: body.voiceSpeed,
+      voiceEngine: body.voiceEngine,
+      enableSubtitles: body.enableSubtitles,
+      subtitleStyle: body.subtitleStyle,
+      enableMusic: body.enableMusic,
+      musicStyle: body.musicStyle,
+    });
+  }
+
+  /**
    * POST /api/videos/kie-reels/render — Generar reel con Kie AI (Kling 2.6)
    */
   @Post('kie-reels/render')

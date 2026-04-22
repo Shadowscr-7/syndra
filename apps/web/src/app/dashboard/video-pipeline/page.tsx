@@ -480,10 +480,41 @@ export default function VideoPipelinePage() {
       };
       setJobs(prev => [optimisticJob, ...prev]);
 
-      await apiFetch('/videos/compositor/render', {
-        method: 'POST',
-        body,
-      });
+      if (contentMode === 'manual') {
+        // ── Manual mode → CarouselComposition ──
+        await apiFetch('/videos/compositor/render-manual', {
+          method: 'POST',
+          body: {
+            slides: manualSlides.map((s, i) => ({
+              text: s.text,
+              imageId: s.imageId || undefined,
+              imageUrl: s.imageUrl || undefined,
+              role: i === 0 ? 'hook' : i === manualSlides.length - 1 ? 'cta' : 'body',
+            })),
+            outputType,
+            aspectRatio: outputType === 'carousel' ? '1:1' : compAspect,
+            palette: 'tech-azul',
+            handle: undefined,
+            techGrid: true,
+            particles: true,
+            enableTTS: manualEnableTTS,
+            narrationText: manualEnableTTS ? manualSlides.map(s => s.text).join('\n') : undefined,
+            voiceId: compVoiceId,
+            voiceSpeed: compVoiceSpeed,
+            voiceEngine: compVoiceEngine,
+            enableSubtitles: compSubtitles,
+            subtitleStyle: compSubtitleStyle,
+            enableMusic: compMusic,
+            musicStyle: compMusic ? compMusicStyle : undefined,
+          },
+        });
+      } else {
+        // ── Auto mode → VideoComposition (existing) ──
+        await apiFetch('/videos/compositor/render', {
+          method: 'POST',
+          body,
+        });
+      }
       setCompNarration('');
       setCompImageIds([]);
       setImagePrompts([]);

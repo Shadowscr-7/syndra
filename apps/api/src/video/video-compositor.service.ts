@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditService } from '../credits/credits.service';
 import { RemotionVideoRenderer } from '@automatismos/media';
-import type { SubtitleGroupInput, ImageSlideInput } from '@automatismos/media';
+import type { SubtitleGroupInput, ImageSlideInput, CarouselRenderInput, CarouselSlideInput } from '@automatismos/media';
 import { EdgeTTSAdapter } from '@automatismos/media';
 import { PiperTTSAdapter } from '@automatismos/media';
 import { KieMusicAdapter, KieImageProAdapter } from '@automatismos/media';
@@ -78,6 +78,51 @@ export interface CompositorResult {
   hasAudio: boolean;
   hasSubtitles: boolean;
   hasMusic: boolean;
+  creditsUsed: number;
+}
+
+// ── Manual / Carousel input ──
+
+export interface ManualSlideInput {
+  text: string;
+  imageId?: string;    // UserMedia ID (optional)
+  imageUrl?: string;   // Direct URL (optional)
+  role?: 'hook' | 'body' | 'cta' | 'slide';
+  caption?: string;
+}
+
+export interface ManualCompositorInput {
+  workspaceId: string;
+  userId: string;
+
+  slides: ManualSlideInput[];
+  outputType: 'video' | 'carousel';
+  aspectRatio?: '9:16' | '16:9' | '1:1';
+
+  // Palette / visual theme
+  palette?: 'tech-azul' | 'anthropic' | 'openai' | 'google' | 'dark-purple' | 'custom';
+  accentColor?: string;
+  handle?: string;
+  logoId?: string;
+  techGrid?: boolean;
+  particles?: boolean;
+
+  // Audio (only if outputType === 'video')
+  enableTTS?: boolean;
+  narrationText?: string;
+  voiceId?: string;
+  voiceSpeed?: 'slow' | 'normal' | 'fast';
+  voiceEngine?: 'edge' | 'piper';
+  enableSubtitles?: boolean;
+  subtitleStyle?: 'pill' | 'minimal' | 'word-by-word' | 'karaoke' | 'neon';
+  enableMusic?: boolean;
+  musicStyle?: 'upbeat' | 'calm' | 'corporate' | 'energetic' | 'cinematic';
+}
+
+export interface ManualCompositorResult {
+  /** Single video URL (video mode) OR array of image URLs (carousel mode) */
+  outputUrls: string[];
+  outputType: 'video' | 'carousel';
   creditsUsed: number;
 }
 
@@ -290,6 +335,176 @@ export class VideoCompositorService {
       this.logger.error(`Compositor render failed: ${error.message}`);
       throw error;
     }
+  }
+
+  // ── renderManual — Tech carousel / manual video with CarouselComposition ──
+
+  async renderManual(input: ManualCompositorInput): Promise<ManualCompositorResult> {
+    const { workspaceId, userId } = input;
+
+    // Credits: 2 for carousel stills, 3 for video, +3 for music
+    let totalCredits = input.outputType === 'carousel' ? 2 : 3;
+    if (input.enableMusic && input.outputType === 'video') totalCredits += 3;
+
+    const hasCredits = await this.credits.hasEnoughCredits(workspaceId, totalCredits);
+    if (!hasCredits) {
+      throw new BadRequestException(`Créditos insuficientes. Necesitas ${totalCredits} créditos.`);
+    }
+
+    this.logger.log(`Starting manual render: ${input.slides.length} slides, output=${input.outputType}, credits=${totalCredits}`);
+
+    try {
+      // 1. Resolve image URLs for each slide
+      const carouselSlides: CarouselSlideInput[] = [];
+      for (let i = 0; i < input.slides.length; i++) {
+        const s = input.slides[i]!;
+        let imageUrl: string | undefined;
+        if (s.imageId) {
+          imageUrl = await this.resolveMediaUrl(s.imageId, userId);
+        } else if (s.imageUrl) {
+          imageUrl = s.imageUrl;
+        }
+
+        carouselSlides.push({
+          text: s.text,
+          imageUrl: imageUrl ? this.toDataUrl(imageUrl) : undefined,
+          role: s.role ?? (i === 0 ? 'hook' : i === input.slides.length - 1 ? 'cta' : 'body'),
+          caption: s.caption,
+        });
+      }
+
+      // 2. Resolve logo
+      let logoUrl: string | undefined;
+      if (input.logoId) {
+        const raw = await this.resolveMediaUrl(input.logoId, userId);
+        if (raw) logoUrl = this.toDataUrl(raw);
+      }
+
+      // 3. TTS + Music (only for video mode)
+      let ttsAudioUrl: string | undefined;
+      let musicAudioUrl: string | undefined;
+
+      if (input.outputType === 'video' && input.enableTTS && input.narrationText?.trim()) {
+        const ttsResult = await this.generateTTS({
+          narrationText: input.narrationText,
+          voiceId: input.voiceId,
+          voiceSpeed: input.voiceSpeed,
+          voiceEngine: input.voiceEngine,
+        } as any);
+        ttsAudioUrl = this.toFileUrl(ttsResult.url);
+      }
+
+      if (input.outputType === 'video' && input.enableMusic) {
+        musicAudioUrl = await this.generateMusic(input.musicStyle ?? 'upbeat');
+      }
+
+      // 4. Determine aspect ratio — carousel defaults to 1:1
+      const aspectRatio = input.aspectRatio ?? (input.outputType === 'carousel' ? '1:1' : '9:16');
+
+      // 5. Build carousel render input
+      const renderInput: CarouselRenderInput = {
+        slides: carouselSlides,
+        mode: input.outputType === 'carousel' ? 'stills' : 'video',
+        aspectRatio,
+        framesPerSlide: 90,
+        accentColor: input.accentColor,
+        palette: input.palette ?? 'tech-azul',
+        handle: input.handle ?? '@syndra',
+        logoUrl,
+        techGrid: input.techGrid ?? true,
+        particles: input.particles ?? true,
+        ttsAudioUrl,
+        musicAudioUrl,
+        musicVolume: 0.22,
+      };
+
+      // 6. Render
+      const renderer = new RemotionVideoRenderer();
+      const result = await renderer.renderCarousel(renderInput);
+
+      // 7. Upload outputs
+      const outputUrls: string[] = [];
+      for (const filePath of result.outputPaths) {
+        if (input.outputType === 'carousel') {
+          const url = await this.uploadImage(filePath);
+          outputUrls.push(url);
+        } else {
+          const url = await this.uploadVideo(filePath);
+          outputUrls.push(url);
+        }
+      }
+      await renderer.cleanup(result.tempDir);
+
+      // 8. Consume credits
+      const creditType = input.outputType === 'carousel' ? 'VIDEO_COMPOSITOR' : 'VIDEO_COMPOSITOR';
+      await this.credits.consumeCredits(workspaceId, creditType, `Manual ${input.outputType}: ${input.slides.length} slides`);
+      if (input.enableMusic && input.outputType === 'video') {
+        await this.credits.consumeCredits(workspaceId, 'MUSIC_BACKGROUND', 'Música para carousel video');
+      }
+
+      // 9. Save VideoRenderJob
+      await this.prisma.videoRenderJob.create({
+        data: {
+          workspaceId,
+          tier: 'MVP' as any,
+          provider: 'COMPOSITOR' as any,
+          inputType: 'COMPOSITOR' as any,
+          inputPayload: {
+            slideCount: input.slides.length,
+            outputType: input.outputType,
+            palette: input.palette ?? 'tech-azul',
+            renderer: 'remotion-carousel',
+          } as any,
+          status: 'COMPLETED',
+          outputUrl: outputUrls[0] ?? '',
+          durationSeconds: input.outputType === 'video' ? input.slides.length * 3 : 0,
+          aspectRatio,
+          creditsUsed: totalCredits,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        },
+      });
+
+      this.logger.log(`Manual render complete: ${outputUrls.length} file(s), ${totalCredits} credits`);
+
+      return { outputUrls, outputType: input.outputType, creditsUsed: totalCredits };
+    } catch (error: any) {
+      this.logger.error(`Manual render failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // ── Upload image (carousel stills) ──
+
+  private async uploadImage(localPath: string): Promise<string> {
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+
+    if (cloudName && apiKey && apiSecret) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const cloudinary = require('cloudinary').v2;
+        cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+        const result = await cloudinary.uploader.upload(localPath, {
+          resource_type: 'image',
+          folder: 'syndra/carousel',
+          format: 'png',
+        });
+        return result.secure_url;
+      } catch (err: any) {
+        this.logger.warn(`Cloudinary image upload failed, saving locally: ${err.message}`);
+      }
+    }
+
+    // Fallback: local
+    const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+    const imgDir = path.join(uploadDir, 'images');
+    if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+    const filename = `carousel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`;
+    const destPath = path.join(imgDir, filename);
+    fs.copyFileSync(localPath, destPath);
+    return `/uploads/images/${filename}`;
   }
 
   // ── Resolve storyboard slides ──

@@ -201,6 +201,9 @@ export {
   type RemotionRenderResult,
   type SubtitleGroupInput,
   type ImageSlideInput,
+  type CarouselSlideInput,
+  type CarouselRenderInput,
+  type CarouselRenderResult,
 } from './renderers/remotion-renderer';
 
 // --- Pipeline ---

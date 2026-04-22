@@ -76,6 +76,40 @@ export interface RemotionRenderResult {
   tempDir: string;
 }
 
+/** Input for the tech-style carousel / manual video composer */
+export interface CarouselSlideInput {
+  text: string;
+  imageUrl?: string;
+  role?: 'hook' | 'body' | 'cta' | 'slide';
+  caption?: string;
+  accentColor?: string;
+}
+
+export interface CarouselRenderInput {
+  slides: CarouselSlideInput[];
+  /** 'video' = full MP4, 'stills' = one PNG per slide */
+  mode: 'video' | 'stills';
+  aspectRatio?: '9:16' | '16:9' | '1:1';
+  framesPerSlide?: number;
+  accentColor?: string;
+  palette?: 'tech-azul' | 'anthropic' | 'openai' | 'google' | 'dark-purple' | 'custom';
+  bgPrimary?: string;
+  bgSecondary?: string;
+  handle?: string;
+  logoUrl?: string;
+  techGrid?: boolean;
+  particles?: boolean;
+  ttsAudioUrl?: string;
+  musicAudioUrl?: string;
+  musicVolume?: number;
+}
+
+export interface CarouselRenderResult {
+  /** video mode: array with single MP4 path; stills mode: one path per slide */
+  outputPaths: string[];
+  tempDir: string;
+}
+
 // 720p for server-side rendering — much lighter on 2 vCPU than 1080p
 // Reels (9:16) and Stories still look great at 720×1280 on mobile
 const ASPECT_DIMENSIONS: Record<string, { w: number; h: number }> = {
@@ -322,6 +356,135 @@ export class RemotionVideoRenderer {
 
   async cleanup(tempDir: string): Promise<void> {
     await this.cleanupDir(tempDir);
+  }
+
+  // ── Carousel / Manual slide renderer ────────────────────────────────────────
+
+  async renderCarousel(input: CarouselRenderInput): Promise<CarouselRenderResult> {
+    const framesPerSlide = input.framesPerSlide ?? 90;
+    const totalFrames = input.slides.length * framesPerSlide;
+    const dim = ASPECT_DIMENSIONS[input.aspectRatio ?? '1:1'] ?? ASPECT_DIMENSIONS['1:1']!;
+
+    const tempDir = join(tmpdir(), `carousel-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+
+    try {
+      const bundleUrl = await this.ensureBundle();
+      const chromiumPath = this.findChromium();
+      const chromiumOptions = {
+        enableMultiProcessOnLinux: true,
+        disableWebSecurity: true,
+        gl: 'swiftshader' as const,
+      };
+
+      const inputProps = {
+        slides: input.slides,
+        framesPerSlide,
+        accentColor: input.accentColor,
+        palette: input.palette ?? 'tech-azul',
+        bgPrimary: input.bgPrimary,
+        bgSecondary: input.bgSecondary,
+        handle: input.handle ?? '@syndra',
+        logoUrl: input.logoUrl,
+        techGrid: input.techGrid ?? true,
+        particles: input.particles ?? true,
+        ttsAudioUrl: input.ttsAudioUrl,
+        musicAudioUrl: input.musicAudioUrl,
+        musicVolume: input.musicVolume ?? 0.22,
+      };
+
+      const { selectComposition } = await import('@remotion/renderer');
+
+      const composition = await this.withTimeout(
+        selectComposition({
+          serveUrl: bundleUrl,
+          id: 'CarouselComposition',
+          inputProps,
+          browserExecutable: chromiumPath,
+          chromiumOptions,
+        }),
+        60_000,
+        'selectComposition (carousel) timed out after 60s',
+      );
+
+      if (input.mode === 'stills') {
+        // Render one PNG per slide at its first frame
+        const { renderStill } = await import('@remotion/renderer');
+        const outputPaths: string[] = [];
+
+        for (let i = 0; i < input.slides.length; i++) {
+          const frame = i * framesPerSlide + 8; // offset a bit for entrance anim to settle
+          const outputPath = join(tempDir, `slide-${i + 1}.png`);
+
+          await this.withTimeout(
+            renderStill({
+              composition: {
+                ...composition,
+                width: dim.w,
+                height: dim.h,
+                durationInFrames: totalFrames || 90,
+                fps: FPS,
+              },
+              serveUrl: bundleUrl,
+              outputLocation: outputPath,
+              frame,
+              inputProps,
+              chromiumOptions,
+              browserExecutable: chromiumPath,
+            }),
+            120_000,
+            `renderStill slide ${i + 1} timed out`,
+          );
+
+          outputPaths.push(outputPath);
+          console.log(`[Remotion] Carousel still ${i + 1}/${input.slides.length} rendered: ${outputPath}`);
+        }
+
+        return { outputPaths, tempDir };
+      } else {
+        // Render as video
+        const { renderMedia } = await import('@remotion/renderer');
+        const outputPath = join(tempDir, 'output.mp4');
+        let lastProgressLog = Date.now();
+
+        await this.withTimeout(
+          renderMedia({
+            composition: {
+              ...composition,
+              width: dim.w,
+              height: dim.h,
+              durationInFrames: totalFrames || 90,
+              fps: FPS,
+            },
+            serveUrl: bundleUrl,
+            codec: 'h264',
+            x264Preset: 'ultrafast',
+            outputLocation: outputPath,
+            inputProps,
+            concurrency: 1,
+            timeoutInMilliseconds: 90_000,
+            chromiumOptions,
+            browserExecutable: chromiumPath,
+            onProgress: ({ renderedFrames, encodedFrames }) => {
+              const now = Date.now();
+              if (now - lastProgressLog > 10_000) {
+                const pct = Math.round((renderedFrames / totalFrames) * 100);
+                console.log(`[Remotion] Carousel render ${pct}% (${renderedFrames}/${totalFrames} frames, encoded: ${encodedFrames})`);
+                lastProgressLog = now;
+              }
+            },
+          }),
+          RENDER_TIMEOUT_MS,
+          `renderMedia (carousel) timed out after ${RENDER_TIMEOUT_MS / 60000} minutes`,
+        );
+
+        console.log(`[Remotion] Carousel video complete: ${outputPath}`);
+        return { outputPaths: [outputPath], tempDir };
+      }
+    } catch (error) {
+      await this.cleanupDir(tempDir);
+      throw error;
+    }
   }
 
   private normalizeSlides(input: RemotionRenderInput): ImageSlideInput[] {
