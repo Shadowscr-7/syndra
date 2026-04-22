@@ -35,9 +35,14 @@ interface RenderJob {
   inputType: string;
   status: string;
   outputUrl?: string;
+  thumbnailUrl?: string;
   creditsUsed?: number;
+  progress?: number;
+  errorMessage?: string;
   createdAt: string;
 }
+
+const ACTIVE_STATUSES = new Set(['QUEUED', 'RENDERING', 'COMPOSING', 'UPLOADING', 'PROCESSING']);
 
 interface Credits {
   balance: number;
@@ -200,7 +205,23 @@ export default function VideoPipelinePage() {
     }
   }, []);
 
+  // ── Poll only jobs (lightweight, no loading flicker) ──
+  const pollJobs = useCallback(async () => {
+    try {
+      const res = await apiFetch<RenderJob[]>('/videos/render').catch(() => null);
+      if (res) setJobs(Array.isArray(res) ? res : []);
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Auto-poll while there are active jobs ──
+  useEffect(() => {
+    const hasActive = jobs.some(j => ACTIVE_STATUSES.has(j.status));
+    if (!hasActive) return;
+    const interval = setInterval(pollJobs, 4000);
+    return () => clearInterval(interval);
+  }, [jobs, pollJobs]);
 
   // ── Sync storyboard slides with selected images ──
   useEffect(() => {
@@ -443,6 +464,17 @@ export default function VideoPipelinePage() {
       }
       // If no images provided at all → backend handles it (auto-generate or text-only)
 
+      // Optimistic job card
+      const optimisticJob: RenderJob = {
+        id: `opt_${Date.now()}`,
+        tier: 'STANDARD',
+        provider: 'COMPOSITOR',
+        inputType: contentMode === 'manual' ? 'MANUAL_SLIDES' : 'NARRATION',
+        status: 'QUEUED',
+        createdAt: new Date().toISOString(),
+      };
+      setJobs(prev => [optimisticJob, ...prev]);
+
       await apiFetch('/videos/compositor/render', {
         method: 'POST',
         body,
@@ -450,7 +482,8 @@ export default function VideoPipelinePage() {
       setCompNarration('');
       setCompImageIds([]);
       setImagePrompts([]);
-      loadData();
+      // Real refresh after a short delay
+      setTimeout(() => pollJobs(), 1500);
     } catch (e) {
       console.error('Compositor render error:', e);
     } finally {
@@ -463,6 +496,17 @@ export default function VideoPipelinePage() {
     if (!kiePrompt.trim()) return;
     setKieSubmitting(true);
     try {
+      // Optimistic job card
+      const optimisticJob: RenderJob = {
+        id: `opt_${Date.now()}`,
+        tier: 'STANDARD',
+        provider: 'KIE',
+        inputType: 'PROMPT',
+        status: 'QUEUED',
+        createdAt: new Date().toISOString(),
+      };
+      setJobs(prev => [optimisticJob, ...prev]);
+
       await apiFetch('/videos/kie-reels/render', {
         method: 'POST',
         body: {
@@ -472,7 +516,7 @@ export default function VideoPipelinePage() {
         },
       });
       setKiePrompt('');
-      loadData();
+      setTimeout(() => pollJobs(), 1500);
     } catch (e) {
       console.error('Kie reels render error:', e);
     } finally {
@@ -1585,9 +1629,17 @@ export default function VideoPipelinePage() {
           {/* Render Jobs (shared)                    */}
           {/* ═══════════════════════════════════════ */}
           <div className="glass-card p-5 animate-fade-in-delay-2">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>📋 Render Jobs</h3>
-              <button onClick={loadData} className="btn-ghost text-xs" style={{ padding: '0.35rem 0.75rem' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>📋 Render Jobs</h3>
+                {jobs.some(j => ACTIVE_STATUSES.has(j.status)) && (
+                  <span className="flex items-center gap-1 text-xs animate-pulse" style={{ color: '#f59e0b' }}>
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
+                    Procesando...
+                  </span>
+                )}
+              </div>
+              <button onClick={pollJobs} className="btn-ghost text-xs" style={{ padding: '0.35rem 0.75rem' }}>
                 🔄 Actualizar
               </button>
             </div>
@@ -1597,32 +1649,131 @@ export default function VideoPipelinePage() {
                 <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No hay render jobs todavía.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-[36rem] overflow-y-auto pr-1">
                 {jobs.map((j) => {
+                  const isActive = ACTIVE_STATUSES.has(j.status);
+                  const isDone = j.status === 'COMPLETED';
+                  const isFailed = j.status === 'FAILED' || j.status === 'CANCELLED';
                   const ss = statusStyles[j.status] ?? { bg: 'rgba(255,255,255,0.05)', color: 'var(--color-text-secondary)', border: 'var(--color-border)' };
+
+                  const providerLabel = j.provider === 'COMPOSITOR' ? '🎬 Compositor' : j.provider === 'KIE' ? '⚡ Kie AI' : j.provider;
+                  const providerColor = j.provider === 'COMPOSITOR'
+                    ? { bg: 'rgba(124,58,237,0.12)', color: 'var(--color-primary-light)', border: 'rgba(124,58,237,0.25)' }
+                    : { bg: 'rgba(236,72,153,0.12)', color: '#ec4899', border: 'rgba(236,72,153,0.25)' };
+
+                  const statusIcon = isDone ? '✅' : isFailed ? '❌' : isActive ? '⏳' : '🕐';
+
+                  // Simulated progress based on status
+                  const progressMap: Record<string, number> = {
+                    QUEUED: 5, PROCESSING: 20, RENDERING: 55, COMPOSING: 75, UPLOADING: 92, COMPLETED: 100,
+                  };
+                  const progress = j.progress ?? progressMap[j.status] ?? (isDone ? 100 : isFailed ? 0 : 10);
+
                   return (
-                    <div key={j.id} className="flex items-center justify-between rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--color-border-subtle)' }}>
-                      <div className="flex items-center gap-2">
-                        <span className="chip" style={{
-                          background: j.provider === 'COMPOSITOR' ? 'rgba(124,58,237,0.1)' : 'rgba(236,72,153,0.1)',
-                          color: j.provider === 'COMPOSITOR' ? 'var(--color-primary-light)' : '#ec4899',
-                          borderColor: j.provider === 'COMPOSITOR' ? 'rgba(124,58,237,0.2)' : 'rgba(236,72,153,0.2)',
-                        }}>
-                          {j.provider === 'COMPOSITOR' ? '🎬 Compositor' : j.provider === 'KIE' ? '⚡ Kie AI' : j.provider}
-                        </span>
-                        <span className="chip" style={{ background: ss.bg, color: ss.color, borderColor: ss.border }}>
-                          {j.status}
-                        </span>
-                        {j.creditsUsed && (
-                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{j.creditsUsed} créd</span>
+                    <div
+                      key={j.id}
+                      className="rounded-xl overflow-hidden"
+                      style={{
+                        background: isDone
+                          ? 'rgba(16,185,129,0.05)'
+                          : isFailed
+                            ? 'rgba(239,68,68,0.05)'
+                            : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${isDone ? 'rgba(16,185,129,0.2)' : isFailed ? 'rgba(239,68,68,0.2)' : 'var(--color-border-subtle)'}`,
+                      }}
+                    >
+                      {/* Progress bar (top) */}
+                      {!isFailed && (
+                        <div style={{ height: '3px', background: 'rgba(255,255,255,0.05)' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${progress}%`,
+                              background: isDone
+                                ? 'linear-gradient(90deg, #10b981, #34d399)'
+                                : 'linear-gradient(90deg, var(--color-primary), #818cf8)',
+                              transition: 'width 0.8s ease',
+                              boxShadow: isActive ? '0 0 8px rgba(168,85,247,0.6)' : undefined,
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      <div className="p-4 space-y-3">
+                        {/* Header row */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="chip" style={{ background: providerColor.bg, color: providerColor.color, borderColor: providerColor.border }}>
+                              {providerLabel}
+                            </span>
+                            <span className={`chip ${isActive ? 'animate-pulse' : ''}`} style={{ background: ss.bg, color: ss.color, borderColor: ss.border }}>
+                              {statusIcon} {j.status}
+                            </span>
+                            {j.creditsUsed != null && (
+                              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                {j.creditsUsed} créd
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                            {new Date(j.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Active progress label */}
+                        {isActive && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs animate-pulse" style={{ color: '#a855f7' }}>
+                              {j.status === 'QUEUED' && '⏳ En cola...'}
+                              {j.status === 'PROCESSING' && '🔄 Procesando audio y guión...'}
+                              {j.status === 'RENDERING' && '🎬 Renderizando frames...'}
+                              {j.status === 'COMPOSING' && '🎼 Componiendo video final...'}
+                              {j.status === 'UPLOADING' && '☁️ Subiendo a la nube...'}
+                            </span>
+                            <span className="text-xs font-mono font-bold" style={{ color: '#a855f7' }}>
+                              {progress}%
+                            </span>
+                          </div>
                         )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        <span>{new Date(j.createdAt).toLocaleString()}</span>
-                        {j.outputUrl && (
-                          <a href={j.outputUrl} target="_blank" rel="noreferrer" className="btn-ghost" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>
-                            ▶ Ver video
-                          </a>
+
+                        {/* Error message */}
+                        {isFailed && j.errorMessage && (
+                          <p className="text-xs" style={{ color: '#ef4444' }}>
+                            ⚠️ {j.errorMessage}
+                          </p>
+                        )}
+
+                        {/* Video result */}
+                        {isDone && j.outputUrl && (
+                          <div className="flex items-center gap-3">
+                            {j.thumbnailUrl && (
+                              <img
+                                src={j.thumbnailUrl}
+                                alt="thumbnail"
+                                className="rounded-lg object-cover"
+                                style={{ width: '4rem', height: '4rem' }}
+                              />
+                            )}
+                            <div className="flex gap-2">
+                              <a
+                                href={j.outputUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn-primary text-xs"
+                                style={{ padding: '0.4rem 0.9rem' }}
+                              >
+                                ▶ Ver video
+                              </a>
+                              <a
+                                href={j.outputUrl}
+                                download
+                                className="btn-ghost text-xs"
+                                style={{ padding: '0.4rem 0.9rem' }}
+                              >
+                                ⬇ Descargar
+                              </a>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
