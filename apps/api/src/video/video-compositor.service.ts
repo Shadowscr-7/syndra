@@ -451,7 +451,7 @@ export class VideoCompositorService {
               userId,
               filename: label,
               url,
-              mimeType: isCarousel ? 'image/png' : 'video/mp4',
+              mimeType: isCarousel ? 'image/jpeg' : 'video/mp4',
               sizeBytes: 0,
               category: 'OTHER',
               tags: isCarousel
@@ -528,7 +528,7 @@ export class VideoCompositorService {
         const result = await cloudinary.uploader.upload(localPath, {
           resource_type: 'image',
           folder: 'syndra/carousel',
-          format: 'png',
+          format: 'jpg',
         });
         return result.secure_url;
       } catch (err: any) {

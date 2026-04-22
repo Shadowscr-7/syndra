@@ -408,13 +408,13 @@ export class RemotionVideoRenderer {
       );
 
       if (input.mode === 'stills') {
-        // Render one PNG per slide at its first frame
+        // Render one JPEG per slide (JPEG has no alpha channel — always fully opaque)
         const { renderStill } = await import('@remotion/renderer');
         const outputPaths: string[] = [];
 
         for (let i = 0; i < input.slides.length; i++) {
           const frame = i * framesPerSlide + 8; // offset a bit for entrance anim to settle
-          const outputPath = join(tempDir, `slide-${i + 1}.png`);
+          const outputPath = join(tempDir, `slide-${i + 1}.jpg`);
 
           await this.withTimeout(
             renderStill({
@@ -429,6 +429,8 @@ export class RemotionVideoRenderer {
               output: outputPath,
               frame,
               inputProps,
+              imageFormat: 'jpeg',
+              jpegQuality: 95,
               chromiumOptions,
               browserExecutable: chromiumPath,
             }),

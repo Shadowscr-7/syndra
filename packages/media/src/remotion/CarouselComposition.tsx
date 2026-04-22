@@ -191,28 +191,35 @@ const CarouselSlideInner: React.FC<{
     <AbsoluteFill style={{ background: bg1, overflow: 'hidden' }}>
       {/* Layer 1: gradient background */}
       <GradientBackground
-        colors={[bg2, bg1, `${a}11`]}
+        colors={[bg2, bg1, `${a}33`]}
         angle={145}
         animateAngle
         animateSpeed={0.08}
       />
 
+      {/* Layer 1b: accent radial glow — gives depth and identity to the slide */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `radial-gradient(ellipse 80% 60% at 70% 20%, ${a}1A 0%, transparent 65%)`,
+        pointerEvents: 'none',
+      }} />
+
       {/* Layer 2: background image (dimmed) */}
       {slide.imageUrl && (
-        <AbsoluteFill style={{ opacity: isHook ? 0.18 : 0.12 }}>
+        <AbsoluteFill style={{ opacity: isHook ? 0.35 : 0.22 }}>
           <Img
             src={slide.imageUrl}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
           <div style={{
             position: 'absolute', inset: 0,
-            background: `linear-gradient(0deg, ${bg1}EE 0%, ${bg1}99 40%, transparent 100%)`,
+            background: `linear-gradient(0deg, ${bg1}F0 0%, ${bg1}BB 35%, ${bg1}55 100%)`,
           }} />
         </AbsoluteFill>
       )}
 
       {/* Layer 3: TechGrid */}
-      {techGrid && <TechGrid accentColor={a} opacity={0.65} />}
+      {techGrid && <TechGrid accentColor={a} opacity={0.9} />}
 
       {/* Layer 4: Particles */}
       {particles && (
