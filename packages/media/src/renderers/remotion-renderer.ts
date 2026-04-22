@@ -426,7 +426,7 @@ export class RemotionVideoRenderer {
                 fps: FPS,
               },
               serveUrl: bundleUrl,
-              outputLocation: outputPath,
+              output: outputPath,
               frame,
               inputProps,
               chromiumOptions,
